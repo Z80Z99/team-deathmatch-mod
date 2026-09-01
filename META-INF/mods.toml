@@ -3,7 +3,7 @@ loaderVersion="[47,)"
 license="All Rights Reserved"
 [[mods]]
 modId="generated_mod"
-version="1.0.0-r11"
+version="1.0.0-r21"
 displayName="团队死斗"
 authors="AutoMods"
 description='''团队死斗'''
