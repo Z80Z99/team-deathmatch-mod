@@ -6,8 +6,6 @@ import cn.blockforge.generated.generatedmod.network.FpsTdmNetwork;
 import cn.blockforge.generated.generatedmod.network.packet.MapEditorSyncPacket;
 import cn.blockforge.generated.generatedmod.spawn.SpawnPoint;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.particles.ParticleOptions;
-import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -74,12 +72,11 @@ public final class MapEditorManager {
             }
             MapDefinition definition = targetDefinition(player);
             boolean wasInvalidated = invalidatedDrafts.contains(playerId);
-            Draft draft = draftFor(playerId, definition);
+            draftFor(playerId, definition);
             boolean newlyInvalidated = !wasInvalidated && invalidatedDrafts.contains(playerId);
             if (newlyInvalidated) {
                 setMessage(player, DRAFT_INVALIDATED_MESSAGE, true);
             }
-            renderPreview(player, definition, draft);
             if (newlyInvalidated) {
                 sendView(player);
             }
@@ -639,42 +636,6 @@ public final class MapEditorManager {
     private void setMessage(ServerPlayer player, String message, boolean error) {
         messages.put(player.getUUID(), message == null ? "" : message);
         errors.put(player.getUUID(), error);
-    }
-
-    private void renderPreview(ServerPlayer player, MapDefinition definition, Draft draft) {
-        if (draft == null || definition == null) {
-            return;
-        }
-        ServerLevel level = server.getLevel(definition.world());
-        if (level == null || !player.serverLevel().dimension().equals(definition.world())) {
-            return;
-        }
-        renderCorners(player, level, draft.boundsMin, draft.boundsMax, ParticleTypes.END_ROD);
-        renderCorners(player, level, draft.resetMin, draft.resetMax, ParticleTypes.FLAME);
-    }
-
-    private void renderCorners(ServerPlayer player, ServerLevel level, BlockPos min, BlockPos max,
-                               ParticleOptions particle) {
-        if (min == null || max == null) return;
-        int x0 = Math.min(min.getX(), max.getX()), x1 = Math.max(min.getX(), max.getX());
-        int y0 = Math.min(min.getY(), max.getY()), y1 = Math.max(min.getY(), max.getY());
-        int z0 = Math.min(min.getZ(), max.getZ()), z1 = Math.max(min.getZ(), max.getZ());
-        for (int x = x0; x <= x1; x += 2) for (int z : new int[]{z0, z1}) {
-            lineParticle(player, level, particle, x + .5D, y0 + .5D, z + .5D);
-            lineParticle(player, level, particle, x + .5D, y1 + .5D, z + .5D);
-        }
-        for (int z = z0; z <= z1; z += 2) for (int x : new int[]{x0, x1}) {
-            lineParticle(player, level, particle, x + .5D, y0 + .5D, z + .5D);
-            lineParticle(player, level, particle, x + .5D, y1 + .5D, z + .5D);
-        }
-        for (int y = y0; y <= y1; y += 2) for (int x : new int[]{x0, x1}) for (int z : new int[]{z0, z1}) {
-            lineParticle(player, level, particle, x + .5D, y + .5D, z + .5D);
-        }
-    }
-
-    private void lineParticle(ServerPlayer player, ServerLevel level,
-                              ParticleOptions particle, double x, double y, double z) {
-        level.sendParticles(player, particle, true, x, y, z, 1, 0.02D, 0.02D, 0.02D, 0.0D);
     }
 
     /**

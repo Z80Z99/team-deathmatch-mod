@@ -70,6 +70,12 @@ public final class MatchmakingManager {
         formingRoomId = roomId;
     }
 
+    public void cancelForming(String roomId) {
+        if (roomId != null && roomId.equals(formingRoomId)) {
+            formingRoomId = null;
+        }
+    }
+
     /** 匹配房准备倒计时的剩余秒数；不在成局阶段返回 0。 */
     public int readySecondsLeft() {
         if (formingRoomId == null) {

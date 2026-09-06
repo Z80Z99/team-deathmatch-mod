@@ -20,6 +20,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Semaphore;
 
 /**
  * HUD 外部图片：加载玩家放进 config/fpsmod/hud_images 的 PNG，
@@ -28,8 +31,33 @@ import java.util.Map;
  */
 public final class HudBackground {
     private static final int CACHE_LIMIT = 16;
+    private static final long CHECK_INTERVAL_NANOS = 1_000_000_000L;
+    private static final Semaphore LOAD_SLOTS = new Semaphore(4);
 
-    private record Cached(DynamicTexture texture, long modified) {
+    private static final class Cached {
+        private DynamicTexture texture;
+        private long modified = Long.MIN_VALUE;
+        private long nextCheck = System.nanoTime();
+        private CompletableFuture<Loaded> pending;
+
+        private void close() {
+            if (texture != null) {
+                texture.close();
+                texture = null;
+            }
+            if (pending != null) {
+                pending.thenAccept(Loaded::close);
+                pending = null;
+            }
+        }
+    }
+
+    private record Loaded(long modified, NativeImage image, boolean available) {
+        private void close() {
+            if (image != null) {
+                image.close();
+            }
+        }
     }
 
     private static final Map<String, Cached> CACHE = new LinkedHashMap<>(8, 0.75F, true) {
@@ -38,7 +66,7 @@ public final class HudBackground {
             if (size() <= CACHE_LIMIT) {
                 return false;
             }
-            eldest.getValue().texture().close();
+            eldest.getValue().close();
             return true;
         }
     };
@@ -72,26 +100,69 @@ public final class HudBackground {
         if (fileName == null || fileName.isBlank()) {
             return null;
         }
-        try {
-            Path path = resolve(fileName);
-            long modified = Files.getLastModifiedTime(path).toMillis();
-            Cached cached = CACHE.get(fileName);
-            if (cached != null && cached.modified() == modified) {
-                return cached.texture();
+        Cached cached = CACHE.computeIfAbsent(fileName, ignored -> new Cached());
+        if (cached.pending != null && cached.pending.isDone()) {
+            CompletableFuture<Loaded> completed = cached.pending;
+            cached.pending = null;
+            Loaded loaded;
+            try {
+                loaded = completed.join();
+            } catch (CompletionException error) {
+                loaded = new Loaded(Long.MIN_VALUE, null, false);
             }
-            DynamicTexture texture;
-            try (InputStream stream = Files.newInputStream(path)) {
-                NativeImage image = NativeImage.read(stream);
-                texture = new DynamicTexture(image);
+            if (!loaded.available()) {
+                cached.close();
+                cached.modified = Long.MIN_VALUE;
+            } else if (loaded.image() != null) {
+                // GPU 上传留在渲染线程；磁盘读取、PNG 解码在后台完成。
+                try {
+                    DynamicTexture replacement = new DynamicTexture(loaded.image());
+                    if (cached.texture != null) {
+                        cached.texture.close();
+                    }
+                    cached.texture = replacement;
+                    cached.modified = loaded.modified();
+                } catch (RuntimeException error) {
+                    loaded.close();
+                }
             }
-            if (cached != null) {
-                cached.texture().close();
-            }
-            CACHE.put(fileName, new Cached(texture, modified));
-            return texture;
-        } catch (Exception error) {
-            return null;
+            cached.nextCheck = System.nanoTime() + CHECK_INTERVAL_NANOS;
         }
+        long now = System.nanoTime();
+        if (cached.pending == null && now >= cached.nextCheck) {
+            Path path;
+            try {
+                path = resolve(fileName);
+            } catch (RuntimeException error) {
+                cached.nextCheck = now + CHECK_INTERVAL_NANOS;
+                return cached.texture;
+            }
+            if (!LOAD_SLOTS.tryAcquire()) {
+                return cached.texture;
+            }
+            long previousModified = cached.modified;
+            cached.pending = CompletableFuture.supplyAsync(() -> {
+                try {
+                    long modified = Files.getLastModifiedTime(path).toMillis();
+                    if (modified == previousModified) {
+                        return new Loaded(modified, null, true);
+                    }
+                    try (InputStream stream = Files.newInputStream(path)) {
+                        return new Loaded(modified, NativeImage.read(stream), true);
+                    }
+                } catch (Exception error) {
+                    return new Loaded(Long.MIN_VALUE, null, false);
+                } finally {
+                    LOAD_SLOTS.release();
+                }
+            });
+        }
+        return cached.texture;
+    }
+
+    public static void clear() {
+        CACHE.values().forEach(Cached::close);
+        CACHE.clear();
     }
 
     /** 全屏幕拉伸绘制背景图；文件缺失或透明度为 0 时什么都不画。 */

@@ -260,11 +260,15 @@ public final class MapResetManager {
         }
         int budget = Math.max(1, FpsTdmConfig.COMMON.maxBlocksPerTick.get());
         if (restorePhase == RestorePhase.BLOCKS) {
-            for (int i = 0; i < budget && restoreIndex < snapshot.size(); i++, restoreIndex++) {
+            for (; budget > 0 && restoreIndex < snapshot.size(); budget--, restoreIndex++) {
                 BlockPos pos = positionForIndex(restoreIndex);
                 try {
                     level.removeBlockEntity(pos);
-                    level.setBlock(pos, snapshot.stateAt(restoreIndex), Block.UPDATE_ALL);
+                    BlockState expected = snapshot.stateAt(restoreIndex);
+                    boolean changed = level.setBlock(pos, expected, Block.UPDATE_ALL);
+                    if (!blockStateWasRestored(changed, level.getBlockState(pos).equals(expected))) {
+                        throw new IllegalStateException("Block state was not restored");
+                    }
                 } catch (Throwable error) {
                     recordRestoreError(pos, error);
                 }
@@ -277,7 +281,7 @@ public final class MapResetManager {
         }
         if (restorePhase == RestorePhase.BLOCK_ENTITIES) {
             var blockEntities = snapshot.blockEntities();
-            for (int i = 0; i < budget && restoreIndex < blockEntities.size(); i++, restoreIndex++) {
+            for (; budget > 0 && restoreIndex < blockEntities.size(); budget--, restoreIndex++) {
                 MapSnapshot.BlockEntitySnapshot entry = blockEntities.get(restoreIndex);
                 BlockPos pos = positionForIndex(entry.index());
                 try {
@@ -286,15 +290,21 @@ public final class MapResetManager {
                     if (restored != null) {
                         level.setBlockEntity(restored);
                         restored.setChanged();
+                    } else {
+                        throw new IllegalStateException("Block entity could not be restored");
                     }
                 } catch (Throwable error) {
                     recordRestoreError(pos, error);
                 }
             }
             if (restoreIndex >= blockEntities.size()) {
-                finishRestore(false);
+                finishRestore(errorCount > 0);
             }
         }
+    }
+
+    static boolean blockStateWasRestored(boolean setBlockChangedState, boolean stateMatchesSnapshot) {
+        return setBlockChangedState || stateMatchesSnapshot;
     }
 
     private BlockPos positionForIndex(int index) {
@@ -313,7 +323,9 @@ public final class MapResetManager {
     private void recordRestoreError(BlockPos pos, Throwable error) {
         errorCount++;
         lastError = error.getClass().getSimpleName() + ": " + error.getMessage();
-        LOGGER.warn("恢复地图 {} 的方块 {} 失败", definition.id(), pos, error);
+        if (errorCount <= 5) {
+            LOGGER.warn("恢复地图 {} 的方块 {} 失败", definition.id(), pos, error);
+        }
     }
 
     private void finishRestore(boolean failed) {

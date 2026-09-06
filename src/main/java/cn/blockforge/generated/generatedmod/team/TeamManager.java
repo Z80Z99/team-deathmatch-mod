@@ -5,16 +5,17 @@ import cn.blockforge.generated.generatedmod.match.MatchState;
 import cn.blockforge.generated.generatedmod.match.Team;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -27,7 +28,8 @@ public final class TeamManager {
     private final MatchManager matchManager;
     private final Map<UUID, Team> playerTeams = new HashMap<>();
     private final Map<UUID, Team> preferences = new HashMap<>();
-    private final Map<UUID, GameType> originalGameModes = new HashMap<>();
+    private static final String ORIGINAL_STATE_KEY = "generated_mod_original_state";
+    private final Map<UUID, OriginalState> originalStates = new HashMap<>();
     private final Set<UUID> pendingPlayers = new HashSet<>();
 
     public TeamManager(MinecraftServer server, MatchManager matchManager) {
@@ -70,6 +72,22 @@ public final class TeamManager {
 
     public int spectatorSize() {
         return Math.max(0, server.getPlayerList().getPlayers().size() - totalParticipants());
+    }
+
+    public record Counts(int teamA, int teamB, int spectators) { }
+
+    public Counts counts() {
+        int a = 0;
+        int b = 0;
+        int spectators = 0;
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            switch (getTeam(player)) {
+                case TEAM_A -> a++;
+                case TEAM_B -> b++;
+                case SPECTATOR -> spectators++;
+            }
+        }
+        return new Counts(a, b, spectators);
     }
 
     public JoinResult joinPlayer(ServerPlayer player) {
@@ -205,7 +223,7 @@ public final class TeamManager {
             }
             return;
         }
-        int maximumDifference = matchManager.rulesMaxTeamImbalance();
+        int maximumDifference = effectiveImbalance(a + b, matchManager.rulesMaxTeamImbalance());
         while (Math.abs(a - b) > maximumDifference) {
             Team from = a > b ? Team.TEAM_A : Team.TEAM_B;
             Team to = from == Team.TEAM_A ? Team.TEAM_B : Team.TEAM_A;
@@ -255,6 +273,7 @@ public final class TeamManager {
 
     /** 标记“下一回合再入场”：歼灭类模式的中途加入者本回合先旁观。 */
     public void setPending(ServerPlayer player) {
+        rememberGameMode(player);
         pendingPlayers.add(player.getUUID());
     }
 
@@ -278,13 +297,15 @@ public final class TeamManager {
         playerTeams.clear();
         pendingPlayers.clear();
         preferences.clear();
+        originalStates.clear();
     }
 
     public void clearPlayer(ServerPlayer player) {
         playerTeams.remove(player.getUUID());
         pendingPlayers.remove(player.getUUID());
         removeFromScoreboard(player);
-        originalGameModes.remove(player.getUUID());
+        restoreGameMode(player);
+        preferences.remove(player.getUUID());
     }
 
     private Team selectJoinTeam(Team desired) {
@@ -314,7 +335,12 @@ public final class TeamManager {
         } else {
             b++;
         }
-        return Math.abs(a - b) <= matchManager.rulesMaxTeamImbalance();
+        return Math.abs(a - b) <= effectiveImbalance(a + b, matchManager.rulesMaxTeamImbalance());
+    }
+
+    static int effectiveImbalance(int totalPlayers, int configured) {
+        // 奇数人数无法严格均分，至少需要允许一人的差额。
+        return Math.max(Math.max(0, configured), totalPlayers & 1);
     }
 
     private void setTeamInternal(ServerPlayer player, Team team) {
@@ -323,16 +349,41 @@ public final class TeamManager {
         syncScoreboardTeam(player, team);
     }
 
-    private void rememberGameMode(ServerPlayer player) {
-        originalGameModes.putIfAbsent(player.getUUID(), player.gameMode.getGameModeForPlayer());
+    public void rememberGameMode(ServerPlayer player) {
+        if (originalStates.containsKey(player.getUUID())) {
+            return;
+        }
+        CompoundTag persisted = player.getPersistentData().getCompound(Player.PERSISTED_NBT_TAG);
+        OriginalState original;
+        if (persisted.contains(ORIGINAL_STATE_KEY)) {
+            CompoundTag saved = persisted.getCompound(ORIGINAL_STATE_KEY);
+            original = new OriginalState(GameType.byId(saved.getInt("gameMode")), saved.getBoolean("invulnerable"));
+        } else {
+            original = new OriginalState(player.gameMode.getGameModeForPlayer(), player.isInvulnerable());
+            CompoundTag saved = new CompoundTag();
+            saved.putInt("gameMode", original.gameMode().getId());
+            saved.putBoolean("invulnerable", original.invulnerable());
+            persisted.put(ORIGINAL_STATE_KEY, saved);
+            player.getPersistentData().put(Player.PERSISTED_NBT_TAG, persisted);
+        }
+        originalStates.put(player.getUUID(), original);
     }
 
     public void restoreGameMode(ServerPlayer player) {
-        GameType original = originalGameModes.remove(player.getUUID());
+        CompoundTag persisted = player.getPersistentData().getCompound(Player.PERSISTED_NBT_TAG);
+        if (!originalStates.containsKey(player.getUUID()) && persisted.contains(ORIGINAL_STATE_KEY)) {
+            rememberGameMode(player);
+        }
+        OriginalState original = originalStates.remove(player.getUUID());
         if (original != null) {
-            player.setGameMode(original);
+            player.setGameMode(original.gameMode());
+            player.setInvulnerable(original.invulnerable());
+            persisted.remove(ORIGINAL_STATE_KEY);
+            player.getPersistentData().put(Player.PERSISTED_NBT_TAG, persisted);
         }
     }
+
+    private record OriginalState(GameType gameMode, boolean invulnerable) { }
 
     /** 配置界面保存后立即刷新记分板中缓存的友军伤害规则。 */
     public void refreshConfigRules() {

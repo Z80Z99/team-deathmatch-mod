@@ -607,7 +607,6 @@ public final class ClientHudLayout {
              int bit = builtInBit(component);
              builtInMask = enabled ? builtInMask | bit : builtInMask & ~bit;
          }
-        }
 
         public Elements build() {
             return new Elements(scoreVisible, scoreXPercent, scoreYPercent, scoreWidth,

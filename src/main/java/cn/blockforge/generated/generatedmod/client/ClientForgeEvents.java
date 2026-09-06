@@ -43,6 +43,7 @@ public final class ClientForgeEvents {
         Minecraft minecraft = Minecraft.getInstance();
         ClientMatchData.tick();
         ClientLobbyData.tick();
+        MapPreview.tick(minecraft);
         closeLobbyScreensWhenMatchStarts(minecraft);
         if (ClientMatchData.consumeKillFeedSound() && minecraft.player != null) {
             minecraft.getSoundManager().play(SimpleSoundInstance.forUI(
@@ -130,5 +131,6 @@ public final class ClientForgeEvents {
         ClientMapEditorData.clear();
         ClientMatchData.clear();
         ClientHudDynamicStats.clear();
+        HudBackground.clear();
     }
 }

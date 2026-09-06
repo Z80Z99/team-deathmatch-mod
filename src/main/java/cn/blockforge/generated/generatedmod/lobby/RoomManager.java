@@ -67,10 +67,7 @@ public final class RoomManager {
                 startRoom(room);
             } else if (room.state() == RoomState.COUNTDOWN) {
                 if (!canStart(room)) {
-                    releaseReservation(room);
-                    room.state(RoomState.OPEN);
-                    room.countdownEndTick(0L);
-                    sendRoomMessage(room, "房间条件变化，开赛倒计时已取消。", true);
+                    cancelStart(room, "房间条件变化，开赛倒计时已取消。", true);
                 } else if (server.getTickCount() >= room.countdownEndTick()) {
                     launchRoom(room);
                 }
@@ -145,6 +142,22 @@ public final class RoomManager {
     private void releaseReservation(Room room) {
         if (room != null && room.id().equals(reservedRoomId)) {
             reservedRoomId = null;
+        }
+    }
+
+    private void cancelStart(Room room, String message, boolean error) {
+        releaseReservation(room);
+        room.state(RoomState.OPEN);
+        room.countdownEndTick(0L);
+        if (room.matchmaking()) {
+            rooms.remove(room.id());
+            matchmaking.cancelForming(room.id());
+            matchmaking.requeue(room.members());
+            String notice = message + " 剩余玩家已返回匹配队列。";
+            matchmaking.sendAll(notice, error);
+            sendAll(notice, error);
+        } else {
+            sendRoomMessage(room, message, error);
         }
     }
 
@@ -233,8 +246,10 @@ public final class RoomManager {
         }
         matchmaking.beginForming(id);
         startRoom(room);
-        sendAll("快速匹配已凑满 " + MatchmakingManager.MIN_PLAYERS_TO_FORM + " 人，"
-                + MatchmakingManager.READY_SECONDS + " 秒后开赛，可在大厅查看。", false);
+        if (rooms.containsKey(id)) {
+            sendAll("快速匹配已凑满 " + MatchmakingManager.MIN_PLAYERS_TO_FORM + " 人，"
+                    + MatchmakingManager.READY_SECONDS + " 秒后开赛，可在大厅查看。", false);
+        }
     }
 
     private void create(ServerPlayer player, String rawName, int requestedMaxPlayers, String rawPassword) {
@@ -267,8 +282,10 @@ public final class RoomManager {
         }
         // 匹配比赛房全程开放：准备倒计时可加入，比赛进行中也能通过大厅中途加入。
         boolean joinable = target.state() == RoomState.OPEN
-                || (target.matchmaking() && target.state() == RoomState.RUNNING
-                        && roomId.equals(activeRoomId) && matchManager.isMatchActive());
+                || (target.matchmaking() && (target.state() == RoomState.COUNTDOWN
+                        || target.state() == RoomState.WAITING_MAP
+                        || (target.state() == RoomState.RUNNING
+                        && roomId.equals(activeRoomId) && matchManager.isMatchActive())));
         if (!joinable) {
             sendSync(player, "房间当前不接受加入。", true);
             return;
@@ -329,11 +346,15 @@ public final class RoomManager {
             room.owner(members.get(ThreadLocalRandom.current().nextInt(members.size())));
         }
         if (room.state() != RoomState.OPEN && room.state() != RoomState.RUNNING) {
-            releaseReservation(room);
-            room.state(RoomState.OPEN);
-            room.countdownEndTick(0L);
+            if (needsCountdownCancellation(room.matchmaking(), canStart(room))) {
+                cancelStart(room, "玩家离开，开赛准备已取消。", false);
+            }
         }
         return true;
+    }
+
+    static boolean needsCountdownCancellation(boolean matchmakingRoom, boolean canStart) {
+        return !matchmakingRoom || !canStart;
     }
 
     private void start(ServerPlayer player) {
@@ -366,9 +387,7 @@ public final class RoomManager {
             return;
         }
         if (!canStart(room)) {
-            releaseReservation(room);
-            room.state(RoomState.OPEN);
-            room.countdownEndTick(0L);
+            cancelStart(room, "人数不足，开赛准备已取消。", false);
             return;
         }
         if (room.state() == RoomState.OPEN) {
@@ -377,7 +396,7 @@ public final class RoomManager {
             }
         }
         if (!prepareMap(room)) {
-            releaseReservation(room);
+            cancelStart(room, "地图暂时不可用。", true);
             return;
         }
         if (!matchManager.maps().isReady()) {
@@ -406,8 +425,7 @@ public final class RoomManager {
 
     private void beginCountdown(Room room, int seconds) {
         if (!canStart(room)) {
-            releaseReservation(room);
-            room.state(RoomState.OPEN);
+            cancelStart(room, "人数不足，开赛准备已取消。", false);
             return;
         }
         if (!reserveRoom(room)) {
@@ -433,10 +451,7 @@ public final class RoomManager {
             sendRoomMessage(room, "比赛已启动（" + room.rules().describe() + "）。", false);
         } else {
             matchManager.clearRoomRules();
-            releaseReservation(room);
-            room.state(RoomState.OPEN);
-            room.countdownEndTick(0L);
-            sendRoomMessage(room, "比赛启动失败：" + resultText(result), true);
+            cancelStart(room, "比赛启动失败：" + resultText(result), true);
         }
     }
 

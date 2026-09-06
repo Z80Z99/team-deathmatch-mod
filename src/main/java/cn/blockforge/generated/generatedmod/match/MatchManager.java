@@ -93,6 +93,7 @@ public final class MatchManager {
     public static void shutdown() {
         if (instance != null) {
             instance.restoreRules();
+            instance.teams.resetAll();
             instance.maps.shutdown();
         }
         instance = null;
@@ -460,9 +461,13 @@ public final class MatchManager {
 
         processDownedPlayers();
         enforceArenaRules();
-        if (server.getTickCount() % 10 == 0) {
+        if (server.getTickCount() % stateBroadcastInterval(isMatchActive()) == 0) {
             broadcastMatchState();
         }
+    }
+
+    static int stateBroadcastInterval(boolean matchActive) {
+        return matchActive ? 10 : 100;
     }
 
     /**
@@ -595,6 +600,9 @@ public final class MatchManager {
     }
 
     public void handlePlayerRespawn(ServerPlayer player) {
+        if (isMatchActive()) {
+            teams.rememberGameMode(player);
+        }
         downedPlayers.remove(player.getUUID());
         Team team = teams.getTeam(player);
         if (state == MatchState.PLAYING && team.isPlayable() && !teams.isPending(player)
@@ -631,7 +639,12 @@ public final class MatchManager {
      * 地图恢复间隙或无法平衡分队时先观战，下一回合自动激活。
      */
     public void joinRoomMember(ServerPlayer player) {
-        if (state == MatchState.MAP_RESETTING || !isMatchActive()) {
+        if (!isMatchActive()) {
+            return;
+        }
+        teams.rememberGameMode(player);
+        if (state == MatchState.MAP_RESETTING) {
+            teams.setPending(player);
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
             spawns.teleportToSpectator(player);
@@ -659,6 +672,10 @@ public final class MatchManager {
     }
 
     public void onPlayerLogin(ServerPlayer player) {
+        teams.restoreGameMode(player);
+        if (isMatchActive()) {
+            teams.rememberGameMode(player);
+        }
         if (state == MatchState.MAP_RESETTING) {
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
@@ -744,6 +761,10 @@ public final class MatchManager {
     }
 
     public void sendMatchSync(ServerPlayer player) {
+        sendMatchSync(player, teams.counts());
+    }
+
+    private void sendMatchSync(ServerPlayer player, TeamManager.Counts counts) {
         FpsTdmNetwork.sendToPlayer(new MatchSyncPacket(
                 state,
                 scores.getTeamScore(Team.TEAM_A),
@@ -755,9 +776,9 @@ public final class MatchManager {
                 phaseRemainingTicks(),
                 respawnRemainingTicks(player),
                 teams.getTeam(player),
-                teams.teamSize(Team.TEAM_A),
-                teams.teamSize(Team.TEAM_B),
-                teams.spectatorSize(),
+                counts.teamA(),
+                counts.teamB(),
+                counts.spectators(),
                 teams.isPending(player),
                 winner,
                 killFeedSequence,
@@ -777,8 +798,9 @@ public final class MatchManager {
     }
 
     public void broadcastMatchState() {
+        TeamManager.Counts counts = teams.counts();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            sendMatchSync(player);
+            sendMatchSync(player, counts);
         }
     }
 
@@ -808,6 +830,7 @@ public final class MatchManager {
         SpawnSelectionStrategy strategy = rulesSpawnStrategy();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             Team team = teams.getTeam(player);
+            teams.rememberGameMode(player);
             if (team.isPlayable() && !teams.isPending(player)) {
                 player.setGameMode(GameType.SURVIVAL);
                 player.setInvulnerable(true);
