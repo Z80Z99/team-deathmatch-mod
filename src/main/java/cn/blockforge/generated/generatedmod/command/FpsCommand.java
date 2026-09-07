@@ -306,7 +306,7 @@ public final class FpsCommand {
         ServerPlayer player = context.getSource().getPlayerOrException();
         Team requested = parseTeam(context, "team");
         if (requested == null || !requested.isPlayable()) {
-            failure(context, "队伍必须是 a 或 b。");
+            failure(context, "队伍必须是 a、b、c 或 d，且必须在当前比赛中启用。");
             return 0;
         }
         manager.teamManager().setPreference(player, requested);
@@ -390,7 +390,7 @@ public final class FpsCommand {
         ServerPlayer player = context.getSource().getPlayerOrException();
         Team team = parseTeam(context, "team");
         if (team == null || !team.isPlayable()) {
-            failure(context, "出生点队伍必须是 a 或 b。");
+            failure(context, "出生点队伍必须是 a、b、c 或 d。");
             return 0;
         }
         SpawnPoint point = new SpawnPoint(player.serverLevel().dimension(), player.getX(), player.getY(), player.getZ(),
@@ -410,7 +410,7 @@ public final class FpsCommand {
         }
         Team team = parseTeam(context, "team");
         if (team == null || !team.isPlayable()) {
-            failure(context, "出生点队伍必须是 a 或 b。");
+            failure(context, "出生点队伍必须是 a、b、c 或 d。");
             return 0;
         }
         if (!manager.spawns().clearTeamSpawns(team)) {
@@ -427,7 +427,7 @@ public final class FpsCommand {
             return 0;
         }
         StringBuilder message = new StringBuilder("出生点：");
-        for (Team team : new Team[]{Team.TEAM_A, Team.TEAM_B, Team.SPECTATOR}) {
+        for (Team team : Team.values()) {
             message.append("\n").append(team.displayName()).append("（")
                     .append(manager.spawns().spawnCount(team)).append("）：");
             int index = 1;
@@ -519,7 +519,7 @@ public final class FpsCommand {
             case NO_MAP -> "尚未选择地图，请先执行 /fps map load <map>。";
             case MAP_LOADING -> "地图初始快照仍在捕获，请稍后再试。";
             case MAP_NOT_READY -> "当前地图快照不可用，请检查地图配置和服务器日志。";
-            case NO_TEAM_SPAWNS -> "A队和B队至少各需要一个出生点。";
+            case NO_TEAM_SPAWNS -> "每支启用队伍至少需要一个出生点。";
             case MAP_BUSY -> "地图正在恢复，请等待恢复完成。";
         };
     }

@@ -12,6 +12,34 @@ import java.util.UUID;
  * {@code maxPlayers <= 0} 表示人数无上限（匹配比赛房使用）。
  */
 public final class Room {
+    private int teamCount = 2;
+    private final java.util.Map<UUID, cn.blockforge.generated.generatedmod.match.Team> memberTeams = new java.util.LinkedHashMap<>();
+
+    public int teamCount() { return teamCount; }
+    public java.util.List<cn.blockforge.generated.generatedmod.match.Team> teams() {
+        return cn.blockforge.generated.generatedmod.match.Team.playing(teamCount);
+    }
+    public cn.blockforge.generated.generatedmod.match.Team team(UUID id) { return memberTeams.get(id); }
+    public int teamSize(cn.blockforge.generated.generatedmod.match.Team team) {
+        return (int) memberTeams.values().stream().filter(value -> value == team).count();
+    }
+    public boolean changeTeam(UUID id, cn.blockforge.generated.generatedmod.match.Team team) {
+        if (state != RoomState.OPEN || !contains(id) || team == null || !teams().contains(team)) return false;
+        memberTeams.put(id, team);
+        return true;
+    }
+    public boolean teamCount(int count) {
+        if (state != RoomState.OPEN || count < 2 || count > 4 || !unlimitedCapacity() && count > maxPlayers) return false;
+        teamCount = count;
+        for (UUID id : members) {
+            if (!teams().contains(memberTeams.get(id))) memberTeams.remove(id);
+        }
+        for (UUID id : members) if (!memberTeams.containsKey(id)) assignTeam(id);
+        return true;
+    }
+    private void assignTeam(UUID id) {
+        memberTeams.put(id, teams().stream().min(java.util.Comparator.comparingInt(this::teamSize)).orElseThrow());
+    }
     private final String id;
     private String name;
     private UUID owner;
@@ -40,6 +68,7 @@ public final class Room {
         this.password = password == null ? "" : password;
         this.rules = RoomRules.serverDefaults();
         members.add(owner);
+        assignTeam(owner);
     }
 
     public boolean locked() {
@@ -114,10 +143,13 @@ public final class Room {
         if (!unlimitedCapacity() && members.size() >= maxPlayers) {
             return false;
         }
-        return members.add(playerId);
+        if (!members.add(playerId)) return false;
+        assignTeam(playerId);
+        return true;
     }
 
     public boolean remove(UUID playerId) {
+        memberTeams.remove(playerId);
         return members.remove(playerId);
     }
 

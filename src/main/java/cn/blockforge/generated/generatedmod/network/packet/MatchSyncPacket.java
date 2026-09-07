@@ -16,6 +16,12 @@ import java.util.function.Supplier;
  * 供 HUD 统计接口与自定义模块绑定。
  */
 public final class MatchSyncPacket {
+    private java.util.List<cn.blockforge.generated.generatedmod.match.TeamMatchStats> teamStats = java.util.List.of();
+    public java.util.List<cn.blockforge.generated.generatedmod.match.TeamMatchStats> teamStats() { return teamStats; }
+    public MatchSyncPacket withTeamStats(java.util.List<cn.blockforge.generated.generatedmod.match.TeamMatchStats> stats) {
+        teamStats = java.util.List.copyOf(stats);
+        return this;
+    }
     private final MatchState state;
     private final int teamAScore;
     private final int teamBScore;
@@ -118,6 +124,13 @@ public final class MatchSyncPacket {
         teamAMatchKills = buffer.readVarInt();
         teamBMatchKills = buffer.readVarInt();
         matchElapsedTicks = buffer.readVarInt();
+        int count = buffer.readVarInt();
+        if (count < 0 || count > 4) throw new IllegalArgumentException("Invalid team count");
+        var stats = new java.util.ArrayList<cn.blockforge.generated.generatedmod.match.TeamMatchStats>();
+        for (int i = 0; i < count; i++) stats.add(new cn.blockforge.generated.generatedmod.match.TeamMatchStats(
+                buffer.readEnum(Team.class), buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(),
+                buffer.readVarInt(), buffer.readVarInt()));
+        teamStats = java.util.List.copyOf(stats);
     }
 
     public void encode(FriendlyByteBuf buffer) {
@@ -150,6 +163,11 @@ public final class MatchSyncPacket {
         buffer.writeVarInt(teamAMatchKills);
         buffer.writeVarInt(teamBMatchKills);
         buffer.writeVarInt(matchElapsedTicks);
+        buffer.writeVarInt(teamStats.size());
+        for (var team : teamStats) {
+            buffer.writeEnum(team.team()); buffer.writeVarInt(team.score()); buffer.writeVarInt(team.wins());
+            buffer.writeVarInt(team.size()); buffer.writeVarInt(team.kills()); buffer.writeVarInt(team.damage());
+        }
     }
 
     public void handle(Supplier<NetworkEvent.Context> contextSupplier) {

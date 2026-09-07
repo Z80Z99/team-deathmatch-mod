@@ -37,7 +37,8 @@ public final class RoomSyncPacket {
     }
 
     public RoomSyncPacket(FriendlyByteBuf buffer) {
-        int count = Math.min(MAX_ROOMS, Math.max(0, buffer.readVarInt()));
+        int count = buffer.readVarInt();
+        if (count < 0 || count > MAX_ROOMS) throw new IllegalArgumentException("Invalid room count");
         List<RoomView> loaded = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             String id = buffer.readUtf(MAX_TEXT);
@@ -47,14 +48,19 @@ public final class RoomSyncPacket {
             int maxPlayers = buffer.readVarInt();
             String mapId = buffer.readUtf(MAX_TEXT);
             RoomState state = readEnum(buffer, RoomState.class);
-            int memberSize = Math.min(MAX_MEMBERS, Math.max(0, buffer.readVarInt()));
+            int memberSize = buffer.readVarInt();
+            if (memberSize < 0 || memberSize > MAX_MEMBERS) throw new IllegalArgumentException("Invalid member count");
             List<String> members = new ArrayList<>(memberSize);
+            java.util.Map<String, cn.blockforge.generated.generatedmod.match.Team> memberTeams = new java.util.LinkedHashMap<>();
             for (int member = 0; member < memberSize; member++) {
                 members.add(buffer.readUtf(MAX_TEXT));
+                var team = readEnum(buffer, cn.blockforge.generated.generatedmod.match.Team.class);
+                memberTeams.put(members.get(members.size() - 1), team == null
+                        ? cn.blockforge.generated.generatedmod.match.Team.SPECTATOR : team);
             }
             loaded.add(new RoomView(id, name, owner, memberCount, maxPlayers,
                     mapId, state == null ? RoomState.OPEN : state, members,
-                    RoomRules.read(buffer), buffer.readBoolean(), buffer.readBoolean()));
+                    RoomRules.read(buffer), buffer.readBoolean(), buffer.readBoolean(), buffer.readVarInt(), memberTeams));
         }
         rooms = List.copyOf(loaded);
         ownRoomId = buffer.readUtf(MAX_TEXT);
@@ -80,10 +86,13 @@ public final class RoomSyncPacket {
             buffer.writeVarInt(memberCount);
             for (int member = 0; member < memberCount; member++) {
                 buffer.writeUtf(limit(room.members().get(member)), MAX_TEXT);
+                buffer.writeVarInt(room.memberTeams().getOrDefault(room.members().get(member),
+                        cn.blockforge.generated.generatedmod.match.Team.SPECTATOR).ordinal());
             }
             (room.rules() == null ? RoomRules.fallback() : room.rules()).write(buffer);
             buffer.writeBoolean(room.matchmaking());
             buffer.writeBoolean(room.locked());
+            buffer.writeVarInt(room.teamCount());
         }
         buffer.writeUtf(ownRoomId, MAX_TEXT);
         buffer.writeBoolean(ownOwner);

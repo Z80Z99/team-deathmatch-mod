@@ -166,8 +166,9 @@ public final class RoomRulesScreen extends UiScreen {
         respawnBox = integer(3, 0, "阵亡恢复/秒", current.respawnDelaySeconds(), 2, editable,
                 "团队死斗：阵亡后恢复作战的等待时间。");
         autoRespawnToggle = bool(3, 1, "允许自动复活", current.autoRespawn(), editable);
-        switchBox = integer(4, 0, "换边间隔/回合", current.switchSideEvery(), 2, editable,
-                "爆破模式：每 N 个回合双方换一次出生区（1～10）。");
+        switchBox = integer(4, 0, "换边间隔/回合", current.switchSideEvery(), 2,
+                editable && (ownRoom() == null || ownRoom().teamCount() == 2),
+                "仅双队爆破生效：每 N 回合交换出生区。三队及以上保持各队独立出生区。");
         friendlyFireToggle = bool(4, 1, "友军伤害", current.friendlyFire(), editable);
 
         roundEndDelayBox = integer(5, 0, "回合结算间隔/秒", current.roundEndDelaySeconds(), 3, editable,
@@ -177,16 +178,17 @@ public final class RoomRulesScreen extends UiScreen {
         keepInventoryToggle = bool(6, 0, "死亡保留背包", current.keepInventoryOnDeath(), editable);
         suppressDeathToggle = bool(6, 1, "隐藏死亡消息", current.suppressDeathMessages(), editable);
         autoResetToggle = bool(7, 0, "赛后自动复位地图", current.autoReset(), editable);
-        requireBothToggle = bool(7, 1, "要求两队人数达标", current.requireBothTeams(), editable);
+        requireBothToggle = bool(7, 1, "各队至少一人", true, false);
 
         teamChangeCycle = cycle(8, 0, "换队政策", List.of(TeamChangePolicy.values()),
                 current.teamChangePolicy(), RoomRulesScreen::teamChangeName, null, null, editable);
         balanceCycle = cycle(8, 1, "自动平衡", List.of(AutoBalanceMode.values()),
-                current.autoBalanceMode(), RoomRulesScreen::balanceName, null, null, editable);
+                current.autoBalanceMode(), RoomRulesScreen::balanceName, null,
+                "房间开赛保留手动选队，不会自动改队；此项保留为服务器默认规则。", false);
         spawnCycle = cycle(9, 0, "出生点策略", List.of(SpawnSelectionStrategy.values()),
                 current.spawnSelectionStrategy(), RoomRulesScreen::spawnName, null, null, editable);
-        imbalanceBox = integer(9, 1, "两队最大人数差", current.maxTeamImbalance(), 1, editable,
-                "自动平衡容忍的人数差（0=严格均分）。");
+        imbalanceBox = integer(9, 1, "队伍最大人数差", current.maxTeamImbalance(), 1, editable,
+                "比赛中换队或补位时的最大队伍人数差；房间内手动选队不受此值限制。");
 
         applyModeVisibility();
         applyRuleScroll();
@@ -468,7 +470,7 @@ public final class RoomRulesScreen extends UiScreen {
         final int summary = summaryY;
         paintBand(graphics, summary, 18, () -> {
             UiTheme.card(graphics, innerLeft, summary, innerWidth, 18, UiTheme.PANEL);
-            graphics.drawString(font, fit(collect().describe(), innerWidth - 16),
+            graphics.drawString(font, fit(collect().describe(ownRoom() == null ? 2 : ownRoom().teamCount()), innerWidth - 16),
                     innerLeft + 8, summary + 6, UiTheme.TEXT, false);
         });
         int columnWidth = columnWidth(2, COLUMN_GAP);

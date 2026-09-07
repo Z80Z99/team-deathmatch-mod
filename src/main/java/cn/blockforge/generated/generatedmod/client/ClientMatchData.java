@@ -9,6 +9,16 @@ import java.util.Locale;
 
 /** 服务器比赛同步的客户端只读镜像，并缓存 HUD 展示文本。 */
 public final class ClientMatchData {
+    public static java.util.List<cn.blockforge.generated.generatedmod.match.TeamMatchStats> teamStats = java.util.List.of();
+    public static cn.blockforge.generated.generatedmod.match.TeamMatchStats stats(Team team) {
+        return teamStats.stream().filter(value -> value.team() == team).findFirst().orElseGet(() ->
+                new cn.blockforge.generated.generatedmod.match.TeamMatchStats(team,
+                        team == Team.TEAM_A ? teamAScore : team == Team.TEAM_B ? teamBScore : 0,
+                        team == Team.TEAM_A ? teamAWins : team == Team.TEAM_B ? teamBWins : 0,
+                        team == Team.TEAM_A ? teamASize : team == Team.TEAM_B ? teamBSize : 0,
+                        team == Team.TEAM_A ? teamAMatchKills : team == Team.TEAM_B ? teamBMatchKills : 0,
+                        team == Team.TEAM_A ? teamADamageDealt : team == Team.TEAM_B ? teamBDamageDealt : 0));
+    }
     public static MatchState state = MatchState.WAITING;
     public static int teamAScore;
     public static int teamBScore;
@@ -69,6 +79,7 @@ public final class ClientMatchData {
         int previousPhaseSecond = Math.max(0, phaseRemainingTicks) / 20;
         int previousRespawnSecond = Math.max(0, respawnRemainingTicks) / 20;
         boolean importantChange = state != packet.state()
+                || !teamStats.equals(packet.teamStats())
                 || teamAScore != packet.teamAScore()
                 || teamBScore != packet.teamBScore()
                 || teamAWins != packet.teamAWins()
@@ -84,6 +95,7 @@ public final class ClientMatchData {
                 || previousPhaseSecond != Math.max(0, packet.phaseRemainingTicks()) / 20
                 || previousRespawnSecond != Math.max(0, packet.respawnRemainingTicks()) / 20;
         state = packet.state();
+        teamStats = packet.teamStats();
         teamAScore = packet.teamAScore();
         teamBScore = packet.teamBScore();
         teamAWins = packet.teamAWins();
@@ -148,6 +160,7 @@ public final class ClientMatchData {
     }
 
     public static void clear() {
+        teamStats = java.util.List.of();
         state = MatchState.WAITING;
         teamAScore = 0;
         teamBScore = 0;
@@ -291,6 +304,12 @@ public final class ClientMatchData {
         };
         roundText = "回合 " + roundNumber + "    胜场 " + teamAWins + ":" + teamBWins;
         teamSizesText = "A队 " + teamASize + "人  ·  B队 " + teamBSize + "人";
+        if (teamStats.size() > 2) {
+            roundText = "回合 " + roundNumber + "  胜场 " + teamStats.stream()
+                    .map(value -> String.valueOf(value.wins())).collect(java.util.stream.Collectors.joining(":"));
+            teamSizesText = teamStats.stream().map(value -> value.team().displayName() + " " + value.size() + "人")
+                    .collect(java.util.stream.Collectors.joining(" · "));
+        }
     }
 
     private static String formatTicks(int ticks) {

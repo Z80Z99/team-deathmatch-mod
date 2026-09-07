@@ -26,5 +26,6 @@ public enum MapEditorAction {
     CLEAR_TEAM_B,
     CLEAR_SPECTATOR,
     /** 客户端后台轮询，只读取状态，不确认或覆盖草稿失效告警。 */
-    POLL
+    POLL,
+    ADD_TEAM_C, ADD_TEAM_D, CLEAR_TEAM_C, CLEAR_TEAM_D
 }

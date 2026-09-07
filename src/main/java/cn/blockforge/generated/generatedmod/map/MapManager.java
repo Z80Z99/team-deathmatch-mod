@@ -311,7 +311,9 @@ public final class MapManager {
         List<SpawnPoint> spectator = definition.spectatorSpawns().stream()
                 .filter(point -> isSpawnInsideBounds(definition, point)).toList();
         MapDefinition cleaned = new MapDefinition(definition.id(), definition.displayName(), definition.world(),
-                definition.bounds(), definition.resetRegion(), teamA, teamB, spectator);
+                definition.bounds(), definition.resetRegion(), teamA, teamB, spectator,
+                definition.spawns(Team.TEAM_C).stream().filter(point -> isSpawnInsideBounds(definition, point)).toList(),
+                definition.spawns(Team.TEAM_D).stream().filter(point -> isSpawnInsideBounds(definition, point)).toList());
         if (cleaned.sameConfiguration(definition)) {
             return definition;
         }
@@ -319,7 +321,9 @@ public final class MapManager {
                 definition.id(),
                 (definition.teamASpawns().size() - teamA.size())
                         + (definition.teamBSpawns().size() - teamB.size())
-                        + (definition.spectatorSpawns().size() - spectator.size()));
+                        + (definition.spectatorSpawns().size() - spectator.size())
+                        + definition.spawns(Team.TEAM_C).size() - cleaned.spawns(Team.TEAM_C).size()
+                        + definition.spawns(Team.TEAM_D).size() - cleaned.spawns(Team.TEAM_D).size());
         if (!registry.save(cleaned)) {
             LOGGER.warn("地图 {} 的出生点清理结果写回失败，本次运行仍按清理后的定义处理", definition.id());
         }
@@ -410,7 +414,11 @@ public final class MapManager {
                 + (candidate.teamBSpawns().size() - teamB.size())
                 + (candidate.spectatorSpawns().size() - spectator.size());
         MapDefinition updated = new MapDefinition(candidate.id(), candidate.displayName(), candidate.world(),
-                candidate.bounds(), candidate.resetRegion(), teamA, teamB, spectator);
+                candidate.bounds(), candidate.resetRegion(), teamA, teamB, spectator,
+                candidate.spawns(Team.TEAM_C).stream().filter(point -> isValidSpawnFor(candidate, point)).toList(),
+                candidate.spawns(Team.TEAM_D).stream().filter(point -> isValidSpawnFor(candidate, point)).toList());
+        removed += candidate.spawns(Team.TEAM_C).size() - updated.spawns(Team.TEAM_C).size()
+                + candidate.spawns(Team.TEAM_D).size() - updated.spawns(Team.TEAM_D).size();
         if (!saveDefinition(updated)) {
             return -1;
         }

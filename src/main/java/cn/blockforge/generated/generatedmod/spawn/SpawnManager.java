@@ -142,7 +142,7 @@ public final class SpawnManager {
             for (SpawnPoint point : points) {
                 double nearestEnemy = Double.POSITIVE_INFINITY;
                 for (ServerPlayer other : server.getPlayerList().getPlayers()) {
-                    if (other == player || !other.isAlive() || teamOf(other) != team.opposite()
+                    if (other == player || !other.isAlive() || !teamOf(other).isPlayable() || teamOf(other) == team
                             || !other.level().dimension().equals(point.dimension())) {
                         continue;
                     }
@@ -187,6 +187,8 @@ public final class SpawnManager {
         return switch (scoreboardTeam.getName()) {
             case "generated_mod_team_a" -> Team.TEAM_A;
             case "generated_mod_team_b" -> Team.TEAM_B;
+            case "generated_mod_team_c" -> Team.TEAM_C;
+            case "generated_mod_team_d" -> Team.TEAM_D;
             default -> Team.SPECTATOR;
         };
     }

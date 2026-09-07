@@ -177,6 +177,7 @@ public final class MatchHudOverlay {
         return switch (team) {
             case TEAM_A -> UiTheme.TEAM_A;
             case TEAM_B -> UiTheme.TEAM_B;
+            case TEAM_C, TEAM_D -> ClientMatchData.myTeam.hudColor();
             case SPECTATOR -> UiTheme.SPECTATOR;
         };
     }
@@ -192,6 +193,12 @@ public final class MatchHudOverlay {
         values.put("phase", ClientMatchData.phaseText());
         values.put("score_a", Integer.toString(ClientMatchData.teamAScore));
         values.put("score_b", Integer.toString(ClientMatchData.teamBScore));
+        values.put("team_count", Integer.toString(Math.max(2, ClientMatchData.teamStats.size())));
+        for (var stats : ClientMatchData.teamStats) {
+            String suffix = stats.team().key().substring(5);
+            values.put("score_" + suffix, Integer.toString(stats.score()));
+            values.put("wins_" + suffix, Integer.toString(stats.wins()));
+        }
         values.put("time", ClientMatchData.phaseTimerText());
         values.put("round", ClientMatchData.roundText());
         values.put("target", ClientMatchData.targetText());

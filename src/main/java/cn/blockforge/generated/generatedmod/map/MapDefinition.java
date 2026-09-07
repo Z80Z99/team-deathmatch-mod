@@ -23,11 +23,21 @@ public final class MapDefinition {
     private final List<SpawnPoint> teamASpawns;
     private final List<SpawnPoint> teamBSpawns;
     private final List<SpawnPoint> spectatorSpawns;
+    private final List<SpawnPoint> teamCSpawns;
+    private final List<SpawnPoint> teamDSpawns;
 
     public MapDefinition(String id, String displayName, ResourceKey<Level> world,
                          Region bounds, Region resetRegion,
                          List<SpawnPoint> teamASpawns, List<SpawnPoint> teamBSpawns,
                          List<SpawnPoint> spectatorSpawns) {
+        this(id, displayName, world, bounds, resetRegion, teamASpawns, teamBSpawns,
+                spectatorSpawns, List.of(), List.of());
+    }
+
+    public MapDefinition(String id, String displayName, ResourceKey<Level> world,
+                         Region bounds, Region resetRegion, List<SpawnPoint> teamASpawns,
+                         List<SpawnPoint> teamBSpawns, List<SpawnPoint> spectatorSpawns,
+                         List<SpawnPoint> teamCSpawns, List<SpawnPoint> teamDSpawns) {
         this.id = normalizeId(id);
         if (!isValidId(this.id)) {
             throw new IllegalArgumentException("地图 id 不能为空，且只能使用字母、数字、点、下划线和短横线");
@@ -42,6 +52,8 @@ public final class MapDefinition {
         this.teamASpawns = copy(teamASpawns);
         this.teamBSpawns = copy(teamBSpawns);
         this.spectatorSpawns = copy(spectatorSpawns);
+        this.teamCSpawns = copy(teamCSpawns);
+        this.teamDSpawns = copy(teamDSpawns);
     }
 
     public String id() {
@@ -80,24 +92,22 @@ public final class MapDefinition {
         return switch (team) {
             case TEAM_A -> teamASpawns;
             case TEAM_B -> teamBSpawns;
+            case TEAM_C -> teamCSpawns;
+            case TEAM_D -> teamDSpawns;
             case SPECTATOR -> spectatorSpawns;
         };
     }
 
     public MapDefinition withTeamSpawns(Team team, List<SpawnPoint> points) {
-        return switch (team) {
-            case TEAM_A -> new MapDefinition(id, displayName, world, bounds, resetRegion,
-                    points, teamBSpawns, spectatorSpawns);
-            case TEAM_B -> new MapDefinition(id, displayName, world, bounds, resetRegion,
-                    teamASpawns, points, spectatorSpawns);
-            case SPECTATOR -> new MapDefinition(id, displayName, world, bounds, resetRegion,
-                    teamASpawns, teamBSpawns, points);
-        };
+        return new MapDefinition(id, displayName, world, bounds, resetRegion,
+                team == Team.TEAM_A ? points : teamASpawns, team == Team.TEAM_B ? points : teamBSpawns,
+                team == Team.SPECTATOR ? points : spectatorSpawns,
+                team == Team.TEAM_C ? points : teamCSpawns, team == Team.TEAM_D ? points : teamDSpawns);
     }
 
     public MapDefinition withRegions(Region updatedBounds, Region updatedResetRegion) {
         return new MapDefinition(id, displayName, world, updatedBounds, updatedResetRegion,
-                teamASpawns, teamBSpawns, spectatorSpawns);
+                teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns);
     }
 
     /**
@@ -118,6 +128,8 @@ public final class MapDefinition {
         return sameRegionConfiguration(other)
                 && teamASpawns.equals(other.teamASpawns)
                 && teamBSpawns.equals(other.teamBSpawns)
+                && teamCSpawns.equals(other.teamCSpawns)
+                && teamDSpawns.equals(other.teamDSpawns)
                 && spectatorSpawns.equals(other.spectatorSpawns);
     }
 
@@ -131,6 +143,8 @@ public final class MapDefinition {
         JsonObject spawns = new JsonObject();
         spawns.add("teamA", spawnArray(teamASpawns));
         spawns.add("teamB", spawnArray(teamBSpawns));
+        spawns.add("teamC", spawnArray(teamCSpawns));
+        spawns.add("teamD", spawnArray(teamDSpawns));
         spawns.add("spectator", spawnArray(spectatorSpawns));
         object.add("spawns", spawns);
         return object;
@@ -156,7 +170,8 @@ public final class MapDefinition {
                 "teamB", "team_b", "teamBSpawns", "teamB spawns", "team_b_spawns");
         List<SpawnPoint> spectator = spawnList(spawnObject, world,
                 "spectator", "spectatorSpawn", "spectatorSpawns", "spectator spawn", "spectator_spawns");
-        return new MapDefinition(id, displayName, world, bounds, resetRegion, teamA, teamB, spectator);
+        return new MapDefinition(id, displayName, world, bounds, resetRegion, teamA, teamB, spectator,
+                spawnList(spawnObject, world, "teamC", "team_c"), spawnList(spawnObject, world, "teamD", "team_d"));
     }
 
     public static String normalizeId(String value) {

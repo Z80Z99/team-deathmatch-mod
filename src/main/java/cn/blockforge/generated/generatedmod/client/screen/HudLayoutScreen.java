@@ -1770,12 +1770,23 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         values.put("phase", "进行中");
         values.put("score_a", "12");
         values.put("score_b", "9");
+        var room = cn.blockforge.generated.generatedmod.client.SceneHudOverlay.ownRoom();
+        int teamCount = room == null ? Math.max(2, cn.blockforge.generated.generatedmod.client.ClientMatchData.teamStats.size()) : room.teamCount();
+        values.put("team_count", Integer.toString(teamCount));
+        values.put("score_c", "8"); values.put("score_d", "5");
+        values.put("wins_a", "1"); values.put("wins_b", "0");
+        values.put("wins_c", "0"); values.put("wins_d", "0");
         values.put("time", "03:45");
         values.put("round", "回合 1");
         values.put("target", "目标 25");
         values.put("team", "A队");
         values.put("sizes", "A队 4人 · B队 4人");
         values.put("hint", "队伍：A队 · A队 4人 · B队 4人");
+        if (teamCount > 2) {
+            String sizes = cn.blockforge.generated.generatedmod.match.Team.playing(teamCount).stream()
+                    .map(team -> team.displayName() + " 4人").collect(java.util.stream.Collectors.joining(" · "));
+            values.put("sizes", sizes); values.put("hint", "队伍：A队 · " + sizes);
+        }
         values.put("killer", "Steve");
         values.put("victim", "Alex");
         values.put("feed", "Steve 击杀 Alex");

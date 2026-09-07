@@ -89,7 +89,29 @@ public final class RoomManager {
             case SET_MAP -> setMap(player, roomId, mapId);
             case MAP_LIST -> sendMapList(player);
             case REFRESH -> sendSync(player, "", false);
+            case CHANGE_TEAM -> changeRoomTeam(player, roomId, Team.parse(roomName));
+            case SET_TEAM_COUNT -> setTeamCount(player, roomId, requestedMaxPlayers);
         }
+    }
+
+    private void changeRoomTeam(ServerPlayer player, String roomId, Team target) {
+        Room room = roomFor(player.getUUID()).orElse(null);
+        if (room == null || !room.id().equals(roomId) || room.matchmaking()
+                || !room.changeTeam(player.getUUID(), target)) {
+            sendSync(player, "只能在开放的自建房间切换到已启用队伍。", true);
+            return;
+        }
+        sendAll(player.getGameProfile().getName() + " 加入了 " + target.displayName() + "。", false);
+    }
+
+    private void setTeamCount(ServerPlayer player, String roomId, int count) {
+        Room room = roomFor(player.getUUID()).orElse(null);
+        if (room == null || !room.id().equals(roomId) || !room.owner().equals(player.getUUID())
+                || room.matchmaking() || !room.teamCount(count)) {
+            sendSync(player, "只有房主可在开放房间设置 2～4 队，且队数不能超过房间容量。", true);
+            return;
+        }
+        sendAll("房间已启用 " + count + " 队，请检查成员分队和地图出生点。", false);
     }
 
     /** 下发“可作为房间用图”的完整列表：所有已注册地图（含玩家制作），格式 {@code id|显示名|属主}。 */
@@ -376,7 +398,7 @@ public final class RoomManager {
             return;
         }
         if (!canStart(room)) {
-            sendSync(player, "人数不足，暂不能开赛。", true);
+            sendSync(player, "人数不足或存在空队，每支启用队伍至少需要一人。", true);
             return;
         }
         startRoom(room);
@@ -404,6 +426,12 @@ public final class RoomManager {
                 room.state(RoomState.WAITING_MAP);
                 sendRoomMessage(room, "正在等待地图快照完成。", false);
             }
+            return;
+        }
+        String missingSpawns = room.teams().stream().filter(team -> matchManager.spawns().getSpawns(team).isEmpty())
+                .map(Team::displayName).collect(java.util.stream.Collectors.joining("、"));
+        if (!missingSpawns.isEmpty()) {
+            cancelStart(room, "地图缺少 " + missingSpawns + " 的出生点，请先在地图编辑器补齐。", true);
             return;
         }
         int seconds = room.matchmaking() ? MatchmakingManager.READY_SECONDS
@@ -443,12 +471,17 @@ public final class RoomManager {
         }
         // 房间规则整体覆盖服务器默认规则；比赛结束后由 resetToWaiting 恢复。
         matchManager.applyRoomRules(room.rules());
+        matchManager.configureRoomTeams(room.teamCount());
+        for (UUID id : room.members()) {
+            ServerPlayer player = server.getPlayerList().getPlayer(id);
+            if (player != null) matchManager.teamManager().setPreference(player, room.team(id));
+        }
         MatchManager.StartResult result = matchManager.startMatch(room.members());
         if (result == MatchManager.StartResult.STARTED) {
             releaseReservation(room);
             room.state(RoomState.RUNNING);
             activeRoomId = room.id();
-            sendRoomMessage(room, "比赛已启动（" + room.rules().describe() + "）。", false);
+            sendRoomMessage(room, "比赛已启动（" + room.rules().describe(room.teamCount()) + "）。", false);
         } else {
             matchManager.clearRoomRules();
             cancelStart(room, "比赛启动失败：" + resultText(result), true);
@@ -474,7 +507,7 @@ public final class RoomManager {
     private boolean canStart(Room room) {
         int minimum = room.matchmaking() ? MatchmakingManager.MIN_PLAYERS_TO_FORM
                 : room.rules().minPlayersToStart();
-        return room.memberCount() >= minimum;
+        return room.memberCount() >= minimum && room.teams().stream().allMatch(team -> room.teamSize(team) > 0);
     }
 
     private void setMap(ServerPlayer player, String roomId, String mapId) {
@@ -542,17 +575,20 @@ public final class RoomManager {
 
     private RoomView toView(Room room) {
         List<String> members = new ArrayList<>();
+        Map<String, Team> memberTeams = new LinkedHashMap<>();
         for (UUID playerId : room.members()) {
             ServerPlayer player = server.getPlayerList().getPlayer(playerId);
             members.add(player == null ? playerId.toString().substring(0, 8)
                     : player.getGameProfile().getName());
+            memberTeams.put(members.get(members.size() - 1), room.state() == RoomState.RUNNING
+                    ? matchManager.teamManager().getTeam(playerId) : room.team(playerId));
         }
         ServerPlayer owner = server.getPlayerList().getPlayer(room.owner());
         String ownerName = owner == null ? room.owner().toString().substring(0, 8)
                 : owner.getGameProfile().getName();
         return new RoomView(room.id(), room.name(), ownerName, room.memberCount(), room.maxPlayers(),
                 room.mapId().isBlank() ? "未选择" : room.mapId(), room.state(), members,
-                room.rules(), room.matchmaking(), room.locked());
+                room.rules(), room.matchmaking(), room.locked(), room.teamCount(), memberTeams);
     }
 
     /**
@@ -587,7 +623,7 @@ public final class RoomManager {
             return;
         }
         room.rules(normalized);
-        sendRoomMessage(room, "房主更新了房间规则：" + normalized.describe(), false);
+        sendRoomMessage(room, "房主更新了房间规则：" + normalized.describe(room.teamCount()), false);
     }
 
     private void sendRoomMessage(Room room, String message, boolean error) {
@@ -639,13 +675,13 @@ public final class RoomManager {
         return switch (result) {
             case STARTED -> "已开始";
             case ALREADY_ACTIVE -> "已有比赛进行中";
-            case NEED_BOTH_TEAMS -> "需要两队都有玩家";
+            case NEED_BOTH_TEAMS -> "每支启用队伍都需要玩家";
             case NO_PLAYERS -> "没有参赛玩家";
             case NO_END_CONDITION -> "没有设置结束条件";
             case NO_MAP -> "没有地图";
             case MAP_LOADING -> "地图快照仍在捕获";
             case MAP_NOT_READY -> "地图快照不可用";
-            case NO_TEAM_SPAWNS -> "两队都需要出生点";
+            case NO_TEAM_SPAWNS -> "每支启用队伍都需要出生点";
             case MAP_BUSY -> "地图正在恢复";
         };
     }

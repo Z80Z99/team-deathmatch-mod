@@ -11,8 +11,7 @@ import java.util.UUID;
  * 整场累计击杀、阵亡与伤害（resetMatch 才清空），供 HUD 统计接口取用。
  */
 public final class MatchScoreTracker {
-    private int teamAKills;
-    private int teamBKills;
+    private final Map<Team, Integer> teamKills = new java.util.EnumMap<>(Team.class);
     private final Map<UUID, Integer> playerKills = new HashMap<>();
     private final Map<UUID, Integer> playerDeaths = new HashMap<>();
 
@@ -22,11 +21,10 @@ public final class MatchScoreTracker {
     private final Map<UUID, Integer> damageDealt = new HashMap<>();
     private final Map<UUID, Integer> damageTaken = new HashMap<>();
     private final Map<Team, Integer> teamDamage = new HashMap<>();
-    private int teamMatchAKills;
-    private int teamMatchBKills;
+    private final Map<Team, Integer> teamMatchKills = new java.util.EnumMap<>(Team.class);
 
     public int getTeamScore(Team team) {
-        return team == Team.TEAM_A ? teamAKills : team == Team.TEAM_B ? teamBKills : 0;
+        return teamKills.getOrDefault(team, 0);
     }
 
     public int getPlayerKills(UUID playerId) {
@@ -55,7 +53,7 @@ public final class MatchScoreTracker {
 
     /** 整场累计的队伍击杀（跨回合不重置）。 */
     public int getTeamMatchKills(Team team) {
-        return team == Team.TEAM_A ? teamMatchAKills : team == Team.TEAM_B ? teamMatchBKills : 0;
+        return teamMatchKills.getOrDefault(team, 0);
     }
 
     public int getTeamDamage(Team team) {
@@ -63,12 +61,9 @@ public final class MatchScoreTracker {
     }
 
     public void addKill(Team team, ServerPlayer killer, ServerPlayer victim) {
-        if (team == Team.TEAM_A) {
-            teamAKills++;
-            teamMatchAKills++;
-        } else if (team == Team.TEAM_B) {
-            teamBKills++;
-            teamMatchBKills++;
+        if (team != null && team.isPlayable()) {
+            teamKills.merge(team, 1, Integer::sum);
+            teamMatchKills.merge(team, 1, Integer::sum);
         }
         playerKills.merge(killer.getUUID(), 1, Integer::sum);
         playerDeaths.merge(victim.getUUID(), 1, Integer::sum);
@@ -96,8 +91,7 @@ public final class MatchScoreTracker {
     }
 
     public void resetRound() {
-        teamAKills = 0;
-        teamBKills = 0;
+        teamKills.clear();
         playerKills.clear();
         playerDeaths.clear();
     }
@@ -110,7 +104,6 @@ public final class MatchScoreTracker {
         damageDealt.clear();
         damageTaken.clear();
         teamDamage.clear();
-        teamMatchAKills = 0;
-        teamMatchBKills = 0;
+        teamMatchKills.clear();
     }
 }

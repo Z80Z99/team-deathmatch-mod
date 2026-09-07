@@ -207,9 +207,13 @@ public final class MapEditorManager {
             case APPLY_REGIONS -> applyRegions(player, target, draft);
             case ADD_TEAM_A -> addSpawn(player, target, Team.TEAM_A);
             case ADD_TEAM_B -> addSpawn(player, target, Team.TEAM_B);
+            case ADD_TEAM_C -> addSpawn(player, target, Team.TEAM_C);
+            case ADD_TEAM_D -> addSpawn(player, target, Team.TEAM_D);
             case SET_SPECTATOR -> setSpectator(player, target);
             case CLEAR_TEAM_A -> clearSpawns(player, target, Team.TEAM_A);
             case CLEAR_TEAM_B -> clearSpawns(player, target, Team.TEAM_B);
+            case CLEAR_TEAM_C -> clearSpawns(player, target, Team.TEAM_C);
+            case CLEAR_TEAM_D -> clearSpawns(player, target, Team.TEAM_D);
             case CLEAR_SPECTATOR -> clearSpawns(player, target, Team.SPECTATOR);
             default -> setMessage(player, "不支持的编辑动作。", true);
         }
@@ -275,7 +279,8 @@ public final class MapEditorManager {
         String newId = uniqueMapId(player, friendlyPart(source));
         MapDefinition copy = new MapDefinition(newId, source.displayName(), source.world(),
                 source.bounds(), source.resetRegion(),
-                source.teamASpawns(), source.teamBSpawns(), source.spectatorSpawns());
+                source.teamASpawns(), source.teamBSpawns(), source.spectatorSpawns(),
+                source.spawns(Team.TEAM_C), source.spawns(Team.TEAM_D));
         if (!maps.registerMap(copy)) {
             setMessage(player, "导入副本写入失败，请检查服务器日志。", true);
             return;
@@ -498,7 +503,7 @@ public final class MapEditorManager {
                 base.teamACount(), base.teamBCount(), base.spectatorCount(), base.snapshotStatus(),
                 base.canEdit(), base.isAdmin(), base.locked(), base.draftInvalidated(),
                 base.ownedMaps(), base.serverMaps(), base.shareCode(),
-                responseRequestId, message, error)), player);
+                responseRequestId, message, error, base.teamCCount(), base.teamDCount())), player);
     }
 
     public void onLogout(ServerPlayer player) {
@@ -545,7 +550,9 @@ public final class MapEditorManager {
                 ownedMaps, serverMaps,
                 definition == null ? "" : ownership.codeFor(definition.id()), 0,
                 messages.getOrDefault(playerId, ""),
-                errors.getOrDefault(playerId, false));
+                errors.getOrDefault(playerId, false),
+                definition == null ? 0 : definition.spawns(Team.TEAM_C).size(),
+                definition == null ? 0 : definition.spawns(Team.TEAM_D).size());
     }
 
     private String snapshotStatus(MapDefinition definition) {
@@ -571,7 +578,7 @@ public final class MapEditorManager {
     private static boolean isPositionAction(MapEditorAction action) {
         return switch (action) {
             case SET_BOUNDS_MIN, SET_BOUNDS_MAX, SET_RESET_MIN, SET_RESET_MAX,
-                    ADD_TEAM_A, ADD_TEAM_B, SET_SPECTATOR -> true;
+                    ADD_TEAM_A, ADD_TEAM_B, ADD_TEAM_C, ADD_TEAM_D, SET_SPECTATOR -> true;
             default -> false;
         };
     }

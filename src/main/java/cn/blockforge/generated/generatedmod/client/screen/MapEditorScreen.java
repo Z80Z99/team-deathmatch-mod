@@ -33,6 +33,8 @@ public final class MapEditorScreen extends UiScreen {
     private int tabsY;
     private int actionsY1;
     private int actionsY2;
+    private int actionsY3;
+    private int actionsY4;
     private int hintY;
     private int ticks;
     private int lastRevision = -1;
@@ -59,6 +61,8 @@ public final class MapEditorScreen extends UiScreen {
         tabsY = flowRow(BUTTON_HEIGHT);
         actionsY1 = flowRow(BUTTON_HEIGHT);
         actionsY2 = flowRow(BUTTON_HEIGHT);
+        actionsY3 = flowRow(BUTTON_HEIGHT);
+        actionsY4 = flowRow(BUTTON_HEIGHT);
         targetY = flowRow(18);
         summaryY = flowRow(SUMMARY_HEIGHT);
         hintY = flowRow(6);
@@ -84,7 +88,7 @@ public final class MapEditorScreen extends UiScreen {
                 UiButton.Kind.SECONDARY), tabsY);
         spawnTab = flowWidget(uiButton("出生点", columnX(1, 2, gap), tabsY, tabWidth,
                 () -> selectPage(ActionPage.SPAWNS),
-                "添加或清理 A队、B队和观战出生点。", UiButton.Kind.SECONDARY), tabsY);
+                "添加或清理 A～D队和观战出生点。", UiButton.Kind.SECONDARY), tabsY);
         regionTab.setSelected(true);
     }
 
@@ -102,6 +106,14 @@ public final class MapEditorScreen extends UiScreen {
     }
 
     private void addSpawnActions() {
+        addAction(ActionPage.SPAWNS, 0, actionsY3, "添加 C队出生点", MapEditorAction.ADD_TEAM_C,
+                "把当前位置添加到 C队出生点列表。", UiButton.Kind.PRIMARY);
+        addAction(ActionPage.SPAWNS, 1, actionsY3, "添加 D队出生点", MapEditorAction.ADD_TEAM_D,
+                "把当前位置添加到 D队出生点列表。", UiButton.Kind.PRIMARY);
+        addAction(ActionPage.SPAWNS, 0, actionsY4, "清空 C队出生点", MapEditorAction.CLEAR_TEAM_C,
+                "清除当前地图全部 C队出生点。", UiButton.Kind.DANGER);
+        addAction(ActionPage.SPAWNS, 1, actionsY4, "清空 D队出生点", MapEditorAction.CLEAR_TEAM_D,
+                "清除当前地图全部 D队出生点。", UiButton.Kind.DANGER);
         addAction(ActionPage.SPAWNS, 0, actionsY1, "添加 A队出生点", MapEditorAction.ADD_TEAM_A,
                 "把当前位置添加到 A队出生点列表。", UiButton.Kind.PRIMARY);
         addAction(ActionPage.SPAWNS, 1, actionsY1, "添加 B队出生点", MapEditorAction.ADD_TEAM_B,
@@ -122,6 +134,7 @@ public final class MapEditorScreen extends UiScreen {
         UiButton button = uiButton(label, columnX(column, 3, gap), y, columnWidth(3, gap),
                 () -> {
                     if (action == MapEditorAction.CLEAR_TEAM_A || action == MapEditorAction.CLEAR_TEAM_B
+                            || action == MapEditorAction.CLEAR_TEAM_C || action == MapEditorAction.CLEAR_TEAM_D
                             || action == MapEditorAction.CLEAR_SPECTATOR) {
                         String targetId = ClientMapEditorData.view().mapId();
                         confirmAction(label, "地图「" + ClientMapEditorData.view().displayName() + "」：" + tooltip + " 此操作不可撤销。",
@@ -174,6 +187,7 @@ public final class MapEditorScreen extends UiScreen {
         }
         if (spawnTab != null) {
             String label = "出生点 A" + view.teamACount() + " / B" + view.teamBCount()
+                    + " / C" + view.teamCCount() + " / D" + view.teamDCount()
                     + " / 观" + view.spectatorCount();
             if (!label.equals(displayedSpawnTabLabel)) {
                 displayedSpawnTabLabel = label;
@@ -240,6 +254,7 @@ public final class MapEditorScreen extends UiScreen {
             graphics.drawString(font, fit("草稿边界  " + region(view.draftBounds()), leftWidth - 16),
                     innerLeft + 8, y + 31, UiTheme.SUBTLE, false);
             graphics.drawString(font, fit("出生点  A " + view.teamACount() + " · B " + view.teamBCount()
+                    + " · C " + view.teamCCount() + " · D " + view.teamDCount()
                     + " · 观战 " + view.spectatorCount(), leftWidth - 16), innerLeft + 8, y + 45,
                     UiTheme.MUTED, false);
             graphics.drawString(font, fit("正式重置区  " + region(view.resetRegion()), rightWidth - 8),
@@ -256,6 +271,7 @@ public final class MapEditorScreen extends UiScreen {
                             + region(view.draftResetRegion()), innerWidth - 16),
                     innerLeft + 8, y + 31, UiTheme.SUBTLE, false);
             graphics.drawString(font, fit("出生点  A " + view.teamACount() + " · B " + view.teamBCount()
+                            + " · C " + view.teamCCount() + " · D " + view.teamDCount()
                             + " · 观战 " + view.spectatorCount(), innerWidth - 16),
                     innerLeft + 8, y + 45, UiTheme.MUTED, false);
         }

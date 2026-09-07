@@ -28,7 +28,7 @@ public record MapEditorView(
         String shareCode,
         int responseRequestId,
         String message,
-        boolean error) {
+        boolean error, int teamCCount, int teamDCount) {
     public MapEditorView {
         ownedMaps = List.copyOf(ownedMaps == null ? List.of() : ownedMaps);
         serverMaps = List.copyOf(serverMaps == null ? List.of() : serverMaps);

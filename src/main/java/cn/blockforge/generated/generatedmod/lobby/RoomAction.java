@@ -9,5 +9,7 @@ public enum RoomAction {
     SET_MAP,
     /** 请求可选择的地图列表（含所有玩家制作的地图）。 */
     MAP_LIST,
-    REFRESH
+    REFRESH,
+    CHANGE_TEAM,
+    SET_TEAM_COUNT
 }

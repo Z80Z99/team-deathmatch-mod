@@ -246,39 +246,46 @@ public final class HudStats {
     }
 
     private static Team mySide() {
-        return ClientMatchData.myTeam == Team.TEAM_B ? Team.TEAM_B : Team.TEAM_A;
+        return ClientMatchData.myTeam.isPlayable() ? ClientMatchData.myTeam : Team.TEAM_A;
     }
 
     private static int myTeamScore() {
-        return mySide() == Team.TEAM_A ? ClientMatchData.teamAScore : ClientMatchData.teamBScore;
+        return ClientMatchData.stats(mySide()).score();
     }
 
     private static int enemyTeamScore() {
-        return mySide() == Team.TEAM_A ? ClientMatchData.teamBScore : ClientMatchData.teamAScore;
+        return enemyMaximum(cn.blockforge.generated.generatedmod.match.TeamMatchStats::score);
     }
 
     private static int myTeamWins() {
-        return mySide() == Team.TEAM_A ? ClientMatchData.teamAWins : ClientMatchData.teamBWins;
+        return ClientMatchData.stats(mySide()).wins();
     }
 
     private static int enemyTeamWins() {
-        return mySide() == Team.TEAM_A ? ClientMatchData.teamBWins : ClientMatchData.teamAWins;
+        return enemyMaximum(cn.blockforge.generated.generatedmod.match.TeamMatchStats::wins);
     }
 
     private static int myTeamMatchKills() {
-        return mySide() == Team.TEAM_A ? ClientMatchData.teamAMatchKills : ClientMatchData.teamBMatchKills;
+        return ClientMatchData.stats(mySide()).kills();
     }
 
     private static int enemyTeamMatchKills() {
-        return mySide() == Team.TEAM_A ? ClientMatchData.teamBMatchKills : ClientMatchData.teamAMatchKills;
+        return enemyMaximum(cn.blockforge.generated.generatedmod.match.TeamMatchStats::kills);
     }
 
     private static int myTeamDamage() {
-        return mySide() == Team.TEAM_A ? ClientMatchData.teamADamageDealt : ClientMatchData.teamBDamageDealt;
+        return ClientMatchData.stats(mySide()).damage();
     }
 
     private static int enemyTeamDamage() {
-        return mySide() == Team.TEAM_A ? ClientMatchData.teamBDamageDealt : ClientMatchData.teamADamageDealt;
+        return enemyMaximum(cn.blockforge.generated.generatedmod.match.TeamMatchStats::damage);
+    }
+
+    private static java.util.stream.Stream<cn.blockforge.generated.generatedmod.match.TeamMatchStats> allStats() {
+        return Team.playing(Math.max(2, ClientMatchData.teamStats.size())).stream().map(ClientMatchData::stats);
+    }
+    private static int enemyMaximum(java.util.function.ToIntFunction<cn.blockforge.generated.generatedmod.match.TeamMatchStats> value) {
+        return allStats().filter(stats -> stats.team() != mySide()).mapToInt(value).max().orElse(0);
     }
 
     /** 领先方距离胜利的度量：死斗看本轮击杀/目标，其余看胜场/胜利回合数。 */
@@ -287,9 +294,7 @@ public final class HudStats {
     }
 
     private static int leadScore() {
-        return killTargetMode()
-                ? Math.max(ClientMatchData.teamAScore, ClientMatchData.teamBScore)
-                : Math.max(ClientMatchData.teamAWins, ClientMatchData.teamBWins);
+        return allStats().mapToInt(stats -> killTargetMode() ? stats.score() : stats.wins()).max().orElse(0);
     }
 
     private static int leadTarget() {
@@ -305,10 +310,18 @@ public final class HudStats {
         // ---- 比分与回合
         number("score_a", "A队本轮得分", Group.SCORE, () -> ClientMatchData.teamAScore, HudStats::inMatch, 12);
         number("score_b", "B队本轮得分", Group.SCORE, () -> ClientMatchData.teamBScore, HudStats::inMatch, 9);
+        for (Team team : List.of(Team.TEAM_C, Team.TEAM_D)) {
+            String key = team.key().substring(5);
+            number("score_" + key, team.displayName() + "本轮得分", Group.SCORE, () -> ClientMatchData.stats(team).score(), HudStats::inMatch, 8);
+            number("wins_" + key, team.displayName() + "胜场", Group.SCORE, () -> ClientMatchData.stats(team).wins(), HudStats::inMatch, 1);
+            number("team_" + key + "_size", team.displayName() + "人数", Group.SCORE, () -> ClientMatchData.stats(team).size(), HudStats::inMatch, 4);
+            number("match_kills_" + key, team.displayName() + "整场击杀", Group.TEAM, () -> ClientMatchData.stats(team).kills(), HudStats::inMatch, 12);
+            number("team_" + key + "_damage", team.displayName() + "造成伤害", Group.TEAM, () -> ClientMatchData.stats(team).damage(), HudStats::inMatch, 600);
+        }
         number("score_sum", "双方本轮总分", Group.SCORE,
-                () -> ClientMatchData.teamAScore + ClientMatchData.teamBScore, HudStats::inMatch, 21);
+                () -> allStats().mapToInt(value -> value.score()).sum(), HudStats::inMatch, 21);
         number("score_max", "领先方本轮分", Group.SCORE,
-                () -> Math.max(ClientMatchData.teamAScore, ClientMatchData.teamBScore), HudStats::inMatch, 12);
+                () -> allStats().mapToInt(value -> value.score()).max().orElse(0), HudStats::inMatch, 12);
         number("my_team_score", "我方本轮得分", Group.SCORE, HudStats::myTeamScore, HudStats::inMatch, 12);
         number("enemy_team_score", "敌方本轮得分", Group.SCORE, HudStats::enemyTeamScore, HudStats::inMatch, 9);
         number("wins_a", "A队胜场", Group.SCORE, () -> ClientMatchData.teamAWins, HudStats::inMatch, 1);
@@ -338,7 +351,7 @@ public final class HudStats {
         number("match_kills_a", "A队整场击杀", Group.TEAM, () -> ClientMatchData.teamAMatchKills, HudStats::inMatch, 15);
         number("match_kills_b", "B队整场击杀", Group.TEAM, () -> ClientMatchData.teamBMatchKills, HudStats::inMatch, 11);
         number("match_kills_sum", "双方整场击杀", Group.TEAM,
-                () -> ClientMatchData.teamAMatchKills + ClientMatchData.teamBMatchKills, HudStats::inMatch, 26);
+                () -> allStats().mapToInt(value -> value.kills()).sum(), HudStats::inMatch, 26);
         number("my_team_match_kills", "我方整场击杀", Group.TEAM, HudStats::myTeamMatchKills, HudStats::inMatch, 15);
         number("enemy_team_match_kills", "敌方整场击杀", Group.TEAM, HudStats::enemyTeamMatchKills, HudStats::inMatch, 11);
         number("team_a_damage", "A队造成伤害", Group.TEAM, () -> ClientMatchData.teamADamageDealt, HudStats::inMatch, 980);
@@ -346,9 +359,9 @@ public final class HudStats {
         number("my_team_damage", "我方造成伤害", Group.TEAM, HudStats::myTeamDamage, HudStats::inMatch, 980);
         number("enemy_team_damage", "敌方造成伤害", Group.TEAM, HudStats::enemyTeamDamage, HudStats::inMatch, 760);
         number("total_damage", "双方伤害合计", Group.TEAM,
-                () -> ClientMatchData.teamADamageDealt + ClientMatchData.teamBDamageDealt, HudStats::inMatch, 1740);
+                () -> allStats().mapToInt(value -> value.damage()).sum(), HudStats::inMatch, 1740);
         decimal("my_team_share", "我方伤害占比%", Group.TEAM, () -> {
-            int total = ClientMatchData.teamADamageDealt + ClientMatchData.teamBDamageDealt;
+            int total = allStats().mapToInt(value -> value.damage()).sum();
             return total <= 0 ? 0 : myTeamDamage() * 100.0 / total;
         }, HudStats::inMatch, 56.0);
 
@@ -367,7 +380,7 @@ public final class HudStats {
                 () -> ClientMatchData.teamBScore, () -> Math.max(1, ClientMatchData.targetKills),
                 HudStats::inMatch, 9, 25);
         progress("total_kill_progress", "房间总击杀进度", Group.PROGRESS,
-                () -> ClientMatchData.teamAScore + ClientMatchData.teamBScore,
+                () -> allStats().mapToInt(value -> value.score()).sum(),
                 () -> Math.max(1, ClientMatchData.targetKills), HudStats::inMatch, 21, 25);
         progress("my_wins_progress", "我方胜场进度", Group.PROGRESS,
                 HudStats::myTeamWins, () -> Math.max(1, ClientMatchData.roundsToWin), HudStats::inMatch, 1, 3);

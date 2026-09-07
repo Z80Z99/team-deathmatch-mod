@@ -151,6 +151,10 @@ public record RoomRules(GameMode mode,
     }
 
     public String describe() {
+        return describe(2);
+    }
+
+    public String describe(int teamCount) {
         StringBuilder text = new StringBuilder(mode.displayName());
         switch (mode) {
             case TEAM_DEATHMATCH -> text.append(" · 击杀 ")
@@ -160,7 +164,7 @@ public record RoomRules(GameMode mode,
                     .append(autoRespawn ? "" : "（关闭）");
             case SEARCH_DESTROY -> text.append(" · 回合 ").append(formatSeconds(matchDurationSeconds))
                     .append(" · 先胜 ").append(roundWinTarget).append(" 回合")
-                    .append(" · 每 ").append(switchSideEvery).append(" 回合换边");
+                    .append(teamCount > 2 ? " · 各队独立出生区" : " · 每 " + switchSideEvery + " 回合换边");
             case LAST_STANDING -> text.append(" · 总时长 ")
                     .append(formatSeconds(matchDurationSeconds)).append(" · 阵亡不复活");
         }

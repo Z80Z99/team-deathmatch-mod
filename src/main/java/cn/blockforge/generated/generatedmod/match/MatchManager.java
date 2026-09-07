@@ -68,6 +68,13 @@ public final class MatchManager {
     private int roundNumber;
     private int teamAWins;
     private int teamBWins;
+    private final java.util.Map<Team, Integer> extraWins = new java.util.EnumMap<>(Team.class);
+    private int teamCount = 2;
+    private boolean roomTeamSelection;
+
+    public java.util.List<Team> activeTeams() { return Team.playing(teamCount); }
+    public boolean hasRoomTeamSelection() { return roomTeamSelection; }
+    public void configureRoomTeams(int count) { teamCount = Math.max(2, Math.min(4, count)); roomTeamSelection = true; }
     private boolean rulesCaptured;
     private boolean originalKeepInventory;
     private boolean originalDeathMessages;
@@ -148,7 +155,7 @@ public final class MatchManager {
     }
 
     public int roundWins(Team team) {
-        return team == Team.TEAM_A ? teamAWins : team == Team.TEAM_B ? teamBWins : 0;
+        return team == Team.TEAM_A ? teamAWins : team == Team.TEAM_B ? teamBWins : extraWins.getOrDefault(team, 0);
     }
 
     public boolean isMatchActive() {
@@ -172,6 +179,8 @@ public final class MatchManager {
 
     /** 比赛结束或启动失败时清除覆盖，恢复服务器配置。 */
     public void clearRoomRules() {
+        teamCount = 2;
+        roomTeamSelection = false;
         if (roomRules != null) {
             roomRules = null;
             teams.refreshConfigRules();
@@ -235,7 +244,7 @@ public final class MatchManager {
     /** 本回合双方是否处于换边状态。 */
     public boolean sidesSwappedThisRound() {
         int interval = rulesSwitchSideEvery();
-        return rulesMode().roundSwapping() && interval > 0
+        return teamCount == 2 && rulesMode().roundSwapping() && interval > 0
                 && roundNumber > 0 && ((roundNumber - 1) / interval) % 2 == 1;
     }
 
@@ -350,7 +359,7 @@ public final class MatchManager {
         if (!maps.isReady()) {
             return StartResult.MAP_NOT_READY;
         }
-        if (!spawns.hasTeamSpawns()) {
+        if (activeTeams().stream().anyMatch(team -> spawns.getSpawns(team).isEmpty())) {
             return StartResult.NO_TEAM_SPAWNS;
         }
         if (rulesTargetKills() <= 0 && rulesMatchDurationSeconds() <= 0) {
@@ -362,8 +371,8 @@ public final class MatchManager {
         } else {
             teams.balanceTeamsAtMatchStart();
         }
-        if (teams.teamSize(Team.TEAM_A) == 0 || teams.teamSize(Team.TEAM_B) == 0) {
-            if (rulesRequireBothTeams()) {
+        if (activeTeams().stream().anyMatch(team -> teams.teamSize(team) == 0)) {
+            if (roomTeamSelection || rulesRequireBothTeams()) {
                 return StartResult.NEED_BOTH_TEAMS;
             }
             teams.balanceTeamsAtMatchStart();
@@ -387,6 +396,7 @@ public final class MatchManager {
         roundNumber = 1;
         teamAWins = 0;
         teamBWins = 0;
+        extraWins.clear();
         resetFailureNotified = false;
         beginWarmup(true);
         broadcastSystemMessage("比赛已创建，第 1 回合即将开始。", false);
@@ -410,6 +420,9 @@ public final class MatchManager {
     }
 
     public void resetToWaiting() {
+        teamCount = 2;
+        roomTeamSelection = false;
+        extraWins.clear();
         releaseAllDowned();
         for (ServerPlayer player : new ArrayList<>(server.getPlayerList().getPlayers())) {
             player.setInvulnerable(false);
@@ -513,8 +526,7 @@ public final class MatchManager {
         if (killer != null && killer != victim && killerTeam.isPlayable() && killerTeam != victimTeam) {
             scores.addKill(killerTeam, killer, victim);
             publishKill(killer, victim);
-            if (rulesElimination() && isTeamWipedOut(victimTeam, victim)) {
-                finishRound(killerTeam);
+            if (rulesElimination() && finishEliminationIfDecided(victimTeam, victim)) {
                 return true;
             }
             int target = rulesTargetKills();
@@ -525,12 +537,18 @@ public final class MatchManager {
             return false;
         }
         scores.addDeath(victim);
-        if (rulesElimination() && isTeamWipedOut(victimTeam, victim)) {
-            Team survivor = victimTeam.opposite();
-            finishRound(aliveCount(survivor) > 0 ? survivor : null);
+        if (rulesElimination() && finishEliminationIfDecided(victimTeam, victim)) {
             return true;
         }
         return false;
+    }
+
+    private boolean finishEliminationIfDecided(Team victimTeam, ServerPlayer victim) {
+        if (!isTeamWipedOut(victimTeam, victim)) return false;
+        var survivors = activeTeams().stream().filter(team -> team != victimTeam && aliveCount(team) > 0).toList();
+        if (survivors.size() > 1) return false;
+        finishRound(survivors.isEmpty() ? null : survivors.get(0), false);
+        return true;
     }
 
     /**
@@ -577,15 +595,11 @@ public final class MatchManager {
         return true;
     }
 
-    /** 存活人数 = 队伍人数 - 阵亡锁定人数。 */
+    /** Count only online combatants; queued and vanilla-dead players cannot keep a team alive. */
     private int aliveCount(Team team) {
-        int downed = 0;
-        for (DownedEntry entry : downedPlayers.values()) {
-            if (entry.team() == team) {
-                downed++;
-            }
-        }
-        return Math.max(0, teams.teamSize(team) - downed);
+        return (int) server.getPlayerList().getPlayers().stream()
+                .filter(player -> teams.getTeam(player) == team && player.isAlive()
+                        && !teams.isPending(player) && !isDowned(player)).count();
     }
 
     /** 击杀反馈：击杀者音效与 ActionBar、受害者提示，并更新全员击杀公告。 */
@@ -594,8 +608,7 @@ public final class MatchManager {
         lastKillKiller = killer.getGameProfile().getName();
         lastKillVictim = victim.getGameProfile().getName();
         killer.displayClientMessage(Component.literal("击杀 " + lastKillVictim
-                + "    " + scores.getTeamScore(Team.TEAM_A) + " : "
-                + scores.getTeamScore(Team.TEAM_B)), true);
+                + "    " + scoreSummary()), true);
         victim.displayClientMessage(Component.literal("你被 " + lastKillKiller + " 击杀"), true);
     }
 
@@ -761,10 +774,15 @@ public final class MatchManager {
     }
 
     public void sendMatchSync(ServerPlayer player) {
-        sendMatchSync(player, teams.counts());
+        sendMatchSync(player, teams.counts(), teamStats());
     }
 
-    private void sendMatchSync(ServerPlayer player, TeamManager.Counts counts) {
+    private java.util.List<TeamMatchStats> teamStats() {
+        return activeTeams().stream().map(team -> new TeamMatchStats(team, scores.getTeamScore(team),
+                roundWins(team), teams.teamSize(team), scores.getTeamMatchKills(team), scores.getTeamDamage(team))).toList();
+    }
+
+    private void sendMatchSync(ServerPlayer player, TeamManager.Counts counts, java.util.List<TeamMatchStats> stats) {
         FpsTdmNetwork.sendToPlayer(new MatchSyncPacket(
                 state,
                 scores.getTeamScore(Team.TEAM_A),
@@ -794,13 +812,14 @@ public final class MatchManager {
                 scores.getTeamDamage(Team.TEAM_B),
                 scores.getTeamMatchKills(Team.TEAM_A),
                 scores.getTeamMatchKills(Team.TEAM_B),
-                matchElapsedTicks()), player);
+                matchElapsedTicks()).withTeamStats(stats), player);
     }
 
     public void broadcastMatchState() {
         TeamManager.Counts counts = teams.counts();
+        var stats = teamStats();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            sendMatchSync(player, counts);
+            sendMatchSync(player, counts, stats);
         }
     }
 
@@ -808,10 +827,10 @@ public final class MatchManager {
         return "状态=" + state
                 + "，地图=" + maps.currentMapId()
                 + "，回合=" + roundNumber
-                + "，比分=" + scores.getTeamScore(Team.TEAM_A) + ":" + scores.getTeamScore(Team.TEAM_B)
-                + "，胜场=" + teamAWins + ":" + teamBWins
+                + "，比分=" + scoreSummary()
+                + "，胜场=" + activeTeams().stream().map(team -> Integer.toString(roundWins(team))).collect(java.util.stream.Collectors.joining(":"))
                 + "，剩余=" + formatTicks(phaseRemainingTicks())
-                + "，队伍=" + teams.teamSize(Team.TEAM_A) + ":" + teams.teamSize(Team.TEAM_B)
+                + "，队伍=" + activeTeams().stream().map(team -> Integer.toString(teams.teamSize(team))).collect(java.util.stream.Collectors.joining(":"))
                 + "，观战=" + teams.spectatorSize();
     }
 
@@ -866,11 +885,15 @@ public final class MatchManager {
     }
 
     private void finishRound(Team requestedWinner) {
+        finishRound(requestedWinner, true);
+    }
+
+    private void finishRound(Team requestedWinner, boolean resolveOnTimeout) {
         if (state != MatchState.PLAYING) {
             return;
         }
         Team resolvedWinner = requestedWinner;
-        if (resolvedWinner == null) {
+        if (resolvedWinner == null && resolveOnTimeout) {
             resolvedWinner = resolveRoundWinnerOnTimeout();
         }
         roundWinner = resolvedWinner;
@@ -878,10 +901,11 @@ public final class MatchManager {
             teamAWins++;
         } else if (resolvedWinner == Team.TEAM_B) {
             teamBWins++;
+        } else if (resolvedWinner != null && resolvedWinner.isPlayable()) {
+            extraWins.merge(resolvedWinner, 1, Integer::sum);
         }
         int requiredWins = rulesRoundWinTarget();
-        pendingMatchWinner = teamAWins >= requiredWins ? Team.TEAM_A
-                : teamBWins >= requiredWins ? Team.TEAM_B : null;
+        pendingMatchWinner = activeTeams().stream().filter(team -> roundWins(team) >= requiredWins).findFirst().orElse(null);
         state = MatchState.ROUND_END;
         phaseEndTick = server.getTickCount() + secondsToTicks(rulesRoundEndDelaySeconds());
         resetFailureNotified = false;
@@ -894,7 +918,7 @@ public final class MatchManager {
         }
         if (resolvedWinner == null) {
             broadcastSystemMessage("第 " + roundNumber + " 回合平局，比分 "
-                    + scores.getTeamScore(Team.TEAM_A) + ":" + scores.getTeamScore(Team.TEAM_B) + "。", false);
+                    + scoreSummary() + "。", false);
         } else {
             broadcastSystemMessage(resolvedWinner.displayName() + " 赢得第 " + roundNumber + " 回合。", false);
             markWinnerParticles(resolvedWinner);
@@ -904,16 +928,26 @@ public final class MatchManager {
 
     /** 回合超时裁定：歼灭类模式先比存活人数、再比回合击杀；死斗直接比回合击杀。 */
     private Team resolveRoundWinnerOnTimeout() {
-        if (rulesElimination()) {
-            int aliveA = aliveCount(Team.TEAM_A);
-            int aliveB = aliveCount(Team.TEAM_B);
-            if (aliveA != aliveB) {
-                return aliveA > aliveB ? Team.TEAM_A : Team.TEAM_B;
-            }
+        return resolveWinner(activeTeams(), rulesElimination() ? this::aliveCount : team -> 0, scores::getTeamScore);
+    }
+
+    private String scoreSummary() {
+        return activeTeams().stream().map(team -> team.displayName() + " " + scores.getTeamScore(team))
+                .collect(java.util.stream.Collectors.joining(" : "));
+    }
+
+    public static Team resolveWinner(java.util.List<Team> candidates, java.util.function.ToIntFunction<Team> primary,
+                                     java.util.function.ToIntFunction<Team> secondary) {
+        Team best = null;
+        int first = Integer.MIN_VALUE, second = Integer.MIN_VALUE;
+        boolean tied = false;
+        for (Team team : candidates) {
+            int a = primary.applyAsInt(team), b = secondary.applyAsInt(team);
+            if (a > first || a == first && b > second) {
+                best = team; first = a; second = b; tied = false;
+            } else if (a == first && b == second) tied = true;
         }
-        int a = scores.getTeamScore(Team.TEAM_A);
-        int b = scores.getTeamScore(Team.TEAM_B);
-        return a == b ? null : a > b ? Team.TEAM_A : Team.TEAM_B;
+        return tied ? null : best;
     }
 
     private void beginMapReset() {

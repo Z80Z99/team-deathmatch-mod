@@ -33,6 +33,6 @@ public final class ClientMapEditorData {
         return new MapEditorView(false, "", "", "", MapEditorView.RegionData.empty(),
                 MapEditorView.RegionData.empty(), MapEditorView.RegionData.empty(),
                 MapEditorView.RegionData.empty(), 0, 0, 0, "", false, false, false,
-                false, java.util.List.of(), java.util.List.of(), "", 0, "", false);
+                false, java.util.List.of(), java.util.List.of(), "", 0, "", false, 0, 0);
     }
 }

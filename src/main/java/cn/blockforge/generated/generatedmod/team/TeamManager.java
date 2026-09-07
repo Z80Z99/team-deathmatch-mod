@@ -51,7 +51,7 @@ public final class TeamManager {
     }
 
     public void setPreference(ServerPlayer player, Team team) {
-        if (team.isPlayable()) {
+        if (team != null && team.isPlayable()) {
             preferences.put(player.getUUID(), team);
         }
     }
@@ -67,7 +67,7 @@ public final class TeamManager {
     }
 
     public int totalParticipants() {
-        return teamSize(Team.TEAM_A) + teamSize(Team.TEAM_B);
+        return Team.playing(4).stream().mapToInt(this::teamSize).sum();
     }
 
     public int spectatorSize() {
@@ -187,13 +187,13 @@ public final class TeamManager {
             // 名单内玩家的“等待下一回合”标记必须清除，否则比赛中会被当成中途加入者强制观战。
             pendingPlayers.remove(playerId);
             Team preferred = preferences.getOrDefault(playerId, suggestTeam());
-            setTeamInternal(player, preferred.isPlayable() ? preferred : suggestTeam());
+            setTeamInternal(player, matchManager.activeTeams().contains(preferred) ? preferred : suggestTeam());
         }
-        balanceTeamsAtMatchStart();
+        if (!matchManager.hasRoomTeamSelection()) balanceTeamsAtMatchStart();
     }
 
     public void prepareForMatch() {
-        if (matchManager.rulesAutoBalanceMode().balancesOnMatchStart()) {
+        if (!matchManager.hasRoomTeamSelection() && matchManager.rulesAutoBalanceMode().balancesOnMatchStart()) {
             balanceTeamsAtMatchStart();
         }
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -205,9 +205,11 @@ public final class TeamManager {
     }
 
     public void balanceTeamsAtMatchStart() {
+        if (matchManager.hasRoomTeamSelection()) return;
         List<ServerPlayer> participants = new ArrayList<>();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (getTeam(player).isPlayable()) {
+                if (!matchManager.activeTeams().contains(getTeam(player))) setTeamInternal(player, suggestTeam());
                 participants.add(player);
             }
         }
@@ -283,10 +285,7 @@ public final class TeamManager {
     }
 
     public Team suggestTeam() {
-        if (teamSize(Team.TEAM_A) <= teamSize(Team.TEAM_B)) {
-            return Team.TEAM_A;
-        }
-        return Team.TEAM_B;
+        return matchManager.activeTeams().stream().min(Comparator.comparingInt(this::teamSize)).orElse(Team.TEAM_A);
     }
 
     public void resetAll() {
@@ -309,33 +308,27 @@ public final class TeamManager {
     }
 
     private Team selectJoinTeam(Team desired) {
-        if (!desired.isPlayable()) {
+        if (!matchManager.activeTeams().contains(desired)) {
             desired = suggestTeam();
         }
         if (canJoinTeam(desired, Team.SPECTATOR)) {
             return desired;
         }
-        Team alternate = desired == Team.TEAM_A ? Team.TEAM_B : Team.TEAM_A;
-        return canJoinTeam(alternate, Team.SPECTATOR) ? alternate : null;
+        return matchManager.activeTeams().stream().filter(team -> canJoinTeam(team, Team.SPECTATOR)).findFirst().orElse(null);
     }
 
     private boolean canJoinTeam(Team target, Team current) {
         if (!target.isPlayable()) {
             return true;
         }
-        int a = teamSize(Team.TEAM_A);
-        int b = teamSize(Team.TEAM_B);
-        if (current == Team.TEAM_A) {
-            a--;
-        } else if (current == Team.TEAM_B) {
-            b--;
+        if (!matchManager.activeTeams().contains(target)) return false;
+        int min = Integer.MAX_VALUE, max = 0, total = 0;
+        for (Team team : matchManager.activeTeams()) {
+            int size = teamSize(team) - (current == team ? 1 : 0) + (target == team ? 1 : 0);
+            min = Math.min(min, size); max = Math.max(max, size); total += size;
         }
-        if (target == Team.TEAM_A) {
-            a++;
-        } else {
-            b++;
-        }
-        return Math.abs(a - b) <= effectiveImbalance(a + b, matchManager.rulesMaxTeamImbalance());
+        int unavoidable = total % matchManager.activeTeams().size() == 0 ? 0 : 1;
+        return max - min <= Math.max(unavoidable, matchManager.rulesMaxTeamImbalance());
     }
 
     static int effectiveImbalance(int totalPlayers, int configured) {
@@ -394,6 +387,8 @@ public final class TeamManager {
         Scoreboard scoreboard = server.getScoreboard();
         createScoreboardTeam(scoreboard, Team.TEAM_A, ChatFormatting.RED);
         createScoreboardTeam(scoreboard, Team.TEAM_B, ChatFormatting.BLUE);
+        createScoreboardTeam(scoreboard, Team.TEAM_C, ChatFormatting.GREEN);
+        createScoreboardTeam(scoreboard, Team.TEAM_D, ChatFormatting.YELLOW);
         createScoreboardTeam(scoreboard, Team.SPECTATOR, ChatFormatting.GRAY);
     }
 
@@ -433,6 +428,8 @@ public final class TeamManager {
         return switch (team) {
             case TEAM_A -> "generated_mod_team_a";
             case TEAM_B -> "generated_mod_team_b";
+            case TEAM_C -> "generated_mod_team_c";
+            case TEAM_D -> "generated_mod_team_d";
             case SPECTATOR -> "generated_mod_team_spectator";
         };
     }

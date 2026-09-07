@@ -46,7 +46,7 @@ public final class MapEditorSyncPacket {
         boolean error = buffer.readBoolean();
         view = new MapEditorView(hasTarget, mapId, displayName, world, bounds, reset, draftBounds, draftReset,
                 teamA, teamB, spectator, snapshot, canEdit, isAdmin, locked, draftInvalidated,
-                ownedMaps, serverMaps, shareCode, responseRequestId, message, error);
+                ownedMaps, serverMaps, shareCode, responseRequestId, message, error, buffer.readVarInt(), buffer.readVarInt());
     }
 
     public void encode(FriendlyByteBuf buffer) {
@@ -72,6 +72,8 @@ public final class MapEditorSyncPacket {
         buffer.writeVarInt(view.responseRequestId());
         buffer.writeUtf(view.message(), MAX_TEXT);
         buffer.writeBoolean(view.error());
+        buffer.writeVarInt(view.teamCCount());
+        buffer.writeVarInt(view.teamDCount());
     }
 
     public void handle(Supplier<NetworkEvent.Context> contextSupplier) {

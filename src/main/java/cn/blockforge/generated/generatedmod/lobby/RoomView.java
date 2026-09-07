@@ -8,9 +8,18 @@ import java.util.List;
  */
 public record RoomView(String id, String name, String owner, int memberCount, int maxPlayers,
                        String mapId, RoomState state, List<String> members,
-                       RoomRules rules, boolean matchmaking, boolean locked) {
+                       RoomRules rules, boolean matchmaking, boolean locked,
+                       int teamCount, java.util.Map<String, cn.blockforge.generated.generatedmod.match.Team> memberTeams) {
+    public RoomView(String id, String name, String owner, int memberCount, int maxPlayers,
+                    String mapId, RoomState state, List<String> members, RoomRules rules,
+                    boolean matchmaking, boolean locked) {
+        this(id, name, owner, memberCount, maxPlayers, mapId, state, members, rules, matchmaking, locked,
+                2, java.util.Map.of());
+    }
     public RoomView {
         members = List.copyOf(members == null ? List.of() : members);
         rules = rules == null ? RoomRules.fallback() : rules;
+        teamCount = Math.max(2, Math.min(4, teamCount));
+        memberTeams = java.util.Map.copyOf(memberTeams);
     }
 }

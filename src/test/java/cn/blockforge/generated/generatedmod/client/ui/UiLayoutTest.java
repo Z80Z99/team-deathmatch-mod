@@ -116,6 +116,20 @@ class UiLayoutTest {
                         screen.keyPressed(256, 0, 0);
                         assertFalse(((UiChoiceHost) screen).choicePopup().isOpen());
                     }
+                    if (screen instanceof RoomScreen) {
+                        Field listY = RoomScreen.class.getDeclaredField("listY"); listY.setAccessible(true);
+                        Method fits = UiScreen.class.getDeclaredMethod("bandFits", int.class, int.class); fits.setAccessible(true);
+                        assertEquals(true, fits.invoke(screen, listY.getInt(screen), 25), "First member row must be visible");
+                        if (size[0] < 640) {
+                            press(screen, ">");
+                            snapshot(screen, "更多队伍", size);
+                        }
+                    }
+                    if (screen instanceof MapEditorScreen) {
+                        screen.children().stream().filter(UiButton.class::isInstance).map(UiButton.class::cast)
+                                .filter(button -> button.getMessage().getString().startsWith("出生点")).findFirst().orElseThrow().onPress();
+                        snapshot(screen, "多队出生点", size);
+                    }
                     if (screen instanceof HudLayoutScreen) {
                         press(screen, "属性"); snapshot(screen, "属性", size);
                         press(screen, "死斗"); press(screen, ">"); snapshot(screen, "战斗预览", size);
@@ -189,14 +203,20 @@ class UiLayoutTest {
         var rules = cn.blockforge.generated.generatedmod.lobby.RoomRules.fallback();
         var rooms = java.util.stream.IntStream.range(0, 18).mapToObj(i -> new cn.blockforge.generated.generatedmod.lobby.RoomView(
                 "room-" + i, "竞技房间 " + (i + 1), "Player" + i, 6, 16, "arena-" + i,
-                cn.blockforge.generated.generatedmod.lobby.RoomState.OPEN, List.of("Player0", "Steve", "Alex", "Player3", "Player4", "Player5"), rules, false, i % 3 == 0)).toList();
+                cn.blockforge.generated.generatedmod.lobby.RoomState.OPEN, List.of("Player0", "Steve", "Alex", "Player3", "Player4", "Player5"), rules, false, i % 3 == 0,
+                4, java.util.Map.of("Player0", cn.blockforge.generated.generatedmod.match.Team.TEAM_A,
+                        "Steve", cn.blockforge.generated.generatedmod.match.Team.TEAM_B,
+                        "Alex", cn.blockforge.generated.generatedmod.match.Team.TEAM_C,
+                        "Player3", cn.blockforge.generated.generatedmod.match.Team.TEAM_D,
+                        "Player4", cn.blockforge.generated.generatedmod.match.Team.TEAM_A,
+                        "Player5", cn.blockforge.generated.generatedmod.match.Team.TEAM_B))).toList();
         cn.blockforge.generated.generatedmod.client.ClientLobbyData.apply(new cn.blockforge.generated.generatedmod.network.packet.RoomSyncPacket(rooms, "room-0", true, false, "", false));
         cn.blockforge.generated.generatedmod.client.ClientLobbyData.apply(new cn.blockforge.generated.generatedmod.network.packet.RoomMapListSyncPacket(
                 List.of("arena-0|废弃工厂|Player0", "arena-1|山地要塞|Alex", "arena-2|边境哨站|Steve")));
         var region = new cn.blockforge.generated.generatedmod.map.MapEditorView.RegionData(true, -32, 64, -32, 32, 96, 32);
         var view = new cn.blockforge.generated.generatedmod.map.MapEditorView(true, "arena-0", "废弃工厂", "minecraft:overworld",
                 region, region, region, region, 4, 4, 1, "已捕获", true, true, false, false,
-                List.of("arena-0|废弃工厂|AB12CD", "arena-1|山地要塞|", "arena-2|边境哨站|XY98ZT"), List.of(), "AB12CD", 0, "", false);
+                List.of("arena-0|废弃工厂|AB12CD", "arena-1|山地要塞|", "arena-2|边境哨站|XY98ZT"), List.of(), "AB12CD", 0, "", false, 2, 2);
         cn.blockforge.generated.generatedmod.client.ClientMapEditorData.apply(new cn.blockforge.generated.generatedmod.network.packet.MapEditorSyncPacket(view));
     }
     private static void set(Class<?> type, Object target, String name, Object value) throws Exception {
