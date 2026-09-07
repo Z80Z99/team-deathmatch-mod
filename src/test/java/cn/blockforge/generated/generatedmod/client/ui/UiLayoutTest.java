@@ -15,6 +15,23 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class UiLayoutTest {
+    @Test void builtInPresetsAreValidAndRepeatableForEveryScene() {
+        for (var context : cn.blockforge.generated.generatedmod.client.HudContext.values()) {
+            for (var preset : cn.blockforge.generated.generatedmod.client.HudPreset.values()) {
+                var values = cn.blockforge.generated.generatedmod.client.ClientHudLayout.Elements.defaultsFor(context).mutable();
+                preset.apply(values, context);
+                var first = values.build();
+                assertNull(first.validationError(), preset.label() + context);
+                assertEquals(context.isMatch(), first.scoreVisible());
+                assertEquals(!context.isMatch(), first.bannerVisible());
+                assertEquals(context == cn.blockforge.generated.generatedmod.client.HudContext.ROOM
+                        ? "{room_line1}" : "{matching_line1}", first.bannerLineOneTemplate());
+                preset.apply(values, context);
+                assertEquals(first, values.build());
+            }
+        }
+    }
+
     @Test void templateFieldStartsAtBeginningAfterPlaceholderWidth() throws Exception {
         Font font = mock(Font.class);
         when(font.plainSubstrByWidth(anyString(), anyInt())).thenAnswer(call ->
@@ -102,6 +119,14 @@ class UiLayoutTest {
                     if (screen instanceof HudLayoutScreen) {
                         press(screen, "属性"); snapshot(screen, "属性", size);
                         press(screen, "死斗"); press(screen, ">"); snapshot(screen, "战斗预览", size);
+                        Field draftField = HudLayoutScreen.class.getDeclaredField("draft");
+                        draftField.setAccessible(true);
+                        var draft = (cn.blockforge.generated.generatedmod.client.ClientHudLayout.Draft) draftField.get(screen);
+                        for (var preset : cn.blockforge.generated.generatedmod.client.HudPreset.values()) {
+                            preset.apply(draft.of(cn.blockforge.generated.generatedmod.client.HudContext.TEAM_DEATHMATCH),
+                                    cn.blockforge.generated.generatedmod.client.HudContext.TEAM_DEATHMATCH);
+                            snapshot(screen, preset.name(), size);
+                        }
                     }
                 }
             }

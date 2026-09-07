@@ -395,6 +395,18 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
 
     /** 参考模组的预设入口：一键整理当前位置，随后仍可逐项微调。 */
     private void addLayoutPresets() {
+        rows.add(Row.header("内置 HUD 模板"));
+        for (cn.blockforge.generated.generatedmod.client.HudPreset preset
+                : cn.blockforge.generated.generatedmod.client.HudPreset.values()) {
+            UiButton button = new UiButton(0, 0, 10, CONTROL, Component.literal(preset.label()), ignored -> {
+                editDiscrete(() -> preset.apply(current(), activeContext));
+                rebuildWidgets();
+                setStatus("已应用“" + preset.label() + "”模板，可撤销；保存后保留。", UiTheme.SUCCESS);
+            }, UiButton.Kind.SECONDARY);
+            button.setTooltip(Tooltip.create(Component.literal(preset.description()
+                    + "覆盖当前场景的内置组件样式，保留独立模块与背景。")));
+            register(button, CONTROL);
+        }
         rows.add(Row.header("快速布局预设"));
         UiButton compact = new UiButton(0, 0, 10, CONTROL, Component.literal("紧凑"),
                 ignored -> applyPreset("compact"), UiButton.Kind.SECONDARY);
