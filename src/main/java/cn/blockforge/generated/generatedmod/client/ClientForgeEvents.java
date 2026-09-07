@@ -87,7 +87,7 @@ public final class ClientForgeEvents {
     }
 
     private static boolean isLobbyScreen(Screen screen) {
-        return screen instanceof LobbyScreen || screen instanceof LobbyMenuScreen
+        return screen instanceof cn.blockforge.generated.generatedmod.client.ui.UiScreen || screen instanceof LobbyMenuScreen
                 || screen instanceof MatchmakingScreen || screen instanceof RoomScreen
                 || screen instanceof RoomRulesScreen || screen instanceof RoomMapSelectScreen
                 || screen instanceof MapEditorScreen

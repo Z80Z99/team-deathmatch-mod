@@ -356,8 +356,8 @@ public final class ClientHudLayout {
             return switch (context) {
                 case TEAM_DEATHMATCH, SEARCH_DESTROY, LAST_STANDING -> new Elements(
                         true, 50, 2, 340, 100, 80,
-                        true, 50, 92, 220, 100, 80,
-                        true, 50, 16, 100, 85,
+                        true, 50, 78, 220, 100, 80,
+                        true, 80, 42, 100, 85,
                         false, 50, 30, 100, 85);
                 case MATCHING -> new Elements(
                         false, 50, 2, 340, 100, 80,

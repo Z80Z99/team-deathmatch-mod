@@ -12,11 +12,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/**
- * 开始游戏入口（一级菜单）：按需求只保留两个入口按钮与底部返回，
- * 标题、副标题与按键提示文本全部删除。房间走房间大厅、匹配走快速匹配，
- * 两条入口彼此独立；本菜单不排队、不取消、不显示队列详情。
- */
+/** 大厅入口：房间、匹配和创作工具，以及当前连接状态。 */
 public final class LobbyMenuScreen extends UiScreen {
     private static final int ENTRY_HEIGHT = 34;
 
@@ -28,7 +24,7 @@ public final class LobbyMenuScreen extends UiScreen {
     private int ticks;
 
     public LobbyMenuScreen(Screen parent) {
-        super(Component.literal("开始游戏"));
+        super(Component.literal("团队死斗"));
         this.parent = parent;
     }
 
@@ -43,8 +39,7 @@ public final class LobbyMenuScreen extends UiScreen {
 
     @Override
     protected void init() {
-        // 无标题带 + 有状态条：面板里只有两个入口按钮和一行底部按钮。
-        beginLayout(420, 170, BUTTON_HEIGHT, true, false);
+        beginLayout(460, 230, BUTTON_HEIGHT, true, true);
         roomRowY = flowRow(ENTRY_HEIGHT);
         matchRowY = flowRow(ENTRY_HEIGHT);
 
@@ -54,7 +49,12 @@ public final class LobbyMenuScreen extends UiScreen {
                 () -> MatchmakingScreen.open(this),
                 "进入独立的匹配界面：排队、看序位与取消都在那里完成，和房间大厅互不混用。"), matchRowY);
 
-        footerButton("返回", 0, 1, 0, this::onClose, "返回上一级界面。", UiButton.Kind.DANGER);
+        int toolsY = flowRow(BUTTON_HEIGHT);
+        flowWidget(uiButton("地图工作台", columnX(0, 2, 6), toolsY, columnWidth(2, 6),
+                () -> MapLibraryScreen.open(this), null), toolsY);
+        flowWidget(uiButton("HUD 编辑器", columnX(1, 2, 6), toolsY, columnWidth(2, 6),
+                () -> minecraft.setScreen(new HudLayoutScreen(this)), null), toolsY);
+        footerButton("返回游戏", 0, 1, 0, this::onClose, null, UiButton.Kind.SECONDARY);
         updateButtons();
     }
 
@@ -67,9 +67,10 @@ public final class LobbyMenuScreen extends UiScreen {
     }
 
     private UiButton entryButton(String label, int y, Runnable action, String tooltip) {
-        int buttonWidth = Math.min(innerWidth, (innerWidth + 6) / 2 * 2 - 6);
-        return uiButton(label, innerLeft + (innerWidth - buttonWidth) / 2, y, buttonWidth, action,
-                tooltip, UiButton.Kind.PRIMARY);
+        UiButton button = new UiButton(innerLeft, y, innerWidth, ENTRY_HEIGHT, Component.literal(label),
+                ignored -> action.run(), label.equals("快速匹配") ? UiButton.Kind.PRIMARY : UiButton.Kind.SECONDARY);
+        button.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(tooltip)));
+        return button;
     }
 
     private void refresh() {
@@ -105,13 +106,13 @@ public final class LobbyMenuScreen extends UiScreen {
                     : ClientLobbyData.matchmaking().queued() ? "快速匹配（排队中）" : "快速匹配";
             matchButton.setMessage(Component.literal(label));
             matchButton.setSelected(ClientLobbyData.matchmaking().queued() || forming);
-            matchButton.active = connected && !forming;
+            matchButton.active = connected;
         }
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderShell(graphics, null);
+        renderShell(graphics, ClientLobbyData.matchActive() ? "比赛进行中" : "多人竞技 · 在线大厅");
         String message = ClientLobbyData.matchmakingMessage().isBlank()
                 ? ClientLobbyData.roomMessage() : ClientLobbyData.matchmakingMessage();
         renderStatus(graphics, message,

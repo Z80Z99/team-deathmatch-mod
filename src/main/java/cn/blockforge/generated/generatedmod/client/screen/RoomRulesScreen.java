@@ -31,12 +31,13 @@ import java.util.List;
  * 只有房主可以修改，其他成员打开时全表单只读。
  */
 public final class RoomRulesScreen extends UiScreen {
-    private static final int FIELD_HEIGHT = 24;
+    private static final int FIELD_HEIGHT = 38;
     private static final int ROW_COUNT = 10;
     private static final int COLUMN_GAP = 12;
 
     private final Screen parent;
     private RoomRules draft;
+    private RoomRules baseline;
     private UiCycleButton<GameMode> modeCycle;
     private UiEditBox minPlayersBox;
     private UiEditBox targetBox;
@@ -71,12 +72,14 @@ public final class RoomRulesScreen extends UiScreen {
     private int marqueeTicks;
     private int lastRoomRevision = -1;
     private String status = "";
+    private int category;
     private int statusColor = UiTheme.MUTED;
 
     private RoomRulesScreen(Screen parent) {
         super(Component.literal("房间规则设置"));
         this.parent = parent;
         this.draft = editingRules();
+        this.baseline = draft;
     }
 
     public static void open(Screen parent) {
@@ -92,7 +95,7 @@ public final class RoomRulesScreen extends UiScreen {
     private boolean editable() {
         RoomView own = ownRoom();
         return own != null && ClientLobbyData.ownOwner() && !own.matchmaking()
-                && own.state() != RoomState.RUNNING;
+                && own.state() == RoomState.OPEN && !ClientLobbyData.matchActive();
     }
 
     private RoomView ownRoom() {
@@ -122,14 +125,22 @@ public final class RoomRulesScreen extends UiScreen {
     @Override
     protected void init() {
         beginLayout(640, 0, BUTTON_HEIGHT);
-        sectionY = flowRow(13);
+        sectionY = flowRow(BUTTON_HEIGHT);
+        String[] categories = {"比赛", "玩家", "高级"};
+        for (int i = 0; i < categories.length; i++) {
+            int target = i;
+            UiButton tab = flowWidget(uiButton(categories[i], columnX(i, 3, 6), sectionY, columnWidth(3, 6), () -> {
+                draft = collect(); category = target; rulesScroll = 0; rebuildWidgets();
+            }, null), sectionY);
+            tab.setSelected(category == i);
+        }
         summaryY = flowRow(18);
         if (draft == null) {
             draft = editingRules();
         }
         RoomRules current = draft.normalized();
         rulesViewportTop = summaryY + 18 + ROW_GAP;
-        rulesViewportBottom = contentBottom - 18;
+        rulesViewportBottom = contentBottom;
         layoutRuleRows(current.mode());
         int gap = COLUMN_GAP;
         boolean editable = editable();
@@ -236,7 +247,13 @@ public final class RoomRulesScreen extends UiScreen {
     }
 
     private boolean rowVisible(GameMode mode, int row) {
-        return row != 3 || mode.respawnRules();
+        if (row == 0) return true;
+        if (row == 3 && !mode.respawnRules()) return false;
+        return switch (category) {
+            case 0 -> row == 1 || row == 2 || row == 5;
+            case 1 -> row == 3 || row == 4 || row == 6;
+            default -> row >= 7;
+        };
     }
 
     private void applyRuleScroll() {
@@ -273,7 +290,7 @@ public final class RoomRulesScreen extends UiScreen {
     private void setRowY(net.minecraft.client.gui.components.AbstractWidget widget, int row, boolean allowed) {
         if (widget != null) {
             int y = rowYs[row];
-            widget.setY(y < 0 ? -FIELD_HEIGHT : y);
+            widget.setY(y < 0 ? -FIELD_HEIGHT : y + 12);
             widget.visible = allowed && y >= rulesViewportTop && y + FIELD_HEIGHT <= rulesViewportBottom;
         }
     }
@@ -293,9 +310,9 @@ public final class RoomRulesScreen extends UiScreen {
 
     private UiEditBox integer(int row, int column, String label, int value, int maxLength,
                               boolean editable, String tooltip) {
-        UiTheme.Field field = UiTheme.field(columnX(column, 2, COLUMN_GAP), columnWidth(2, COLUMN_GAP), 96);
+        UiTheme.Field field = ruleField(column);
         UiEditBox box = new UiEditBox(font, field.controlX(), rowYs[row], field.controlWidth(),
-                FIELD_HEIGHT, Component.literal(label));
+                BUTTON_HEIGHT, Component.literal(label));
         box.setMaxLength(maxLength);
         box.setValue(Integer.toString(value));
         box.setFilter(text -> text.isEmpty() || text.chars().allMatch(Character::isDigit));
@@ -307,10 +324,10 @@ public final class RoomRulesScreen extends UiScreen {
 
     private UiCycleButton<Boolean> bool(int row, int column, String label, boolean value,
                                         boolean editable) {
-        UiTheme.Field field = UiTheme.field(columnX(column, 2, COLUMN_GAP), columnWidth(2, COLUMN_GAP), 96);
+        UiTheme.Field field = ruleField(column);
         UiCycleButton<Boolean> toggle = new UiCycleButton<>(field.controlX(), rowYs[row],
-                field.controlWidth(), FIELD_HEIGHT, List.of(Boolean.TRUE, Boolean.FALSE), value,
-                flag -> label + "：" + (flag ? "开" : "关"), null, null, UiButton.Kind.SECONDARY);
+                field.controlWidth(), BUTTON_HEIGHT, List.of(Boolean.TRUE, Boolean.FALSE), value,
+                flag -> flag ? "开启" : "关闭", null, label, UiButton.Kind.SECONDARY);
         toggle.active = editable;
         addRenderableWidget(toggle);
         return toggle;
@@ -320,14 +337,20 @@ public final class RoomRulesScreen extends UiScreen {
                                        java.util.function.Function<T, String> display,
                                        java.util.function.Consumer<T> onChange, String tooltip,
                                        boolean editable) {
-        UiTheme.Field field = UiTheme.field(columnX(column, 2, COLUMN_GAP), columnWidth(2, COLUMN_GAP), 96);
+        UiTheme.Field field = ruleField(column);
         UiCycleButton<T> cycle = new UiCycleButton<>(field.controlX(), rowYs[row],
-                field.controlWidth(), FIELD_HEIGHT, values, initial,
-                value -> label + "·" + display.apply(value), onChange, tooltip,
+                field.controlWidth(), BUTTON_HEIGHT, values, initial,
+                display, onChange, tooltip,
                 UiButton.Kind.SECONDARY);
         cycle.active = editable;
         addRenderableWidget(cycle);
         return cycle;
+    }
+
+    private UiTheme.Field ruleField(int column) {
+        int x = columnX(column, 2, COLUMN_GAP);
+        int w = columnWidth(2, COLUMN_GAP) - 4;
+        return new UiTheme.Field(x, w, x, w);
     }
 
     private RoomRules collect() {
@@ -373,7 +396,7 @@ public final class RoomRulesScreen extends UiScreen {
         }
         FpsTdmNetwork.sendToServer(new RoomRulesPacket(candidate));
         draft = candidate;
-        setStatus("已保存并向房间成员广播。", UiTheme.SUCCESS);
+        setStatus("规则已提交，等待服务器确认。", UiTheme.INFO);
         refresh();
     }
 
@@ -412,6 +435,7 @@ public final class RoomRulesScreen extends UiScreen {
             return;
         }
         if (editable()) {
+            if (own.rules().equals(draft.normalized())) baseline = own.rules();
             setStatus(ClientLobbyData.roomMessage(),
                     ClientLobbyData.roomError() ? UiTheme.ERROR : UiTheme.INFO);
         } else {
@@ -423,6 +447,7 @@ public final class RoomRulesScreen extends UiScreen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+        if (choicePopup().scroll(amount)) return true;
         if (mouseY >= rulesViewportTop && mouseY <= rulesViewportBottom && rulesMaxScroll > 0) {
             int next = Math.max(0, Math.min(rulesMaxScroll,
                     rulesScroll - (int) Math.round(amount * 24)));
@@ -440,14 +465,10 @@ public final class RoomRulesScreen extends UiScreen {
         RoomView own = ownRoom();
         renderShell(graphics, own == null ? "当前不在房间中"
                 : own.name() + "  ·  " + (editable() ? "房主可改" : "只读查看"));
-        final int section = sectionY;
-        paintBand(graphics, section, 13,
-                () -> graphics.drawString(font, fit("游戏模式与比赛规则（原团队死斗配置已并入这里）",
-                        innerWidth), innerLeft, section, UiTheme.ACCENT, false));
         final int summary = summaryY;
         paintBand(graphics, summary, 18, () -> {
             UiTheme.card(graphics, innerLeft, summary, innerWidth, 18, UiTheme.PANEL);
-            graphics.drawString(font, marquee("摘要  " + draft.describe(), innerWidth - 16),
+            graphics.drawString(font, fit(collect().describe(), innerWidth - 16),
                     innerLeft + 8, summary + 6, UiTheme.TEXT, false);
         });
         int columnWidth = columnWidth(2, COLUMN_GAP);
@@ -458,21 +479,14 @@ public final class RoomRulesScreen extends UiScreen {
                         || rowYs[row] + FIELD_HEIGHT > rulesViewportBottom) {
                     continue;
                 }
-                UiTheme.Field field = UiTheme.field(columnX(column, 2, COLUMN_GAP),
-                            columnWidth(2, COLUMN_GAP), 96);
+                UiTheme.Field field = ruleField(column);
                 final int bandY = rowYs[row];
                 paintBand(graphics, bandY, FIELD_HEIGHT, () -> {
-                    UiTheme.card(graphics, field.labelX(), bandY, field.labelWidth(), FIELD_HEIGHT,
-                            UiTheme.PANEL_RAISED);
-                    graphics.drawString(font, fit(label, field.labelWidth() - 8), field.labelX() + 4,
-                            bandY + 8, UiTheme.TEXT, false);
+                    graphics.drawString(font, fit(label, field.labelWidth()), field.labelX(),
+                            bandY, UiTheme.MUTED, false);
                 });
             }
         }
-        final int notice = noticeY;
-        paintBand(graphics, notice, 10, () -> graphics.drawString(font,
-                marquee("不适用于当前模式的设置行会自动隐藏；规则开赛时整体生效，随房间解散销毁。", innerWidth),
-                innerLeft, notice, UiTheme.SUBTLE, false));
         if (rulesMaxScroll > 0) {
             int trackTop = rulesViewportTop;
             int trackBottom = rulesViewportBottom;
@@ -575,8 +589,17 @@ public final class RoomRulesScreen extends UiScreen {
     @Override
     public void onClose() {
         if (minecraft != null) {
-            minecraft.setScreen(parent);
+            if (editable() && modeCycle != null && !collect().normalized().equals(baseline.normalized())) {
+                draft = collect();
+                confirmAction("放弃规则改动", "还有未保存的房间规则，确定放弃并返回？", () -> minecraft.setScreen(parent));
+            } else minecraft.setScreen(parent);
         }
+    }
+
+    @Override
+    public void resize(Minecraft minecraft, int width, int height) {
+        if (modeCycle != null) draft = collect();
+        super.resize(minecraft, width, height);
     }
 
     @Override

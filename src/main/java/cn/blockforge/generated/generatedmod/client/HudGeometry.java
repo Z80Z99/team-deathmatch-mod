@@ -66,7 +66,7 @@ public final class HudGeometry {
 
     /** 击杀播报：宽度随文字自适应，中心锚点。 */
     public static Rect feed(Elements elements, int screenWidth, int screenHeight, int minTextWidth) {
-        return anchored(Math.max(180, minTextWidth), FEED_BASE_HEIGHT, elements.feedScalePercent(),
+        return anchored(Math.max(180, Math.min(420, minTextWidth)), FEED_BASE_HEIGHT, elements.feedScalePercent(),
                 elements.feedOpacityPercent(), elements.feedXPercent(), elements.feedYPercent(),
                 screenWidth, screenHeight);
     }
@@ -110,7 +110,7 @@ public final class HudGeometry {
         }
         float fitted = Math.min(availableWidth / (float) baseWidth,
                 availableHeight / (float) baseHeight);
-        return Math.max(0.5F, Math.min(2.0F, Math.min(requested, fitted)));
+        return Math.max(0.01F, Math.min(2.0F, Math.min(requested, fitted)));
     }
 
     private static int scaled(int baseSize, float scale) {

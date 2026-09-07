@@ -42,7 +42,9 @@ import java.util.function.IntSupplier;
  * {@link HudStats} 的任意统计接口作为内容来源；颜色用展开式色板挑选；
  * 画面中的面板和模块都可直接拖动，配置实时生效，关窗写入 client-hud.json。
  */
-public final class HudLayoutScreen extends Screen {
+public final class HudLayoutScreen extends Screen implements cn.blockforge.generated.generatedmod.client.ui.UiChoiceHost {
+    private final cn.blockforge.generated.generatedmod.client.ui.UiChoicePopup choices = new cn.blockforge.generated.generatedmod.client.ui.UiChoicePopup();
+    @Override public cn.blockforge.generated.generatedmod.client.ui.UiChoicePopup choicePopup() { return choices; }
     private static final int TAB_HEIGHT = UiScreen.BUTTON_HEIGHT;
     private static final int TAB_TOP = 6;
     private static final int DOCK_HEADER_HEIGHT = 22;
@@ -110,6 +112,8 @@ public final class HudLayoutScreen extends Screen {
     private ClientHudLayout.Draft draft;
     private HudContext activeContext;
     private boolean globalTab;
+    private boolean propertyTab;
+    private boolean dockHidden;
     private String selected = "score";
     private boolean paletteOpen;
     private String paletteTarget = "";
@@ -146,7 +150,7 @@ public final class HudLayoutScreen extends Screen {
     private int resizeOriginBottom;
     private boolean sidePanelNeedsRebuild;
 
-    private String status = "先在右侧列表选组件，或直接拖动画面中的面板与模块。";
+    private String status = "";
     private int statusColor = UiTheme.INFO;
     private int statusTicks;
     private int marqueeTicks;
@@ -177,6 +181,7 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     protected void init() {
+        choices.close();
         rows.clear();
         widgets.clear();
         footerButtons.clear();
@@ -203,21 +208,38 @@ public final class HudLayoutScreen extends Screen {
         dockBottom = clamp(dockBottom, dockTop + DOCK_MIN_HEIGHT, height - 10);
 
         addTabs();
+        if (dockHidden) return;
         if (globalTab) {
             addGlobalControls();
         } else {
-            addComponentList();
-            addPropertyControls();
+            int line = beginLayoutLine();
+            for (int i = 0; i < 2; i++) {
+                boolean properties = i == 1;
+                UiButton tab = new UiButton(0, 0, 10, CONTROL, Component.literal(properties ? "属性" : "组件"), ignored -> {
+                    commitHistoryEdit(); propertyTab = properties; scroll = 0; rebuildWidgets();
+                }, UiButton.Kind.SECONDARY);
+                tab.setSelected(propertyTab == properties);
+                register(tab, CONTROL, line, i, 2);
+            }
+            if (propertyTab) addPropertyControls(); else addComponentList();
         }
+        rows.removeIf(row -> row.kind() == RowKind.NOTE);
         addFooter();
         clampScroll();
         layoutRows();
     }
 
     private void addTabs() {
+        if (dockHidden) {
+            UiButton restore = new UiButton(width - 28, height - 28, 22, TAB_HEIGHT, Component.literal("<"),
+                    ignored -> { dockHidden = false; rebuildWidgets(); }, UiButton.Kind.SECONDARY);
+            restore.setTooltip(Tooltip.create(Component.literal("返回 HUD 编辑")));
+            addRenderableWidget(restore);
+            return;
+        }
         int gap = 4;
         int columns = HudContext.values().length + 1;
-        int tabWidth = (width - 12 - gap * (columns - 1)) / columns;
+        int tabWidth = (width - 40 - gap * (columns - 1)) / columns;
         int index = 0;
         for (HudContext context : HudContext.values()) {
             HudContext target = context;
@@ -248,6 +270,12 @@ public final class HudLayoutScreen extends Screen {
         }, globalTab ? UiButton.Kind.PRIMARY : UiButton.Kind.SECONDARY);
         global.setSelected(globalTab);
         addRenderableWidget(global);
+        UiButton toggleDock = new UiButton(width - 28, TAB_TOP, 22, TAB_HEIGHT,
+                Component.literal(dockHidden ? "<" : ">"), ignored -> {
+                    commitHistoryEdit(); dockHidden = !dockHidden; rebuildWidgets();
+                }, UiButton.Kind.SECONDARY);
+        toggleDock.setTooltip(Tooltip.create(Component.literal(dockHidden ? "显示属性面板" : "隐藏属性面板")));
+        addRenderableWidget(toggleDock);
     }
 
     private String defaultSelection() {
@@ -257,7 +285,7 @@ public final class HudLayoutScreen extends Screen {
     // ---------------------------------------------------------------- 组件列表
 
     private void addComponentList() {
-        rows.add(Row.header("组件列表（点选后编辑，画面中可直接拖）"));
+        rows.add(Row.header("场景组件"));
         if (activeContext.isMatch()) {
             addBuiltInRow("score", "记分板（内置）", () -> current().scoreVisible);
             addBuiltInRow("text", "状态文字（内置）", () -> current().textVisible);
@@ -276,6 +304,7 @@ public final class HudLayoutScreen extends Screen {
                     ignored -> {
                         commitHistoryEdit();
                         selected = "custom:" + id;
+                        propertyTab = true;
                         paletteOpen = false;
                         rebuildWidgets();
                     }, selected.equals("custom:" + id) ? UiButton.Kind.PRIMARY : UiButton.Kind.SECONDARY);
@@ -311,6 +340,7 @@ public final class HudLayoutScreen extends Screen {
                 ignored -> {
                     commitHistoryEdit();
                     selected = key;
+                    propertyTab = true;
                     paletteOpen = false;
                     rebuildWidgets();
                 }, selected.equals(key) ? UiButton.Kind.PRIMARY : UiButton.Kind.SECONDARY);
@@ -352,13 +382,13 @@ public final class HudLayoutScreen extends Screen {
     }
 
     private void addPropertyControls() {
-        addLayoutPresets();
         ClientHudLayout.CustomElement chosen = selectedCustom();
         if (chosen != null) {
             addCustomProperties(chosen);
         } else {
             addBuiltInProperties();
         }
+        addLayoutPresets();
         rows.add(new Row(null, "拖动画面中的面板/模块即可摆位置；滚轮在右侧列内滚动。",
                 RowKind.NOTE, NOTE_ROW * 2, UNGROUPED_LINE, 0, 1));
     }
@@ -705,9 +735,9 @@ public final class HudLayoutScreen extends Screen {
         int columns = 3;
         int firstRow = dockBottom - CONTROL * FOOTER_ROWS - 14;
         addFooterButton("撤销", 0, firstRow, this::undo, UiButton.Kind.SECONDARY,
-                "撤回最近一次设置变化（Ctrl+Z）。");
+                "撤回最近一次设置变化（Ctrl+Z）。").historyIcon(false);
         addFooterButton("重做", 1, firstRow, this::redo, UiButton.Kind.SECONDARY,
-                "恢复刚才撤回的设置（Ctrl+Y）。");
+                "恢复刚才撤回的设置（Ctrl+Y）。").historyIcon(true);
         addFooterButton("当前页默认", 2, firstRow, this::resetCurrentContext, UiButton.Kind.WARNING,
                 "只恢复当前页，不影响其他场景。");
 
@@ -835,6 +865,10 @@ public final class HudLayoutScreen extends Screen {
                         ? rowY + 13 : rowY);
                 widget.visible = rowY >= viewportTop() - 1
                         && rowY + row.height() <= viewportBottom() + 1;
+                if (widget instanceof UiColorPalette palette) {
+                    palette.setViewport(viewportTop(), viewportBottom());
+                    widget.visible = rowY < viewportBottom() && rowY + row.height() > viewportTop();
+                }
             }
             if (!sharesPreviousLine) {
                 previousLineY = rowY;
@@ -977,6 +1011,7 @@ public final class HudLayoutScreen extends Screen {
         };
         editDiscrete(() -> draft.addCustomElement(activeContext, element));
         selected = "custom:" + id;
+        propertyTab = true;
         paletteOpen = false;
         rebuildWidgets();
         setStatus("已添加 " + element.displayName() + "，在画面中拖动它。", UiTheme.SUCCESS);
@@ -1112,8 +1147,8 @@ public final class HudLayoutScreen extends Screen {
                 case "compact" -> {
                     if (activeContext.isMatch()) {
                         values.scoreXPercent = 50; values.scoreYPercent = 3; values.scoreWidth = 280; values.scoreScalePercent = 85;
-                        values.textXPercent = 50; values.textYPercent = 88; values.textScalePercent = 85;
-                        values.feedXPercent = 82; values.feedYPercent = 22; values.feedScalePercent = 85;
+                        values.textXPercent = 50; values.textYPercent = 78; values.textScalePercent = 85;
+                        values.feedXPercent = 82; values.feedYPercent = 42; values.feedScalePercent = 85;
                     } else {
                         values.bannerXPercent = 50; values.bannerYPercent = 10; values.bannerScalePercent = 85;
                     }
@@ -1121,8 +1156,8 @@ public final class HudLayoutScreen extends Screen {
                 case "wide" -> {
                     if (activeContext.isMatch()) {
                         values.scoreXPercent = 50; values.scoreYPercent = 3; values.scoreWidth = 480; values.scoreScalePercent = 110;
-                        values.textXPercent = 50; values.textYPercent = 90; values.textScalePercent = 110;
-                        values.feedXPercent = 78; values.feedYPercent = 24; values.feedScalePercent = 100;
+                        values.textXPercent = 50; values.textYPercent = 78; values.textScalePercent = 110;
+                        values.feedXPercent = 78; values.feedYPercent = 42; values.feedScalePercent = 100;
                     } else {
                         values.bannerXPercent = 50; values.bannerYPercent = 16; values.bannerScalePercent = 110;
                     }
@@ -1130,8 +1165,8 @@ public final class HudLayoutScreen extends Screen {
                 default -> {
                     if (activeContext.isMatch()) {
                         values.scoreXPercent = 50; values.scoreYPercent = 3; values.scoreWidth = 340; values.scoreScalePercent = 100;
-                        values.textXPercent = 50; values.textYPercent = 92; values.textScalePercent = 100;
-                        values.feedXPercent = 50; values.feedYPercent = 16; values.feedScalePercent = 100;
+                        values.textXPercent = 50; values.textYPercent = 78; values.textScalePercent = 100;
+                        values.feedXPercent = 80; values.feedYPercent = 42; values.feedScalePercent = 100;
                     } else {
                         values.bannerXPercent = 50; values.bannerYPercent = 12; values.bannerScalePercent = 100;
                     }
@@ -1151,11 +1186,13 @@ public final class HudLayoutScreen extends Screen {
     // ---------------------------------------------------------------- 交互
 
     private boolean insideDock(double mouseX, double mouseY) {
-        return mouseX >= dockX && mouseX <= dockX + dockWidth
+        return !dockHidden && mouseX >= dockX && mouseX <= dockX + dockWidth
                 && mouseY >= dockTop && mouseY <= dockBottom;
     }
 
     private boolean insideTabBar(double mouseX, double mouseY) {
+        if (dockHidden) return mouseX >= width - 28 && mouseX <= width - 6
+                && mouseY >= height - 28 && mouseY <= height - 6;
         return mouseX >= 6 && mouseX <= width - 6
                 && mouseY >= TAB_TOP && mouseY <= TAB_TOP + TAB_HEIGHT;
     }
@@ -1167,6 +1204,7 @@ public final class HudLayoutScreen extends Screen {
     }
 
     private ResizeEdge dockResizeEdge(double mouseX, double mouseY) {
+        if (dockHidden) return ResizeEdge.NONE;
         int cornerHandle = 8;
         boolean left = mouseX >= dockX - 2 && mouseX <= dockX + cornerHandle;
         boolean right = mouseX >= dockX + dockWidth - cornerHandle && mouseX <= dockX + dockWidth + 2;
@@ -1238,6 +1276,7 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (choices.click(mouseX, mouseY, button)) return true;
         if (exitPromptOpen) {
             if (button == 0 && handleExitPromptClick(mouseX, mouseY)) {
                 return true;
@@ -1353,7 +1392,7 @@ public final class HudLayoutScreen extends Screen {
             }
             case "text" -> {
                 String hint = MatchHudOverlay.hintText();
-                rect = HudGeometry.text(values, width, height, font.width(hint) + 28);
+                rect = HudGeometry.text(values, width, height, values.textWidth());
                 nextDrag = Drag.TEXT;
                 visible = values.textVisible();
             }
@@ -1515,12 +1554,13 @@ public final class HudLayoutScreen extends Screen {
 
     /** 只有右侧内容视口响应滚轮；标题栏和底部按钮区不抢滚轮事件。 */
     private boolean insideDockViewport(double mouseX, double mouseY) {
-        return mouseX >= dockX && mouseX <= dockX + dockWidth
+        return !dockHidden && mouseX >= dockX && mouseX <= dockX + dockWidth
                 && mouseY >= viewportTop() && mouseY <= viewportBottom();
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+        if (choices.scroll(amount)) return true;
         if (insideDockViewport(mouseX, mouseY)) {
             int maximum = Math.max(0, contentHeight() - (viewportBottom() - viewportTop()));
             int next = clamp(scroll - (int) Math.round(amount * 14), 0, maximum);
@@ -1535,6 +1575,7 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (choices.key(keyCode)) return true;
         if (exitPromptOpen) {
             if (keyCode == 256) {
                 exitPromptOpen = false;
@@ -1583,7 +1624,7 @@ public final class HudLayoutScreen extends Screen {
             HudBackground.drawStretch(graphics, global.backgroundFile(),
                     global.backgroundOpacityPercent(), width, height);
         }
-        if (global.guidesVisible()) {
+        if (global.guidesVisible() && !dockHidden) {
             renderGuides(graphics);
         }
         if (!globalTab) {
@@ -1591,9 +1632,10 @@ public final class HudLayoutScreen extends Screen {
         }
         layoutRows();
         layoutFooterButtons();
-        renderDock(graphics);
+        if (!dockHidden) renderDock(graphics);
         super.render(graphics, mouseX, mouseY, partialTick);
         renderStatus(graphics);
+        choices.render(graphics, font, mouseX, mouseY);
         if (exitPromptOpen) {
             renderExitPrompt(graphics);
         }
@@ -1629,7 +1671,7 @@ public final class HudLayoutScreen extends Screen {
                 drawGhostRect(graphics, score, "记分板（已隐藏）");
             }
             String hint = HudStats.resolveTemplate(values.textTemplate(), previewTemplateValues());
-            HudGeometry.Rect text = HudGeometry.text(values, width, height, font.width(hint) + 28);
+            HudGeometry.Rect text = HudGeometry.text(values, width, height, values.textWidth());
             if (values.textVisible() && !selected.equals("text")) {
                 renderTextPreview(graphics, values, text, hint);
             } else if (!values.textVisible() || !selected.equals("text")) {
@@ -1667,7 +1709,7 @@ public final class HudLayoutScreen extends Screen {
         } else if (selected.equals("text") && activeContext.isMatch() && values.textVisible()) {
             String hint = HudStats.resolveTemplate(values.textTemplate(), previewTemplateValues());
             renderTextPreview(graphics, values,
-                    HudGeometry.text(values, width, height, font.width(hint) + 28), hint);
+                    HudGeometry.text(values, width, height, values.textWidth()), hint);
         } else if (selected.equals("feed") && activeContext.isMatch() && values.feedVisible()) {
             String feed = HudStats.resolveTemplate(values.feedTemplate(), previewTemplateValues());
             renderFeedPreview(graphics, values,
@@ -1694,9 +1736,7 @@ public final class HudLayoutScreen extends Screen {
     }
 
     private int bannerWidth() {
-        return activeContext == HudContext.MATCHING
-                ? font.width("已匹配！3 秒后开赛") + 28
-                : font.width("房间 样例作战大厅 · 团队死斗 · 地图 沙漠哨站") + 28;
+        return 340;
     }
 
     private Map<String, String> previewTemplateValues() {
@@ -1719,42 +1759,15 @@ public final class HudLayoutScreen extends Screen {
 
     private void renderScorePreview(GuiGraphics graphics, ClientHudLayout.Elements values,
                                     HudGeometry.Rect rect) {
-        int baseWidth = rect.baseWidth();
-        int baseHeight = HudGeometry.SCORE_BASE_HEIGHT;
-        int alpha = values.scoreOpacityPercent();
-        graphics.pose().pushPose();
-        graphics.pose().translate(rect.centerX(), rect.top(), 0.0F);
-        graphics.pose().scale(rect.scale(), rect.scale(), 1.0F);
-        graphics.fill(-baseWidth / 2, 0, baseWidth / 2, baseHeight, UiTheme.withAlpha(UiTheme.PANEL, alpha));
-        graphics.renderOutline(-baseWidth / 2, 0, baseWidth, baseHeight, UiTheme.withAlpha(UiTheme.BORDER, alpha));
-        graphics.fill(-baseWidth / 2 + 1, 1, 0, 4, UiTheme.withAlpha(UiTheme.TEAM_A, alpha));
-        graphics.fill(0, 1, baseWidth / 2 - 1, 4, UiTheme.withAlpha(UiTheme.TEAM_B, alpha));
-        Map<String, String> sample = previewTemplateValues();
-        String header = HudStats.resolveTemplate(values.scoreHeaderTemplate(), sample);
-        String teamA = HudStats.resolveTemplate(values.scoreTeamATemplate(), sample);
-        String teamB = HudStats.resolveTemplate(values.scoreTeamBTemplate(), sample);
-        String timer = HudStats.resolveTemplate(values.scoreTimerTemplate(), sample);
-        String details = HudStats.resolveTemplate(values.scoreDetailsTemplate(), sample);
-        int scoreColor = UiTheme.withAlpha(values.scoreColor(), alpha);
-        graphics.drawCenteredString(font, UiTheme.fit(font, header, baseWidth - 20), 0, 8, scoreColor);
-        graphics.drawString(font, UiTheme.fit(font, teamA, baseWidth / 2 - 18), -baseWidth / 2 + 14, 28,
-                UiTheme.withAlpha(UiTheme.TEAM_A, alpha), false);
-        graphics.drawCenteredString(font, UiTheme.fit(font, timer, baseWidth / 3), 0, 27, scoreColor);
-        graphics.drawString(font, UiTheme.fit(font, teamB, baseWidth / 2 - 18), baseWidth / 2 - 14 - font.width(teamB),
-                28, UiTheme.withAlpha(UiTheme.TEAM_B, alpha), false);
-        graphics.drawCenteredString(font, UiTheme.fit(font, details, baseWidth - 20), 0, 48,
-                UiTheme.withAlpha(UiTheme.MUTED, alpha));
-        graphics.pose().popPose();
-        renderDragBadge(graphics, rect, "拖动记分板");
-        if (selected.equals("score")) {
-            graphics.renderOutline(rect.left() - 1, rect.top() - 1, rect.width() + 2,
-                    rect.height() + 2, 0xAAFFD27A);
+        cn.blockforge.generated.generatedmod.client.ui.ScoreHudRenderer.draw(graphics, font, rect, values, previewTemplateValues(), false);
+        if (selected.equals("score") && !dockHidden) {
+            graphics.renderOutline(rect.left() - 1, rect.top() - 1, rect.width() + 2, rect.height() + 2, UiTheme.WARNING);
         }
     }
 
     private void renderTextPreview(GuiGraphics graphics, ClientHudLayout.Elements values,
                                    HudGeometry.Rect rect, String text) {
-        drawSimplePanel(graphics, rect, text, values.textOpacityPercent(), UiTheme.ACCENT);
+        drawSimplePanel(graphics, rect, text, values.textOpacityPercent(), values.textColor());
         renderDragBadge(graphics, rect, "拖动状态文字");
         if (selected.equals("text")) {
             graphics.renderOutline(rect.left() - 1, rect.top() - 1, rect.width() + 2,
@@ -1764,7 +1777,7 @@ public final class HudLayoutScreen extends Screen {
 
     private void renderFeedPreview(GuiGraphics graphics, ClientHudLayout.Elements values,
                                    HudGeometry.Rect rect, String text) {
-        drawSimplePanel(graphics, rect, text, values.feedOpacityPercent(), UiTheme.ACCENT);
+        drawSimplePanel(graphics, rect, text, values.feedOpacityPercent(), values.feedColor());
         renderDragBadge(graphics, rect, "拖动击杀播报");
         if (selected.equals("feed")) {
             graphics.renderOutline(rect.left() - 1, rect.top() - 1, rect.width() + 2,
@@ -1774,16 +1787,7 @@ public final class HudLayoutScreen extends Screen {
 
     private void drawSimplePanel(GuiGraphics graphics, HudGeometry.Rect rect, String text,
                                  int opacity, int accent) {
-        graphics.pose().pushPose();
-        graphics.pose().translate(rect.centerX(), rect.centerY(), 0.0F);
-        graphics.pose().scale(rect.scale(), rect.scale(), 1.0F);
-        int w = rect.baseWidth();
-        int h = rect.baseHeight();
-        graphics.fill(-w / 2, -h / 2, w / 2, h / 2, UiTheme.withAlpha(UiTheme.PANEL_RAISED, opacity));
-        graphics.renderOutline(-w / 2, -h / 2, w, h, UiTheme.withAlpha(accent, opacity));
-        graphics.drawCenteredString(font, UiTheme.fit(font, text, w - 16), 0, -4,
-                UiTheme.withAlpha(UiTheme.TEXT, opacity));
-        graphics.pose().popPose();
+        MatchHudOverlay.drawPanel(graphics, font, rect, rect.baseHeight(), text, "", accent, opacity);
     }
 
     private void renderDragBadge(GuiGraphics graphics, HudGeometry.Rect rect, String label) {
@@ -1811,17 +1815,16 @@ public final class HudLayoutScreen extends Screen {
     }
 
     private void renderDock(GuiGraphics graphics) {
-        graphics.fill(dockX + 2, dockTop + 2, dockX + dockWidth + 2, dockBottom + 2, UiTheme.SHADOW);
         graphics.fill(dockX, dockTop, dockX + dockWidth, dockBottom, UiTheme.PANEL);
         graphics.renderOutline(dockX, dockTop, dockWidth, dockBottom - dockTop, UiTheme.BORDER);
-        graphics.fill(dockX, dockTop, dockX + dockWidth, dockTop + DOCK_HEADER_HEIGHT, UiTheme.PANEL_SELECTED);
+        graphics.fill(dockX, dockTop, dockX + dockWidth, dockTop + DOCK_HEADER_HEIGHT, UiTheme.PANEL_RAISED);
         String title = globalTab ? "背景与全局设置" : "配置：" + activeContext.displayName();
         int instructionWidth = dockWidth >= 300 ? 82 : 0;
         int titleWidth = Math.max(40, dockWidth - 16 - instructionWidth);
         graphics.drawString(font, UiTheme.fit(font, title, titleWidth), dockX + 8, dockTop + 6,
                 UiTheme.TEXT, false);
         if (instructionWidth > 0) {
-            graphics.drawString(font, UiTheme.fit(font, "拖动标题栏移动", instructionWidth),
+            graphics.drawString(font, UiTheme.fit(font, dirty ? "未保存" : "已保存", instructionWidth),
                     dockX + dockWidth - instructionWidth - 8, dockTop + 7, UiTheme.SUBTLE, false);
         }
         graphics.fill(dockX, dockTop + DOCK_HEADER_HEIGHT, dockX + dockWidth, dockTop + DOCK_HEADER_HEIGHT + 1,
@@ -1871,8 +1874,8 @@ public final class HudLayoutScreen extends Screen {
     }
 
     private void renderStatus(GuiGraphics graphics) {
-        int availableWidth = Math.max(80, dockX - 24);
-        graphics.drawString(font, marquee(status, availableWidth), 12, height - 14,
+        int availableWidth = Math.max(0, dockX - 24);
+        graphics.drawString(font, UiTheme.fit(font, statusTicks > 0 ? status : "", availableWidth), 12, height - 14,
                 statusTicks > 0 ? statusColor : UiTheme.SUBTLE);
     }
 

@@ -15,6 +15,7 @@ public final class UiEditBox extends EditBox {
         setBordered(false);
         setTextColor(UiTheme.TEXT);
         setTextColorUneditable(UiTheme.MUTED);
+        setHint(hint);
     }
 
     @Override
@@ -30,12 +31,10 @@ public final class UiEditBox extends EditBox {
         int y = getY();
         int width = getWidth();
         int height = getHeight();
-        int background = isActive() ? 0xE31A252E : 0xB51A2027;
+        int background = isActive() ? 0xFF111214 : UiTheme.PANEL;
         int border = isActive() && (isFocused() || isHovered()) ? UiTheme.ACCENT : UiTheme.BORDER_SUBTLE;
-        graphics.fill(x + 2, y + 2, x + width + 2, y + height + 2, UiTheme.SHADOW);
         graphics.fill(x, y, x + width, y + height, background);
         graphics.renderOutline(x, y, width, height, border);
-        graphics.fill(x, y, x + width, y + 2, isActive() ? UiTheme.ACCENT : UiTheme.SUBTLE);
         // bordered=false 时原版文字从控件左上角开始。只在绘制阶段平移画布，
         // 不改变控件自身坐标，避免布局/鼠标命中在渲染期间看到一套临时几何。
         int savedWidth = width;

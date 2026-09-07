@@ -83,8 +83,7 @@ public final class SceneHudOverlay {
                     : room.name() + "  ·  人数 " + room.memberCount();
         }
         return "已等待 " + UiTheme.formatTicks(ClientLobbyData.dynamicWaitedTicks())
-                + "  ·  序位 " + Math.max(1, status.position())
-                + "  ·  可在快速匹配界面取消";
+                + "  ·  序位 " + Math.max(1, status.position());
     }
 
     private static void renderRoom(GuiGraphics graphics, float partialTick, int width, int height, RoomView room) {
@@ -165,7 +164,7 @@ public final class SceneHudOverlay {
     private static void drawBanner(GuiGraphics graphics, Font font,
                                    ClientHudLayout.Elements elements, int width, int height,
                                    String lineOne, String lineTwo, int accent) {
-        int baseWidth = Math.max(240, Math.max(font.width(lineOne), font.width(lineTwo)) + 28);
+        int baseWidth = 340;
         HudGeometry.Rect panel = HudGeometry.banner(elements, width, height, baseWidth);
         MatchHudOverlay.drawPanel(graphics, font, panel, HudGeometry.BANNER_BASE_HEIGHT,
                 UiTheme.fit(font, lineOne, panel.baseWidth() - 16),

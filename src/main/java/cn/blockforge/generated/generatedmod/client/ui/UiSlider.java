@@ -85,11 +85,11 @@ public final class UiSlider extends AbstractWidget {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         int step = Math.max(1, (maximum - minimum) / 40);
         if (keyCode == 263 || keyCode == 262) {
-            setAndNotify(clampValue(valueSource.getAsInt() + step));
+            setAndNotify(clampValue(valueSource.getAsInt() + (keyCode == 262 ? step : -step)));
             return true;
         }
         if (keyCode == 264 || keyCode == 265) {
-            setAndNotify(clampValue(valueSource.getAsInt() - step));
+            setAndNotify(clampValue(valueSource.getAsInt() + (keyCode == 265 ? step : -step)));
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
@@ -114,7 +114,7 @@ public final class UiSlider extends AbstractWidget {
         boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= y - 9 && mouseY <= y + getHeight();
         graphics.fill(knobX, y, knobX + 5, y + getHeight(),
                 active && (hovered || dragging) ? UiTheme.TEXT : UiTheme.MUTED);
-        graphics.drawString(labelFont, name + "  " + value + unit, x, y - 9,
+        graphics.drawString(labelFont, UiTheme.fit(labelFont, name + "  " + value + unit, width), x, y - 9,
                 active ? UiTheme.MUTED : UiTheme.SUBTLE, false);
     }
 

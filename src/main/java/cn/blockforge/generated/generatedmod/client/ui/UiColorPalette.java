@@ -37,6 +37,10 @@ public final class UiColorPalette extends AbstractWidget {
     private float saturation;
     private float brightness;
     private int draggingSlider = -1;
+    private int viewportTop;
+    private int viewportBottom = Integer.MAX_VALUE;
+
+    public void setViewport(int top, int bottom) { viewportTop = top; viewportBottom = bottom; }
 
     public UiColorPalette(Font font, int x, int y, int width, int initialColor, Consumer<Integer> onChange) {
         super(x, y, width, HEIGHT, Component.literal("色板"));
@@ -68,7 +72,7 @@ public final class UiColorPalette extends AbstractWidget {
     }
 
     private int cellSize() {
-        return Math.max(8, (getWidth() - GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS);
+        return Math.min(CELL, Math.max(8, (getWidth() - GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS));
     }
 
     private int sliderTop(int index) {
@@ -81,7 +85,7 @@ public final class UiColorPalette extends AbstractWidget {
     }
 
     private float sliderRatio(int mouseX) {
-        return Math.max(0.0F, Math.min(1.0F, (mouseX - getX()) / (float) Math.max(1, getWidth())));
+        return Math.max(0.0F, Math.min(1.0F, (mouseX - getX() - 52) / (float) Math.max(12, getWidth() - 56)));
     }
 
     private void applyHsvAndNotify() {
@@ -91,7 +95,8 @@ public final class UiColorPalette extends AbstractWidget {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (!visible || !active || button != 0 || !isMouseOver(mouseX, mouseY)) {
+        if (!visible || !active || button != 0 || !isMouseOver(mouseX, mouseY)
+                || mouseY < viewportTop || mouseY >= viewportBottom) {
             return false;
         }
         // 预设网格
@@ -146,6 +151,12 @@ public final class UiColorPalette extends AbstractWidget {
 
     @Override
     public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        graphics.enableScissor(getX(), Math.max(getY(), viewportTop), getX() + getWidth(),
+                Math.min(getY() + getHeight(), viewportBottom));
+        try { renderPalette(graphics, mouseX, mouseY); } finally { graphics.disableScissor(); }
+    }
+
+    private void renderPalette(GuiGraphics graphics, int mouseX, int mouseY) {
         int x = getX();
         int y = getY();
         int width = getWidth();

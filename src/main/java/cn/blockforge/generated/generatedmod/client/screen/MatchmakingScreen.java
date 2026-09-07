@@ -42,18 +42,14 @@ public final class MatchmakingScreen extends UiScreen {
 
     @Override
     protected void init() {
-        beginLayout(500, 290, BUTTON_HEIGHT * 2 + 4);
+        beginLayout(500, 270, BUTTON_HEIGHT);
         cardY = flowRow(CARD_HEIGHT);
         ruleY = flowRow(28);
-        hintY = flowRow(18);
-        actionButton = footerButton("快速匹配", 0, 2, 0, this::toggle,
+        hintY = flowRow(6);
+        actionButton = footerButton("快速匹配", 1, 2, 0, this::toggle,
                 "进入或退出独立的快速匹配队列。", UiButton.Kind.PRIMARY);
-        footerButton("房间大厅", 1, 2, 0, () -> LobbyScreen.open(parent),
-                "去房间大厅创建 / 加入房间；匹配与房间彼此独立。", UiButton.Kind.SECONDARY);
-        footerButton("返回", 0, 2, 1, this::onClose,
+        footerButton("返回", 0, 2, 0, this::onClose,
                 "返回上一级界面。", UiButton.Kind.DANGER);
-        footerButton("刷新状态", 1, 2, 1, this::refresh,
-                "重新读取匹配队列状态。", UiButton.Kind.SECONDARY);
         updateButton();
     }
 
@@ -92,7 +88,7 @@ public final class MatchmakingScreen extends UiScreen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderShell(graphics, "匹配队列独立运行；房间列表请返回大厅");
+        renderShell(graphics, "自动组局 · " + MatchmakingManager.MIN_PLAYERS_TO_FORM + " 人起赛");
         MatchmakingStatus status = ClientLobbyData.matchmaking();
         int waited = ClientLobbyData.dynamicWaitedTicks();
         int ready = ClientLobbyData.dynamicReadySeconds();
@@ -101,34 +97,33 @@ public final class MatchmakingScreen extends UiScreen {
                 : status.queued() ? UiTheme.WARNING : UiTheme.INFO;
         final int card = cardY;
         paintBand(graphics, card, CARD_HEIGHT, () -> {
-            UiTheme.card(graphics, innerLeft, card, innerWidth, CARD_HEIGHT, UiTheme.PANEL_RAISED);
             String state = status.error() && !status.message().isBlank() ? status.message()
                     : forming ? "已匹配，" + ready + " 秒后开赛"
                     : status.queued() ? "正在寻找对手"
                     : ClientLobbyData.matchActive() ? "服务器已有比赛，暂时不能匹配"
-                    : "当前未进入匹配队列";
+                    : !ClientLobbyData.ownRoomId().isBlank() ? "当前已在房间中" : "准备就绪";
             graphics.drawString(font, fit(state, innerWidth - 20), innerLeft + 10, card + 9, color, false);
             String detail = status.queued() || forming
                     ? "队列 " + status.queueSize() + " 人  ·  你的序位 " + Math.max(1, status.position())
-                    : "加入后会显示队列人数、序位和等待时间";
+                    : "队列 " + status.queueSize() + " 人";
             graphics.drawString(font, fit(detail, innerWidth - 20), innerLeft + 10, card + 29,
                     UiTheme.TEXT, false);
             graphics.drawString(font, fit("已等待 " + UiTheme.formatTicks(waited)
-                    + (forming ? "  ·  准备倒计时动态更新" : ""), innerWidth - 20),
+                    + (forming ? "  ·  即将入场" : ""), innerWidth - 20),
                     innerLeft + 10, card + 49, UiTheme.MUTED, false);
         });
         final int rules = ruleY;
         paintBand(graphics, rules, 28, () -> {
-            section(graphics, "固定匹配规则", innerLeft, rules, innerWidth);
+            section(graphics, "比赛规则", innerLeft, rules, innerWidth);
             graphics.drawString(font, fit("至少 " + MatchmakingManager.MIN_PLAYERS_TO_FORM
-                    + " 人成局 · 无人数上限 · 无限等待 · 成局后 "
+                    + " 人成局 · 不限人数 · 成局后 "
                     + MatchmakingManager.READY_SECONDS + " 秒准备", innerWidth), innerLeft, rules + 15,
                     UiTheme.MUTED, false);
         });
         final int hint = hintY;
-        paintBand(graphics, hint, 18, () -> graphics.drawString(font,
-                fit("大厅只负责创建 / 浏览 / 加入房间；匹配状态会同步显示在游戏主界面 HUD。", innerWidth),
-                innerLeft, hint, UiTheme.SUBTLE, false));
+        paintBand(graphics, hint, 6, () -> progress(graphics, innerLeft, hint, innerWidth, 4,
+                forming ? 1.0F - ready / (float) MatchmakingManager.READY_SECONDS
+                        : status.queueSize() / (float) MatchmakingManager.MIN_PLAYERS_TO_FORM, color));
         String message = status.message().isBlank() ? ClientLobbyData.matchmakingMessage() : status.message();
         renderStatus(graphics, message, status.error() ? UiTheme.ERROR : color);
         super.render(graphics, mouseX, mouseY, partialTick);

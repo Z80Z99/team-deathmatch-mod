@@ -88,64 +88,13 @@ public final class MatchHudOverlay {
         int panelAlpha = Math.min(elements.feedOpacityPercent(), 100) * fade / 255;
         int baseWidth = font.width(text) + 20;
         HudGeometry.Rect panel = HudGeometry.feed(elements, width, height, baseWidth);
-        int bodyColor = UiTheme.withAlpha(UiTheme.PANEL_RAISED, panelAlpha);
-        int outlineColor = UiTheme.withAlpha(elements.feedColor(), panelAlpha);
-        int textColor = UiTheme.withAlpha(elements.feedColor(), panelAlpha);
-        graphics.pose().pushPose();
-        graphics.pose().translate(panel.centerX(), panel.centerY(), 0.0F);
-        graphics.pose().scale(panel.scale(), panel.scale(), 1.0F);
-        graphics.fill(-baseWidth / 2 + 2, -HudGeometry.FEED_BASE_HEIGHT / 2 + 2,
-                baseWidth / 2 + 2, HudGeometry.FEED_BASE_HEIGHT / 2 + 2, UiTheme.SHADOW);
-        graphics.fill(-baseWidth / 2, -HudGeometry.FEED_BASE_HEIGHT / 2,
-                baseWidth / 2, HudGeometry.FEED_BASE_HEIGHT / 2, bodyColor);
-        graphics.renderOutline(-baseWidth / 2, -HudGeometry.FEED_BASE_HEIGHT / 2,
-                baseWidth, HudGeometry.FEED_BASE_HEIGHT, outlineColor);
-        graphics.drawCenteredString(font, text, 0, -4, textColor);
-        graphics.pose().popPose();
+        drawPanel(graphics, font, panel, HudGeometry.FEED_BASE_HEIGHT, text, "", elements.feedColor(), panelAlpha);
     }
 
     private static void renderScore(ForgeGui forgeGui, GuiGraphics graphics, int width, int height,
                                     Elements elements) {
-        Font font = forgeGui.getMinecraft().font;
-        HudGeometry.Rect panel = HudGeometry.score(elements, width, height);
-        int baseWidth = panel.baseWidth();
-        int baseHeight = HudGeometry.SCORE_BASE_HEIGHT;
-        float scale = panel.scale();
-        int centerX = panel.centerX();
-        int top = panel.top();
-        int opacity = elements.scoreOpacityPercent();
-        int panelColor = UiTheme.withAlpha(UiTheme.PANEL, opacity);
-        int textColor = UiTheme.withAlpha(elements.scoreColor(), opacity);
-        int mutedColor = UiTheme.withAlpha(UiTheme.MUTED, opacity);
-        int teamAColor = UiTheme.withAlpha(UiTheme.TEAM_A, opacity);
-        int teamBColor = UiTheme.withAlpha(UiTheme.TEAM_B, opacity);
-
-        graphics.pose().pushPose();
-        graphics.pose().translate(centerX, top, 0.0F);
-        graphics.pose().scale(scale, scale, 1.0F);
-        graphics.fill(-baseWidth / 2 + 3, 3, baseWidth / 2 + 3, baseHeight + 3, UiTheme.SHADOW);
-        graphics.fill(-baseWidth / 2, 0, baseWidth / 2, baseHeight, panelColor);
-        graphics.renderOutline(-baseWidth / 2, 0, baseWidth, baseHeight,
-                UiTheme.withAlpha(UiTheme.BORDER, opacity));
-        graphics.fill(-baseWidth / 2 + 1, 1, 0, 4, teamAColor);
-        graphics.fill(0, 1, baseWidth / 2 - 1, 4, teamBColor);
-        if (ClientMatchData.pulseActive()) {
-            graphics.fill(-baseWidth / 2 + 1, baseHeight - 3, baseWidth / 2 - 1,
-                    baseHeight - 1, UiTheme.withAlpha(UiTheme.ACCENT, 85));
-        }
-
-        Map<String, String> values = templateValues();
-        String header = fit(font, HudStats.resolveTemplate(elements.scoreHeaderTemplate(), values), baseWidth - 20);
-        String teamA = fit(font, HudStats.resolveTemplate(elements.scoreTeamATemplate(), values), baseWidth / 2 - 18);
-        String teamB = fit(font, HudStats.resolveTemplate(elements.scoreTeamBTemplate(), values), baseWidth / 2 - 18);
-        String timer = fit(font, HudStats.resolveTemplate(elements.scoreTimerTemplate(), values), baseWidth / 3);
-        String details = fit(font, HudStats.resolveTemplate(elements.scoreDetailsTemplate(), values), baseWidth - 20);
-        graphics.drawCenteredString(font, header, 0, 8, textColor);
-        graphics.drawString(font, teamA, -baseWidth / 2 + 14, 28, teamAColor, false);
-        graphics.drawCenteredString(font, timer, 0, 27, textColor);
-        graphics.drawString(font, teamB, baseWidth / 2 - 14 - font.width(teamB), 28, teamBColor, false);
-        graphics.drawCenteredString(font, details, 0, 48, mutedColor);
-        graphics.pose().popPose();
+        cn.blockforge.generated.generatedmod.client.ui.ScoreHudRenderer.draw(graphics, forgeGui.getMinecraft().font,
+                HudGeometry.score(elements, width, height), elements, templateValues(), ClientMatchData.pulseActive());
     }
 
     private static void renderTeamHint(ForgeGui forgeGui, GuiGraphics graphics, int width, int height,
@@ -154,26 +103,8 @@ public final class MatchHudOverlay {
         String hint = HudStats.resolveTemplate(elements.textTemplate(), Map.of(
                 "team", ClientMatchData.myTeam.displayName(), "sizes", ClientMatchData.teamSizesText(),
                 "hint", hintText(), "mode", ClientMatchData.modeText(), "phase", ClientMatchData.phaseText()));
-        int textColor = elements.textColor();
-        int baseWidth = Math.max(Math.max(180, elements.textWidth()), font.width(hint) + 28);
-        HudGeometry.Rect panel = HudGeometry.text(elements, width, height, baseWidth);
-        int baseHeight = HudGeometry.TEXT_BASE_HEIGHT;
-        int opacity = elements.textOpacityPercent();
-
-        graphics.pose().pushPose();
-        graphics.pose().translate(panel.centerX(), panel.centerY(), 0.0F);
-        graphics.pose().scale(panel.scale(), panel.scale(), 1.0F);
-        graphics.fill(-baseWidth / 2 + 2, -baseHeight / 2 + 2,
-                baseWidth / 2 + 2, baseHeight / 2 + 2, UiTheme.SHADOW);
-        graphics.fill(-baseWidth / 2, -baseHeight / 2, baseWidth / 2,
-                baseHeight / 2, UiTheme.withAlpha(UiTheme.PANEL_RAISED, opacity));
-        graphics.renderOutline(-baseWidth / 2, -baseHeight / 2, baseWidth, baseHeight,
-                UiTheme.withAlpha(textColor, opacity));
-        graphics.fill(-baseWidth / 2 + 1, -baseHeight / 2 + 1, -baseWidth / 2 + 4,
-                baseHeight / 2 - 1, UiTheme.withAlpha(textColor, opacity));
-        graphics.drawCenteredString(font, fit(font, hint, baseWidth - 16), 0, -4,
-                UiTheme.withAlpha(textColor, opacity));
-        graphics.pose().popPose();
+        HudGeometry.Rect panel = HudGeometry.text(elements, width, height, elements.textWidth());
+        drawPanel(graphics, font, panel, HudGeometry.TEXT_BASE_HEIGHT, hint, "", elements.textColor(), elements.textOpacityPercent());
     }
 
     /** 通用面板画法：供比赛文字条与大厅场景横幅共用。 */
@@ -183,21 +114,17 @@ public final class MatchHudOverlay {
         graphics.pose().translate(panel.centerX(), panel.centerY(), 0.0F);
         graphics.pose().scale(panel.scale(), panel.scale(), 1.0F);
         int baseWidth = panel.baseWidth();
-        graphics.fill(-baseWidth / 2 + 2, -baseHeight / 2 + 2,
-                baseWidth / 2 + 2, baseHeight / 2 + 2, UiTheme.SHADOW);
         graphics.fill(-baseWidth / 2, -baseHeight / 2, baseWidth / 2, baseHeight / 2,
                 UiTheme.withAlpha(UiTheme.PANEL_RAISED, opacity));
-        graphics.renderOutline(-baseWidth / 2, -baseHeight / 2, baseWidth, baseHeight,
-                UiTheme.withAlpha(accent, opacity));
         graphics.fill(-baseWidth / 2 + 1, -baseHeight / 2 + 1, -baseWidth / 2 + 4,
                 baseHeight / 2 - 1, UiTheme.withAlpha(accent, opacity));
         if (lineTwo == null || lineTwo.isBlank()) {
-            graphics.drawCenteredString(font, lineOne, 0, -4,
-                    UiTheme.withAlpha(UiTheme.TEXT, opacity));
+            graphics.drawCenteredString(font, fit(font, lineOne, baseWidth - 18), 0, -4,
+                    UiTheme.withAlpha(accent, opacity));
         } else {
-            graphics.drawCenteredString(font, lineOne, 0, -11,
+            graphics.drawCenteredString(font, fit(font, lineOne, baseWidth - 18), 0, -11,
                     UiTheme.withAlpha(UiTheme.TEXT, opacity));
-            graphics.drawCenteredString(font, lineTwo, 0, 3,
+            graphics.drawCenteredString(font, fit(font, lineTwo, baseWidth - 18), 0, 3,
                     UiTheme.withAlpha(UiTheme.MUTED, opacity));
         }
         graphics.pose().popPose();

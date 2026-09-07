@@ -32,7 +32,20 @@ public final class UiCycleButton<T> extends UiButton {
         if (!active || values.isEmpty()) {
             return;
         }
-        index = (index + 1) % values.size();
+        var screen = net.minecraft.client.Minecraft.getInstance().screen;
+        if (!(getValue() instanceof Boolean) && screen instanceof UiChoiceHost host) {
+            host.choicePopup().open(this, screen);
+            return;
+        }
+        choose((index + 1) % values.size());
+    }
+
+    public int optionCount() { return values.size(); }
+    public int selectedIndex() { return index; }
+    public String optionLabel(int option) { return display.apply(values.get(option)); }
+    public void choose(int option) {
+        if (!active || option < 0 || option >= values.size()) return;
+        index = option;
         T value = values.get(index);
         setMessage(Component.literal(display.apply(value)));
         if (onValueChange != null) {
@@ -43,6 +56,31 @@ public final class UiCycleButton<T> extends UiButton {
     public T getValue() {
         return values.isEmpty() ? null : values.get(index);
     }
+
+    @Override
+    protected void renderWidget(net.minecraft.client.gui.GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        if (getValue() instanceof Boolean flag) {
+            int x = getX(), y = getY();
+            graphics.fill(x, y, x + getWidth(), y + getHeight(), UiTheme.PANEL_RAISED);
+            int trackWidth = Math.min(24, getWidth() - 8);
+            int trackX = x + getWidth() - trackWidth - 4;
+            int centerY = y + getHeight() / 2;
+            int color = !active ? UiTheme.SUBTLE : flag ? UiTheme.ACCENT : UiTheme.MUTED;
+            graphics.fill(trackX, centerY - 5, trackX + trackWidth, centerY + 5, flag ? UiTheme.withAlpha(color, 30) : UiTheme.BORDER_SUBTLE);
+            int knobX = flag ? trackX + trackWidth - 8 : trackX + 1;
+            graphics.fill(knobX, centerY - 4, knobX + 7, centerY + 4, color);
+            var font = net.minecraft.client.Minecraft.getInstance().font;
+            graphics.drawString(font, UiTheme.fit(font, getMessage().getString(), getWidth() - trackWidth - 14), x + 5, centerY - 4, color, false);
+            if (isHoveredOrFocused()) graphics.renderOutline(x, y, getWidth(), getHeight(), color);
+            return;
+        }
+        super.renderWidget(graphics, mouseX, mouseY, partialTick);
+        int x = getX() + getWidth() - 10, y = getY() + getHeight() / 2;
+        for (int row = 0; row < 3; row++) graphics.fill(x + row, y - 1 + row, x + 5 - row, y + row,
+                active ? UiTheme.MUTED : UiTheme.SUBTLE);
+    }
+
+    @Override protected int labelPadding() { return 30; }
 
     /** 更新显示值但不触发回调，适合重置草稿或接收服务器同步。 */
     public void setValue(T value) {

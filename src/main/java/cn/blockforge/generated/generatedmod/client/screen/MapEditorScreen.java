@@ -56,12 +56,12 @@ public final class MapEditorScreen extends UiScreen {
     protected void init() {
         editButtons.clear();
         beginLayout(700, 360, BUTTON_HEIGHT);
-        targetY = flowRow(18);
-        summaryY = flowRow(SUMMARY_HEIGHT);
         tabsY = flowRow(BUTTON_HEIGHT);
         actionsY1 = flowRow(BUTTON_HEIGHT);
         actionsY2 = flowRow(BUTTON_HEIGHT);
-        hintY = flowRow(18);
+        targetY = flowRow(18);
+        summaryY = flowRow(SUMMARY_HEIGHT);
+        hintY = flowRow(6);
         lastRevision = ClientMapEditorData.revision();
 
         addActionTabs();
@@ -120,7 +120,16 @@ public final class MapEditorScreen extends UiScreen {
                            MapEditorAction action, String tooltip, UiButton.Kind kind) {
         int gap = 6;
         UiButton button = uiButton(label, columnX(column, 3, gap), y, columnWidth(3, gap),
-                () -> request(action, ""), tooltip, kind);
+                () -> {
+                    if (action == MapEditorAction.CLEAR_TEAM_A || action == MapEditorAction.CLEAR_TEAM_B
+                            || action == MapEditorAction.CLEAR_SPECTATOR) {
+                        String targetId = ClientMapEditorData.view().mapId();
+                        confirmAction(label, "地图「" + ClientMapEditorData.view().displayName() + "」：" + tooltip + " 此操作不可撤销。",
+                                () -> {
+                                    if (targetId.equals(ClientMapEditorData.view().mapId())) request(action, "");
+                                });
+                    } else request(action, "");
+                }, tooltip, kind);
         boolean region = actionPage == ActionPage.REGIONS;
         flowWidget(button, y, () -> region == (page == ActionPage.REGIONS));
         editButtons.add(button);
@@ -176,7 +185,7 @@ public final class MapEditorScreen extends UiScreen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderShell(graphics, "编辑目标地图；地图归属与邀请码请在地图工作台管理");
+        renderShell(graphics, ClientMapEditorData.view().hasTarget() ? ClientMapEditorData.view().displayName() : "未选择地图");
         MapEditorView view = ClientMapEditorData.view();
         renderStatus(graphics, statusMessage(view), statusColor(view));
 
@@ -195,13 +204,15 @@ public final class MapEditorScreen extends UiScreen {
 
         paintBand(graphics, summaryY, SUMMARY_HEIGHT, () -> renderSummary(graphics, view));
         final int hintBand = hintY;
-        paintBand(graphics, hintBand, 18, () -> renderActionHint(graphics, view));
+        paintBand(graphics, hintBand, 6, () -> progress(graphics, innerLeft, hintBand, innerWidth, 3,
+                ((view.teamACount() > 0 ? 1 : 0) + (view.teamBCount() > 0 ? 1 : 0)
+                        + (view.spectatorCount() > 0 ? 1 : 0)) / 3.0F, UiTheme.SUCCESS));
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 
     private void renderSummary(GuiGraphics graphics, MapEditorView view) {
         int y = summaryY;
-        UiTheme.card(graphics, innerLeft, y, innerWidth, SUMMARY_HEIGHT, UiTheme.PANEL_RAISED);
+        divider(graphics, innerLeft, y + SUMMARY_HEIGHT - 1, innerWidth);
         String state = view.draftInvalidated() ? "草稿失效" : !view.hasTarget() ? "无目标"
                 : !view.canEdit() ? "不可编辑" : view.locked() ? "任务锁定" : "可编辑";
         int stateColor = view.draftInvalidated() || !view.hasTarget() ? UiTheme.ERROR

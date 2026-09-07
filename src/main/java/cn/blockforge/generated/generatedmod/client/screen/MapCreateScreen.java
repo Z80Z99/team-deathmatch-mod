@@ -31,6 +31,7 @@ public final class MapCreateScreen extends UiScreen {
     private boolean created;
     private int pendingRequestId;
     private String status = "";
+    private String nameDraft = "";
     private int statusColor = UiTheme.INFO;
 
     public MapCreateScreen(Screen parent) {
@@ -48,7 +49,7 @@ public final class MapCreateScreen extends UiScreen {
 
     @Override
     protected void init() {
-        beginLayout(540, 300, BUTTON_HEIGHT);
+        beginLayout(460, 260, BUTTON_HEIGHT);
         nameLabelY = flowRow(10);
         nameBoxY = flowRow(BUTTON_HEIGHT);
         flowRow(10);
@@ -57,7 +58,8 @@ public final class MapCreateScreen extends UiScreen {
         nameBox = new UiEditBox(font, innerLeft, nameBoxY, innerWidth, BUTTON_HEIGHT,
                 Component.literal("地图显示名称"));
         nameBox.setMaxLength(48);
-        nameBox.setResponder(ignored -> updateControls());
+        nameBox.setValue(nameDraft);
+        nameBox.setResponder(value -> { nameDraft = value; updateControls(); });
         nameBox.setTooltip(Tooltip.create(Component.literal(
                 "玩家看到的名字，可用中文；内部 ID 由服务器自动生成（玩家名-名称），保证不与别人的地图冲突。")));
         flowWidget(nameBox, nameBoxY);
@@ -144,7 +146,7 @@ public final class MapCreateScreen extends UiScreen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderShell(graphics, "新地图以你当前位置为中心生成初始区域，之后可在编辑器里调整");
+        renderShell(graphics, created ? "创建完成" : "新地图");
         renderStatus(graphics, status, statusColor);
 
         final int label = nameLabelY;
@@ -158,19 +160,19 @@ public final class MapCreateScreen extends UiScreen {
     }
 
     private void renderCreationFlow(GuiGraphics graphics, int y) {
-        UiTheme.card(graphics, innerLeft, y, innerWidth, FLOW_HEIGHT, UiTheme.PANEL_RAISED);
+        divider(graphics, innerLeft, y, innerWidth);
         String name = nameBox == null ? "" : nameBox.getValue().trim();
         int markerColor = created ? UiTheme.SUCCESS : waiting ? UiTheme.WARNING : UiTheme.ACCENT;
         graphics.fill(innerLeft + 8, y + 6, innerLeft + 11, y + FLOW_HEIGHT - 6, markerColor);
-        String first = name.isBlank() ? "1  等待填写名称" : "1  名称  " + name;
+        String first = name.isBlank() ? "名称  未填写" : "名称  " + name;
         graphics.drawString(font, fit(first, innerWidth - 28), innerLeft + 18, y + 7,
                 name.isBlank() ? UiTheme.SUBTLE : UiTheme.TEXT, false);
-        graphics.drawString(font, fit("2  使用你的当前维度与位置建立初始区域", innerWidth - 28),
+        graphics.drawString(font, fit("维度  " + (minecraft.player == null ? "未知" : minecraft.player.level().dimension().location()), innerWidth - 28),
                 innerLeft + 18, y + 21, UiTheme.MUTED, false);
-        graphics.drawString(font, fit("3  内部 ID 自动生成（玩家名-名称），不与别人的地图冲突", innerWidth - 28),
+        graphics.drawString(font, fit("位置  " + (minecraft.player == null ? "未知" : minecraft.player.blockPosition().toShortString()), innerWidth - 28),
                 innerLeft + 18, y + 35, UiTheme.MUTED, false);
-        String fourth = created ? "4  已创建并设为编辑目标，可去编辑器继续"
-                : waiting ? "4  正在保存……" : "4  保存后归你所有，仅你可编辑";
+        String fourth = created ? "状态  已创建"
+                : waiting ? "状态  正在保存" : "拥有者  " + (minecraft.player == null ? "未知" : minecraft.player.getGameProfile().getName());
         graphics.drawString(font, fit(fourth, innerWidth - 28), innerLeft + 18, y + 49,
                 created ? UiTheme.SUCCESS : waiting ? UiTheme.WARNING : UiTheme.SUBTLE, false);
     }
@@ -178,7 +180,7 @@ public final class MapCreateScreen extends UiScreen {
     @Override
     public void onClose() {
         if (minecraft != null) {
-            minecraft.setScreen(parent);
+            if (created) MapEditorScreen.open(parent); else minecraft.setScreen(parent);
         }
     }
 

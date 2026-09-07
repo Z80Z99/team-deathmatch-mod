@@ -10,6 +10,8 @@ import net.minecraft.network.chat.Component;
 public class UiButton extends Button {
     private final Kind kind;
     private boolean selected;
+    private int historyIcon;
+    public UiButton historyIcon(boolean redo) { historyIcon = redo ? 1 : -1; return this; }
 
     public UiButton(int x, int y, int width, int height, Component message, OnPress onPress, Kind kind) {
         super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
@@ -20,19 +22,29 @@ public class UiButton extends Button {
     protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         int x = getX();
         int y = getY();
-        int background = !active ? 0xB51B232B : selected ? kind.hover
+        int background = !active ? UiTheme.PANEL : selected ? kind.hover
                 : isHoveredOrFocused() ? kind.hover : kind.background;
-        int border = !active ? 0xFF34404A : selected || isFocused() ? kind.accent : kind.border;
+        int border = !active ? UiTheme.BORDER_SUBTLE : selected || isHoveredOrFocused() ? kind.accent : kind.border;
         int text = active ? UiTheme.TEXT : UiTheme.SUBTLE;
 
-        graphics.fill(x + 2, y + 2, x + width + 2, y + height + 2, UiTheme.SHADOW);
         graphics.fill(x, y, x + width, y + height, background);
         graphics.renderOutline(x, y, width, height, border);
-        graphics.fill(x, y, x + width, y + 2, active ? kind.accent : UiTheme.SUBTLE);
-        graphics.fill(x, y + height - 2, x + 2, y + height, active ? kind.accent : UiTheme.SUBTLE);
+        if (selected) graphics.fill(x + 1, y + height - 3, x + width - 1, y + height - 1, kind.accent);
+        if (isFocused()) graphics.renderOutline(x + 2, y + 2, Math.max(1, width - 4), Math.max(1, height - 4), UiTheme.TEXT);
 
         Font font = Minecraft.getInstance().font;
-        String label = UiTheme.fit(font, getMessage().getString(), Math.max(1, width - 12));
+        if (historyIcon != 0) {
+            int cx = x + width / 2, cy = y + height / 2;
+            for (int row = -3; row <= 3; row++) {
+                int arrowX = cx + historyIcon * (4 - Math.abs(row));
+                graphics.fill(arrowX, cy - 2 + row, arrowX + 1, cy - 1 + row, text);
+            }
+            graphics.fill(cx - 4, cy - 2, cx + 5, cy - 1, text);
+            graphics.fill(cx - historyIcon * 4, cy - 1, cx - historyIcon * 4 + 1, cy + 4, text);
+            graphics.fill(cx - 3, cy + 3, cx + 4, cy + 4, text);
+            return;
+        }
+        String label = UiTheme.fit(font, getMessage().getString(), Math.max(1, width - labelPadding()));
         graphics.drawCenteredString(font, label, x + width / 2, y + Math.max(1, (height - 8) / 2), text);
     }
 
@@ -40,15 +52,17 @@ public class UiButton extends Button {
         this.selected = selected;
     }
 
+    protected int labelPadding() { return 12; }
+
     public boolean isSelected() {
         return selected;
     }
 
     public enum Kind {
-        SECONDARY(0xD8222D38, 0xF0354654, 0xFF4B667A, UiTheme.BORDER),
-        PRIMARY(0xD8274E55, 0xF039716F, 0xFF45D3C2, 0xFF70E3D4),
-        DANGER(0xD83A252B, 0xF05B3039, 0xFFE05D69, 0xFFFF8990),
-        WARNING(0xD8463925, 0xF06E592D, 0xFFFFB84D, 0xFFFFD27A);
+        SECONDARY(0xFF25272B, 0xFF383B40, UiTheme.MUTED, UiTheme.BORDER_SUBTLE),
+        PRIMARY(0xFF315A3D, 0xFF41774F, UiTheme.ACCENT, 0xFF679F75),
+        DANGER(0xFF38292D, 0xFF63353E, UiTheme.ERROR, 0xFF88505B),
+        WARNING(0xFF37342A, 0xFF56503B, UiTheme.WARNING, 0xFF807653);
 
         private final int background;
         private final int hover;

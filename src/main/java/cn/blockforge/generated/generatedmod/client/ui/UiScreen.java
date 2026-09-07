@@ -23,7 +23,9 @@ import java.util.function.BooleanSupplier;
  *       {@link #fit} 按所在单元格宽度裁剪。</li>
  * </ul>
  */
-public abstract class UiScreen extends Screen {
+public abstract class UiScreen extends Screen implements UiChoiceHost {
+    private final UiChoicePopup choices = new UiChoicePopup();
+    @Override public final UiChoicePopup choicePopup() { return choices; }
     public static final int HEADER_HEIGHT = 36;
     public static final int STATUS_HEIGHT = 22;
     /** 所有界面按钮、输入框和底部操作按钮统一使用的高度。 */
@@ -73,11 +75,12 @@ public abstract class UiScreen extends Screen {
     protected final void beginLayout(int preferredWidth, int preferredHeight, int footerHeight,
                                      boolean withStatusBand, boolean withHeader) {
         hasStatusBand = withStatusBand;
+        choices.close();
         hasHeaderBand = withHeader;
         panelWidth = Math.max(1, Math.min(preferredWidth, width - 16));
         panelLeft = (width - panelWidth) / 2;
         int headerHeight = withHeader ? HEADER_HEIGHT : 10;
-        int chrome = headerHeight + STATUS_HEIGHT + footerHeight + CONTENT_PADDING * 2 + 16;
+        int chrome = headerHeight + (withStatusBand ? STATUS_HEIGHT + 8 : 6) + footerHeight + CONTENT_PADDING + BUTTON_HEIGHT;
         int available = Math.max(chrome, height - 8);
         int panelHeight = preferredHeight <= 0
                 ? available
@@ -182,6 +185,7 @@ public abstract class UiScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+        if (choices.scroll(amount)) return true;
         if (super.mouseScrolled(mouseX, mouseY, amount)) {
             return true;
         }
@@ -202,6 +206,17 @@ public abstract class UiScreen extends Screen {
         UiTheme.tintScreen(graphics, width, height);
     }
 
+    @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        super.render(graphics, mouseX, mouseY, partialTick);
+        choices.render(graphics, font, mouseX, mouseY);
+    }
+    @Override public boolean mouseClicked(double x, double y, int button) {
+        return choices.click(x, y, button) || super.mouseClicked(x, y, button);
+    }
+    @Override public boolean keyPressed(int key, int scan, int modifiers) {
+        return choices.key(key) || super.keyPressed(key, scan, modifiers);
+    }
+
     /** 绘制背景、面板、面板内标题区和滚动条；标题永远不会压到内容区，无标题带界面只画面板。 */
     protected final void renderShell(GuiGraphics graphics, String subtitle) {
         renderUiBackground(graphics);
@@ -210,14 +225,14 @@ public abstract class UiScreen extends Screen {
             renderScrollbar(graphics);
             return;
         }
-        int centerX = panelLeft + panelWidth / 2;
-        graphics.drawCenteredString(font, fit(getTitle().getString(), innerWidth - 8), centerX,
-                panelTop + 7, UiTheme.TEXT);
+        graphics.drawString(font, fit(getTitle().getString(), innerWidth), innerLeft,
+                panelTop + 7, UiTheme.TEXT, false);
         if (subtitle != null && !subtitle.isBlank()) {
-            graphics.drawCenteredString(font, fit(subtitle, innerWidth - 24), centerX, panelTop + 19,
-                    UiTheme.MUTED);
+            graphics.drawString(font, fit(subtitle, innerWidth), innerLeft, panelTop + 20,
+                    UiTheme.MUTED, false);
         }
         UiTheme.divider(graphics, panelLeft + 1, panelTop + HEADER_HEIGHT - 3, panelWidth - 2);
+        UiTheme.divider(graphics, innerLeft, footerTop - 5, innerWidth);
         renderScrollbar(graphics);
     }
 
@@ -302,12 +317,17 @@ public abstract class UiScreen extends Screen {
 
     protected UiButton uiButton(String label, int x, int y, int buttonWidth, Runnable action,
                                 String tooltip, UiButton.Kind kind) {
+        if (label.startsWith("返回")) kind = UiButton.Kind.SECONDARY;
         UiButton button = new UiButton(x, y, buttonWidth, BUTTON_HEIGHT, Component.literal(label),
                 ignored -> action.run(), kind);
         if (tooltip != null && !tooltip.isBlank()) {
             button.setTooltip(Tooltip.create(Component.literal(tooltip)));
         }
         return button;
+    }
+
+    protected final void confirmAction(String title, String message, Runnable action) {
+        if (minecraft != null) minecraft.setScreen(new UiConfirmScreen(this, title, message, action));
     }
 
     protected String fit(String value, int maximumWidth) {
