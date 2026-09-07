@@ -15,6 +15,24 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class UiLayoutTest {
+    @Test void templateFieldStartsAtBeginningAfterPlaceholderWidth() throws Exception {
+        Font font = mock(Font.class);
+        when(font.plainSubstrByWidth(anyString(), anyInt())).thenAnswer(call ->
+                UiRenderCapture.shorten(call.getArgument(0), call.getArgument(1), false));
+        when(font.plainSubstrByWidth(anyString(), anyInt(), anyBoolean())).thenAnswer(call ->
+                UiRenderCapture.shorten(call.getArgument(0), call.getArgument(1), call.getArgument(2)));
+        UiEditBox editor = new UiEditBox(font, 0, 0, 10, 20,
+                net.minecraft.network.chat.Component.literal("Template"));
+        editor.setValue("{matching_line1}");
+        editor.setWidth(220);
+        assertEquals(0, editor.getCursorPosition());
+        Field display = net.minecraft.client.gui.components.EditBox.class.getDeclaredField("displayPos");
+        display.setAccessible(true);
+        assertEquals(0, display.getInt(editor));
+        assertEquals(212, editor.getInnerWidth());
+        assertEquals("{matching_line1}", editor.getValue());
+    }
+
     @org.junit.jupiter.api.AfterEach void clearClientData() {
         cn.blockforge.generated.generatedmod.client.ClientLobbyData.clear();
         cn.blockforge.generated.generatedmod.client.ClientMapEditorData.clear();
@@ -62,6 +80,10 @@ class UiLayoutTest {
                     }
                     try (UiRenderCapture capture = new UiRenderCapture(size[0], size[1])) {
                         screen.render(capture.graphics, -1000, -1000, 0);
+                        if (screen instanceof HudLayoutScreen) {
+                            assertTrue(capture.opaquePanelDepth >= 100, "Editor must cover preview glyph depth");
+                            assertEquals(0f, capture.graphics.pose().last().pose().m32());
+                        }
                         capture.save(screen.getClass().getSimpleName() + "-" + size[0] + "x" + size[1]);
                     }
                     if (screen instanceof RoomRulesScreen) {

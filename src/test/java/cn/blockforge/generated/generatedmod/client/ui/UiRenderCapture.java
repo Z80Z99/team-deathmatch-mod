@@ -22,6 +22,7 @@ final class UiRenderCapture implements AutoCloseable {
     private Graphics2D canvas;
     private final PoseStack pose = new PoseStack();
     final GuiGraphics graphics;
+    float opaquePanelDepth = Float.NEGATIVE_INFINITY;
 
     UiRenderCapture(int width, int height) {
         image = new BufferedImage(width * 3, height * 3, BufferedImage.TYPE_INT_ARGB);
@@ -35,6 +36,9 @@ final class UiRenderCapture implements AutoCloseable {
                     matrix.m10() * 3, matrix.m11() * 3, matrix.m30() * 3, matrix.m31() * 3));
             if (method.equals("pose")) return pose;
             if (method.equals("fill") && args.length == 5 && args[0] instanceof Integer) {
+                if ((int) args[4] == (UiTheme.PANEL | 0xFF000000)) {
+                    opaquePanelDepth = Math.max(opaquePanelDepth, matrix.m32());
+                }
                 canvas.setColor(new Color((int) args[4], true));
                 canvas.fillRect((int) args[0], (int) args[1], (int) args[2] - (int) args[0], (int) args[3] - (int) args[1]); return null;
             }

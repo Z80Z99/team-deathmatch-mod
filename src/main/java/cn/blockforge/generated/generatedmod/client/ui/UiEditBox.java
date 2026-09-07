@@ -19,6 +19,17 @@ public final class UiEditBox extends EditBox {
     }
 
     @Override
+    public int getInnerWidth() {
+        return Math.max(1, getWidth() - TEXT_PADDING_X * 2);
+    }
+
+    @Override
+    public void setValue(String value) {
+        super.setValue(value);
+        moveCursorToStart();
+    }
+
+    @Override
     public void onClick(double mouseX, double mouseY) {
         // 文字整体右移了 TEXT_PADDING_X，点击换算光标点位置时做同样补偿，选字才不会偏。
         // 拖拽选择走的是同一入口（AbstractWidget#onDrag 会回调 onClick），一并覆盖。
@@ -37,15 +48,15 @@ public final class UiEditBox extends EditBox {
         graphics.renderOutline(x, y, width, height, border);
         // bordered=false 时原版文字从控件左上角开始。只在绘制阶段平移画布，
         // 不改变控件自身坐标，避免布局/鼠标命中在渲染期间看到一套临时几何。
-        int savedWidth = width;
-        setWidth(Math.max(TEXT_PADDING_X, savedWidth - TEXT_PADDING_X * 2));
+        graphics.enableScissor(x + TEXT_PADDING_X, y + 1,
+                x + Math.max(TEXT_PADDING_X + 1, width - TEXT_PADDING_X), y + height - 1);
         graphics.pose().pushPose();
         graphics.pose().translate(TEXT_PADDING_X, Math.max(0, (height - 8) / 2), 0.0F);
         try {
             super.renderWidget(graphics, mouseX - TEXT_PADDING_X, mouseY, partialTick);
         } finally {
             graphics.pose().popPose();
-            setWidth(savedWidth);
+            graphics.disableScissor();
         }
     }
 }

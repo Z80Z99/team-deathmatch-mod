@@ -1632,12 +1632,25 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         }
         layoutRows();
         layoutFooterButtons();
-        if (!dockHidden) renderDock(graphics);
-        super.render(graphics, mouseX, mouseY, partialTick);
+        // Keep preview glyph depth behind the opaque editor and its controls.
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, 0, 100);
+        try {
+            if (!dockHidden) renderDock(graphics);
+            super.render(graphics, mouseX, mouseY, partialTick);
+        } finally {
+            graphics.pose().popPose();
+        }
         renderStatus(graphics);
         choices.render(graphics, font, mouseX, mouseY);
         if (exitPromptOpen) {
-            renderExitPrompt(graphics);
+            graphics.pose().pushPose();
+            graphics.pose().translate(0, 0, 500);
+            try {
+                renderExitPrompt(graphics);
+            } finally {
+                graphics.pose().popPose();
+            }
         }
     }
 
@@ -1815,7 +1828,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     }
 
     private void renderDock(GuiGraphics graphics) {
-        graphics.fill(dockX, dockTop, dockX + dockWidth, dockBottom, UiTheme.PANEL);
+        graphics.fill(dockX, dockTop, dockX + dockWidth, dockBottom, UiTheme.PANEL | 0xFF000000);
         graphics.renderOutline(dockX, dockTop, dockWidth, dockBottom - dockTop, UiTheme.BORDER);
         graphics.fill(dockX, dockTop, dockX + dockWidth, dockTop + DOCK_HEADER_HEIGHT, UiTheme.PANEL_RAISED);
         String title = globalTab ? "背景与全局设置" : "配置：" + activeContext.displayName();
