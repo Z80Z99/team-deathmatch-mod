@@ -57,13 +57,15 @@ public final class MapLibraryScreen extends UiListScreen<MapLibraryScreen.MapRow
                     () -> send(MapEditorAction.REVOKE_SHARE, row.id()));
         }, null), shareY);
         addList();
-        footerButton("返回", 0, 3, 0, this::onClose, null, UiButton.Kind.SECONDARY);
-        delete = footerButton("删除地图", 1, 3, 0, () -> {
+        footerButton("获得工具", 0, 4, 0, () -> send(MapEditorAction.GIVE_TOOLS, ""),
+                "领取地图规划器和地图画笔。", UiButton.Kind.PRIMARY);
+        footerButton("返回", 1, 4, 0, this::onClose, null, UiButton.Kind.SECONDARY);
+        delete = footerButton("删除地图", 2, 4, 0, () -> {
             MapRow row = selectedEntry();
             if (row != null) confirmAction("删除地图", "删除「" + row.name() + "」的地图配置和关联数据？此操作不可撤销。",
                     () -> send(MapEditorAction.DELETE_MAP, row.id()));
         }, null, UiButton.Kind.DANGER);
-        edit = footerButton("编辑地图", 2, 3, 0, () -> {
+        edit = footerButton("编辑地图", 3, 4, 0, () -> {
             MapRow row = selectedEntry();
             if (row != null) { send(MapEditorAction.EDIT_MAP, row.id()); MapEditorScreen.open(this); }
         }, null, UiButton.Kind.PRIMARY);

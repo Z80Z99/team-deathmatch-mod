@@ -28,13 +28,23 @@ public record MapEditorView(
         String shareCode,
         int responseRequestId,
         String message,
-        boolean error, int teamCCount, int teamDCount) {
+        boolean error, int teamCCount, int teamDCount,
+        List<MapRegion> regions,
+        MapTool selectedTool,
+        MapBrushMode brushMode,
+        String selectedRegionId,
+        int brushRange) {
     public MapEditorView {
         ownedMaps = List.copyOf(ownedMaps == null ? List.of() : ownedMaps);
         serverMaps = List.copyOf(serverMaps == null ? List.of() : serverMaps);
+        regions = List.copyOf(regions == null ? List.of() : regions);
+        selectedTool = selectedTool == null ? MapTool.BOUNDS : selectedTool;
+        brushMode = brushMode == null ? MapBrushMode.REGION : brushMode;
+        selectedRegionId = selectedRegionId == null ? "" : selectedRegionId;
         responseRequestId = Math.max(0, responseRequestId);
         message = message == null ? "" : message;
         shareCode = shareCode == null ? "" : shareCode;
+        brushRange = Math.max(1, brushRange);
     }
 
     /** 兼容旧调用点的地图 id 列表：即自己拥有的地图。 */

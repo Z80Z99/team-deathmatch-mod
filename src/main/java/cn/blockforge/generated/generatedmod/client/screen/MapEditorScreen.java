@@ -69,6 +69,17 @@ public final class MapEditorScreen extends UiScreen {
         lastRevision = ClientMapEditorData.revision();
 
         addActionTabs();
+        int toolsY = flowRow(BUTTON_HEIGHT);
+        int toolGap = 6;
+        flowWidget(uiButton("打开规划器", columnX(0, 3, toolGap), toolsY, columnWidth(3, toolGap),
+                () -> minecraft.setScreen(new MapPlannerScreen(ClientMapEditorData.view().regions())),
+                "用规划器选中和编辑任意区域。", UiButton.Kind.PRIMARY), toolsY);
+        flowWidget(uiButton("打开画笔", columnX(1, 3, toolGap), toolsY, columnWidth(3, toolGap),
+                () -> minecraft.setScreen(new MapBrushScreen()),
+                "调整画笔模式、距离和区域/方块操作。", UiButton.Kind.PRIMARY), toolsY);
+        flowWidget(uiButton("获得工具", columnX(2, 3, toolGap), toolsY, columnWidth(3, toolGap),
+                () -> request(MapEditorAction.GIVE_TOOLS, ""),
+                "领取规划器和画笔到背包。", UiButton.Kind.SECONDARY), toolsY);
         addRegionActions();
         addSpawnActions();
         footerButton("返回地图工作台", 0, 2, 0, this::onClose,

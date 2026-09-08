@@ -1,7 +1,12 @@
 package cn.blockforge.generated.generatedmod.network.packet;
 
 import cn.blockforge.generated.generatedmod.client.network.ClientPacketHandler;
+import cn.blockforge.generated.generatedmod.map.MapBrushMode;
+import cn.blockforge.generated.generatedmod.map.MapDefinition;
 import cn.blockforge.generated.generatedmod.map.MapEditorView;
+import cn.blockforge.generated.generatedmod.map.MapRegion;
+import cn.blockforge.generated.generatedmod.map.MapTool;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
@@ -44,9 +49,15 @@ public final class MapEditorSyncPacket {
         int responseRequestId = Math.max(0, buffer.readVarInt());
         String message = buffer.readUtf(MAX_TEXT);
         boolean error = buffer.readBoolean();
+        List<MapRegion> regions = readRegions(buffer);
+        MapTool selectedTool = MapTool.parse(buffer.readUtf(MAX_TEXT));
+        MapBrushMode brushMode = MapBrushMode.parse(buffer.readUtf(MAX_TEXT));
+        String selectedRegionId = buffer.readUtf(MAX_TEXT);
+        int brushRange = buffer.readVarInt();
         view = new MapEditorView(hasTarget, mapId, displayName, world, bounds, reset, draftBounds, draftReset,
                 teamA, teamB, spectator, snapshot, canEdit, isAdmin, locked, draftInvalidated,
-                ownedMaps, serverMaps, shareCode, responseRequestId, message, error, buffer.readVarInt(), buffer.readVarInt());
+                ownedMaps, serverMaps, shareCode, responseRequestId, message, error, buffer.readVarInt(), buffer.readVarInt(),
+                regions, selectedTool, brushMode, selectedRegionId, brushRange);
     }
 
     public void encode(FriendlyByteBuf buffer) {
@@ -74,6 +85,11 @@ public final class MapEditorSyncPacket {
         buffer.writeBoolean(view.error());
         buffer.writeVarInt(view.teamCCount());
         buffer.writeVarInt(view.teamDCount());
+        writeRegions(buffer, view.regions());
+        buffer.writeUtf(view.selectedTool().id(), MAX_TEXT);
+        buffer.writeUtf(view.brushMode().id(), MAX_TEXT);
+        buffer.writeUtf(view.selectedRegionId(), MAX_TEXT);
+        buffer.writeVarInt(view.brushRange());
     }
 
     public void handle(Supplier<NetworkEvent.Context> contextSupplier) {
@@ -118,5 +134,52 @@ public final class MapEditorSyncPacket {
         if (!buffer.readBoolean()) return MapEditorView.RegionData.empty();
         return new MapEditorView.RegionData(true, buffer.readInt(), buffer.readInt(), buffer.readInt(),
                 buffer.readInt(), buffer.readInt(), buffer.readInt());
+    }
+
+    private static void writeRegions(FriendlyByteBuf buffer, List<MapRegion> regions) {
+        int count = Math.min(MAX_MAPS, regions == null ? 0 : regions.size());
+        buffer.writeVarInt(count);
+        for (int index = 0; index < count; index++) writeRegionDefinition(buffer, regions.get(index));
+    }
+
+    private static List<MapRegion> readRegions(FriendlyByteBuf buffer) {
+        int count = Math.min(MAX_MAPS, Math.max(0, buffer.readVarInt()));
+        List<MapRegion> regions = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) regions.add(readRegionDefinition(buffer));
+        return regions;
+    }
+
+    private static void writeRegionDefinition(FriendlyByteBuf buffer, MapRegion region) {
+        buffer.writeUtf(region.id(), MAX_TEXT);
+        buffer.writeUtf(region.displayName(), MAX_TEXT);
+        buffer.writeUtf(region.type().id(), MAX_TEXT);
+        writeRegion(buffer, new MapEditorView.RegionData(true,
+                region.region().min().getX(), region.region().min().getY(), region.region().min().getZ(),
+                region.region().max().getX(), region.region().max().getY(), region.region().max().getZ()));
+        buffer.writeBoolean(region.visibleInMatch());
+        buffer.writeVarInt(region.displayRange());
+        buffer.writeUtf(region.appearance().id(), MAX_TEXT);
+        buffer.writeUtf(region.activation().id(), MAX_TEXT);
+        buffer.writeUtf(region.activationValue(), MAX_TEXT);
+        buffer.writeInt(region.color());
+        buffer.writeBoolean(region.outline());
+        buffer.writeBoolean(region.fill());
+        buffer.writeVarInt(region.priority());
+        buffer.writeUtf(region.notes(), MAX_TEXT);
+    }
+
+    private static MapRegion readRegionDefinition(FriendlyByteBuf buffer) {
+        String id = buffer.readUtf(MAX_TEXT);
+        String displayName = buffer.readUtf(MAX_TEXT);
+        MapRegion.Type type = MapRegion.Type.parse(buffer.readUtf(MAX_TEXT));
+        MapEditorView.RegionData data = readRegion(buffer);
+        MapDefinition.Region region = new MapDefinition.Region(
+                new BlockPos(data.minX(), data.minY(), data.minZ()),
+                new BlockPos(data.maxX(), data.maxY(), data.maxZ()));
+        return new MapRegion(id, displayName, type, region, buffer.readBoolean(), buffer.readVarInt(),
+                MapRegion.Appearance.parse(buffer.readUtf(MAX_TEXT)),
+                MapRegion.Activation.parse(buffer.readUtf(MAX_TEXT)),
+                buffer.readUtf(MAX_TEXT), buffer.readInt(), buffer.readBoolean(), buffer.readBoolean(),
+                buffer.readVarInt(), buffer.readUtf(MAX_TEXT));
     }
 }

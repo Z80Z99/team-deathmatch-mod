@@ -313,7 +313,8 @@ public final class MapManager {
         MapDefinition cleaned = new MapDefinition(definition.id(), definition.displayName(), definition.world(),
                 definition.bounds(), definition.resetRegion(), teamA, teamB, spectator,
                 definition.spawns(Team.TEAM_C).stream().filter(point -> isSpawnInsideBounds(definition, point)).toList(),
-                definition.spawns(Team.TEAM_D).stream().filter(point -> isSpawnInsideBounds(definition, point)).toList());
+                definition.spawns(Team.TEAM_D).stream().filter(point -> isSpawnInsideBounds(definition, point)).toList(),
+                definition.customRegions());
         if (cleaned.sameConfiguration(definition)) {
             return definition;
         }
@@ -416,7 +417,8 @@ public final class MapManager {
         MapDefinition updated = new MapDefinition(candidate.id(), candidate.displayName(), candidate.world(),
                 candidate.bounds(), candidate.resetRegion(), teamA, teamB, spectator,
                 candidate.spawns(Team.TEAM_C).stream().filter(point -> isValidSpawnFor(candidate, point)).toList(),
-                candidate.spawns(Team.TEAM_D).stream().filter(point -> isValidSpawnFor(candidate, point)).toList());
+                candidate.spawns(Team.TEAM_D).stream().filter(point -> isValidSpawnFor(candidate, point)).toList(),
+                candidate.customRegions());
         removed += candidate.spawns(Team.TEAM_C).size() - updated.spawns(Team.TEAM_C).size()
                 + candidate.spawns(Team.TEAM_D).size() - updated.spawns(Team.TEAM_D).size();
         if (!saveDefinition(updated)) {

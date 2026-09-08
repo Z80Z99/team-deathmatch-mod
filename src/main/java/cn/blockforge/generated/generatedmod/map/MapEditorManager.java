@@ -4,11 +4,14 @@ import cn.blockforge.generated.generatedmod.match.MatchManager;
 import cn.blockforge.generated.generatedmod.match.Team;
 import cn.blockforge.generated.generatedmod.network.FpsTdmNetwork;
 import cn.blockforge.generated.generatedmod.network.packet.MapEditorSyncPacket;
+import cn.blockforge.generated.generatedmod.item.ModItems;
 import cn.blockforge.generated.generatedmod.spawn.SpawnPoint;
+import net.minecraft.network.chat.Component;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -46,6 +49,12 @@ public final class MapEditorManager {
     private final Set<UUID> invalidatedDrafts = new HashSet<>();
     private final Map<UUID, String> messages = new HashMap<>();
     private final Map<UUID, Boolean> errors = new HashMap<>();
+    private final Map<UUID, MapTool> selectedTools = new HashMap<>();
+    private final Map<UUID, MapBrushMode> brushModes = new HashMap<>();
+    private final Map<UUID, BlockPos> brushFirstPoints = new HashMap<>();
+    private final Map<UUID, BlockPos> brushSecondPoints = new HashMap<>();
+    private final Map<UUID, String> selectedRegionIds = new HashMap<>();
+    private final Map<UUID, Integer> brushRanges = new HashMap<>();
 
     public MapEditorManager(MinecraftServer server, MatchManager matchManager, MapManager maps) {
         this.server = server;
@@ -149,6 +158,35 @@ public final class MapEditorManager {
             }
             case REVOKE_SHARE -> {
                 manageShare(player, mapId, false, requestId);
+                return;
+            }
+            case SELECT_TOOL -> {
+                MapTool tool = MapTool.parse(mapId);
+                if (tool == null) {
+                    setMessage(player, "未知的地形工具：" + mapId, true);
+                } else {
+                    selectTool(player, tool);
+                }
+                sendView(player, requestId);
+                return;
+            }
+            case GIVE_TOOLS -> {
+                giveTools(player);
+                sendView(player, requestId);
+                return;
+            }
+            case SET_BRUSH_RANGE -> {
+                setBrushRange(player, parseRange(mapId));
+                sendView(player, requestId);
+                return;
+            }
+            case SET_BRUSH_MODE -> {
+                MapBrushMode mode = MapBrushMode.parse(mapId);
+                brushModes.put(playerId, mode);
+                brushFirstPoints.remove(playerId);
+                brushSecondPoints.remove(playerId);
+                feedback(player, "画笔模式：" + mode.displayName(), false);
+                sendView(player, requestId);
                 return;
             }
             default -> { }
@@ -280,7 +318,7 @@ public final class MapEditorManager {
         MapDefinition copy = new MapDefinition(newId, source.displayName(), source.world(),
                 source.bounds(), source.resetRegion(),
                 source.teamASpawns(), source.teamBSpawns(), source.spectatorSpawns(),
-                source.spawns(Team.TEAM_C), source.spawns(Team.TEAM_D));
+                source.spawns(Team.TEAM_C), source.spawns(Team.TEAM_D), source.customRegions());
         if (!maps.registerMap(copy)) {
             setMessage(player, "导入副本写入失败，请检查服务器日志。", true);
             return;
@@ -503,7 +541,9 @@ public final class MapEditorManager {
                 base.teamACount(), base.teamBCount(), base.spectatorCount(), base.snapshotStatus(),
                 base.canEdit(), base.isAdmin(), base.locked(), base.draftInvalidated(),
                 base.ownedMaps(), base.serverMaps(), base.shareCode(),
-                responseRequestId, message, error, base.teamCCount(), base.teamDCount())), player);
+                responseRequestId, message, error, base.teamCCount(), base.teamDCount(),
+                base.regions(), base.selectedTool(), base.brushMode(),
+                base.selectedRegionId(), base.brushRange())), player);
     }
 
     public void onLogout(ServerPlayer player) {
@@ -512,6 +552,441 @@ public final class MapEditorManager {
         invalidatedDrafts.remove(player.getUUID());
         messages.remove(player.getUUID());
         errors.remove(player.getUUID());
+        selectedTools.remove(player.getUUID());
+        brushModes.remove(player.getUUID());
+        brushFirstPoints.remove(player.getUUID());
+        brushSecondPoints.remove(player.getUUID());
+        selectedRegionIds.remove(player.getUUID());
+        brushRanges.remove(player.getUUID());
+    }
+
+    // ------------------------------------------------------------ tool items
+
+    public MapTool selectedTool(ServerPlayer player) {
+        return selectedTools.getOrDefault(player.getUUID(), MapTool.BOUNDS);
+    }
+
+    public MapBrushMode brushMode(ServerPlayer player) {
+        return brushModes.getOrDefault(player.getUUID(), MapBrushMode.REGION);
+    }
+
+    public int brushRange(ServerPlayer player) {
+        return brushRanges.getOrDefault(player.getUUID(), 2);
+    }
+
+    public void setBrushRange(ServerPlayer player, int range) {
+        int safe = Math.max(1, Math.min(64, range));
+        brushRanges.put(player.getUUID(), safe);
+        feedback(player, "画笔右键选择距离：" + safe + " 格。", false);
+    }
+
+    public String selectedRegionId(ServerPlayer player) {
+        return selectedRegionIds.getOrDefault(player.getUUID(), "bounds");
+    }
+
+    public MapRegion selectedRegion(ServerPlayer player, MapDefinition definition) {
+        if (definition == null) return null;
+        return definition.region(selectedRegionId(player));
+    }
+
+    public void selectRegion(ServerPlayer player, MapRegion region) {
+        if (region == null) return;
+        UUID playerId = player.getUUID();
+        selectedRegionIds.put(playerId, region.id());
+        selectedTools.put(playerId, region.type() == MapRegion.Type.BOUNDS
+                ? MapTool.BOUNDS : region.type() == MapRegion.Type.RESET
+                ? MapTool.RESET : MapTool.CUSTOM);
+        brushModes.put(playerId, MapBrushMode.REGION);
+        brushFirstPoints.remove(playerId);
+        brushSecondPoints.remove(playerId);
+        feedback(player, "已选择区域：" + region.displayName(), false);
+    }
+
+    public void handleRegion(ServerPlayer player, MapRegionAction action, MapRegion region, int requestId) {
+        if (player == null || action == null) return;
+        MapDefinition target = targetDefinition(player);
+        if (target == null) {
+            feedback(player, "你还没有地图：先新建一张，或向拥有者索要邀请码导入。", true);
+            sendView(player, requestId);
+            return;
+        }
+        if (!canManage(player, target.id())) {
+            feedback(player, "只能编辑自己的地图；可用拥有者的邀请码导入一份独立副本。", true);
+            sendView(player, requestId);
+            return;
+        }
+        String lock = editLockMessage();
+        if (lock != null) {
+            feedback(player, lock, true);
+            sendView(player, requestId);
+            return;
+        }
+        switch (action) {
+            case SELECT -> selectRegion(player, region == null ? target.region("bounds") : region);
+            case CREATE -> {
+                MapRegion created = region == null ? MapRegion.custom(uniqueRegionId(target),
+                        "自定义区域", MapRegion.Type.CUSTOM, target.bounds()) : region;
+                if (created.id().isBlank()) created = new MapRegion(uniqueRegionId(target),
+                        created.displayName(), created.type(), created.region(), created.visibleInMatch(),
+                        created.displayRange(), created.appearance(), created.activation(),
+                        created.activationValue(), created.color(), created.outline(), created.fill(),
+                        created.priority(), created.notes());
+                if (maps.saveDefinition(target.withRegion(created))) {
+                    selectedRegionIds.put(player.getUUID(), created.id());
+                    selectedTools.put(player.getUUID(), MapTool.CUSTOM);
+                    feedback(player, "已创建区域：" + created.displayName(), false);
+                } else {
+                    feedback(player, "区域创建失败，请检查服务器日志。", true);
+                }
+            }
+            case SAVE -> {
+                if (region == null || region.id().isBlank()) {
+                    feedback(player, "区域保存失败：缺少区域 ID。", true);
+                } else if (!player.serverLevel().dimension().equals(target.world())) {
+                    feedback(player, "请先传送到该地图所在维度，再保存区域。", true);
+                } else if (!target.bounds().contains(region.region().min())
+                        || !target.bounds().contains(region.region().max())) {
+                    feedback(player, "区域必须在地图边界内。", true);
+                } else if (maps.saveDefinition(target.withRegion(region))) {
+                    selectedRegionIds.put(player.getUUID(), region.id());
+                    feedback(player, "区域已保存：" + region.displayName(), false);
+                } else {
+                    feedback(player, "区域保存失败，请检查服务器日志。", true);
+                }
+            }
+            case DELETE -> {
+                if (region == null || "bounds".equals(region.id()) || "reset".equals(region.id())) {
+                    feedback(player, "地图边界和重置区域不能删除。", true);
+                } else if (maps.saveDefinition(target.withoutRegion(region.id()))) {
+                    selectedRegionIds.put(player.getUUID(), "bounds");
+                    selectedTools.put(player.getUUID(), MapTool.BOUNDS);
+                    feedback(player, "区域已删除：" + region.displayName(), false);
+                } else {
+                    feedback(player, "区域删除失败，请检查服务器日志。", true);
+                }
+            }
+            default -> feedback(player, "不支持的区域操作。", true);
+        }
+        sendView(player, requestId);
+    }
+
+    private void giveTools(ServerPlayer player) {
+        player.getInventory().add(new ItemStack(ModItems.MAP_PLANNER.get()));
+        player.getInventory().add(new ItemStack(ModItems.MAP_BRUSH.get()));
+        feedback(player, "已发放地图规划器和地图画笔。", false);
+    }
+
+    private static int parseRange(String value) {
+        try {
+            return Integer.parseInt(value == null ? "2" : value.trim());
+        } catch (NumberFormatException ignored) {
+            return 2;
+        }
+    }
+
+    private String uniqueRegionId(MapDefinition definition) {
+        String base = "region";
+        int index = 1;
+        while (definition.region(base + "_" + index) != null) index++;
+        return base + "_" + index;
+    }
+
+    public void selectTool(ServerPlayer player, MapTool tool) {
+        if (tool == null) {
+            return;
+        }
+        UUID playerId = player.getUUID();
+        selectedTools.put(playerId, tool);
+        brushModes.put(playerId, tool.kind() == MapTool.Kind.REGION
+                ? MapBrushMode.REGION : MapBrushMode.BLOCK);
+        brushFirstPoints.remove(playerId);
+        brushSecondPoints.remove(playerId);
+        feedback(player, "已选择：" + tool.displayName(), false);
+    }
+
+    public void toggleBrushMode(ServerPlayer player) {
+        UUID playerId = player.getUUID();
+        MapBrushMode next = brushMode(player) == MapBrushMode.REGION
+                ? MapBrushMode.BLOCK : MapBrushMode.REGION;
+        brushModes.put(playerId, next);
+        brushFirstPoints.remove(playerId);
+        brushSecondPoints.remove(playerId);
+        feedback(player, "画笔模式：" + next.displayName(), false);
+    }
+
+    public void brushLeft(ServerPlayer player, BlockPos position) {
+        handleBrushClick(player, position, true);
+    }
+
+    public void brushRight(ServerPlayer player, BlockPos position) {
+        handleBrushClick(player, position, false);
+    }
+
+    private void handleBrushClick(ServerPlayer player, BlockPos position, boolean leftClick) {
+        MapDefinition target = editableTarget(player);
+        if (target == null) {
+            sendView(player);
+            return;
+        }
+        UUID playerId = player.getUUID();
+        MapTool tool = selectedTool(player);
+        MapBrushMode mode = brushMode(player);
+        if (tool.kind() == MapTool.Kind.POINT && mode == MapBrushMode.REGION) {
+            feedback(player, "出生点请使用方块模式：蹲下右键切换。", true);
+            sendView(player);
+            return;
+        }
+        if (tool.kind() == MapTool.Kind.POINT) {
+            position = position.above();
+        }
+        if (mode == MapBrushMode.REGION) {
+            if (leftClick) {
+                brushFirstPoints.put(playerId, position.immutable());
+                feedback(player, "已记录端点 A。", false);
+            } else {
+                brushSecondPoints.put(playerId, position.immutable());
+                feedback(player, "已记录端点 B。", false);
+            }
+            BlockPos first = brushFirstPoints.get(playerId);
+            BlockPos second = brushSecondPoints.get(playerId);
+            if (first != null && second != null) {
+                applyRegionEndpoints(player, target, tool, first, second);
+                brushFirstPoints.remove(playerId);
+                brushSecondPoints.remove(playerId);
+            }
+        } else if (tool.kind() == MapTool.Kind.REGION) {
+            adjustRegion(player, target, tool, position, !leftClick);
+        } else {
+            if (leftClick) {
+                removeSpawnAt(player, target, tool, position);
+            } else {
+                addSpawnAt(player, target, tool, position);
+            }
+        }
+        sendView(player);
+    }
+
+    private MapDefinition editableTarget(ServerPlayer player) {
+        UUID playerId = player.getUUID();
+        MapDefinition target = targetDefinition(player);
+        if (target == null) {
+            feedback(player, "你还没有地图：先新建一张，或向拥有者索要邀请码导入。", true);
+            return null;
+        }
+        if (!canManage(player, target.id())) {
+            feedback(player, "只能编辑自己的地图；可用拥有者的邀请码导入一份独立副本。", true);
+            return null;
+        }
+        if (invalidatedDrafts.contains(playerId)) {
+            feedback(player, DRAFT_INVALIDATED_MESSAGE, true);
+            return null;
+        }
+        String lock = editLockMessage();
+        if (lock != null) {
+            feedback(player, lock, true);
+            return null;
+        }
+        if (!player.serverLevel().dimension().equals(target.world())) {
+            feedback(player, "请先传送到该地图所在维度，再使用画笔。", true);
+            return null;
+        }
+        return target;
+    }
+
+    private void applyRegionEndpoints(ServerPlayer player, MapDefinition target, MapTool tool,
+                                      BlockPos first, BlockPos second) {
+        Draft draft = draftFor(player.getUUID(), target);
+        BlockPos min = new BlockPos(
+                Math.min(first.getX(), second.getX()),
+                Math.min(first.getY(), second.getY()),
+                Math.min(first.getZ(), second.getZ()));
+        BlockPos max = new BlockPos(
+                Math.max(first.getX(), second.getX()),
+                Math.max(first.getY(), second.getY()),
+                Math.max(first.getZ(), second.getZ()));
+        if (tool == MapTool.CUSTOM) {
+            saveCustomRegionBounds(player, target, new MapDefinition.Region(min, max));
+            return;
+        }
+        if (tool == MapTool.BOUNDS) {
+            draft.boundsMin = min;
+            draft.boundsMax = max;
+        } else {
+            draft.resetMin = min;
+            draft.resetMax = max;
+        }
+        draft.dirty = true;
+        applyRegions(player, target, draft);
+    }
+
+    private void adjustRegion(ServerPlayer player, MapDefinition target, MapTool tool,
+                              BlockPos position, boolean include) {
+        if (tool == MapTool.CUSTOM) {
+            MapRegion selected = selectedRegion(player, target);
+            if (selected == null || selected.type() == MapRegion.Type.BOUNDS
+                    || selected.type() == MapRegion.Type.RESET) {
+                feedback(player, "请先在规划器中创建或选择自定义区域。", true);
+                return;
+            }
+            MapDefinition.Region next = adjustBounds(selected.region(), position, include);
+            if (next != null) saveCustomRegionBounds(player, target, next);
+            return;
+        }
+        Draft draft = draftFor(player.getUUID(), target);
+        BlockPos min = tool == MapTool.BOUNDS ? draft.boundsMin : draft.resetMin;
+        BlockPos max = tool == MapTool.BOUNDS ? draft.boundsMax : draft.resetMax;
+        if (min == null || max == null) {
+            feedback(player, "请先用区域模式设置初始区域。", true);
+            return;
+        }
+        BlockPos newMin = min;
+        BlockPos newMax = max;
+        if (include) {
+            newMin = new BlockPos(Math.min(min.getX(), position.getX()),
+                    Math.min(min.getY(), position.getY()), Math.min(min.getZ(), position.getZ()));
+            newMax = new BlockPos(Math.max(max.getX(), position.getX()),
+                    Math.max(max.getY(), position.getY()), Math.max(max.getZ(), position.getZ()));
+        } else {
+            if (!contains(min, max, position)) {
+                feedback(player, "该方块已经在区域外。", true);
+                return;
+            }
+            long[] distances = {
+                    position.getX() - min.getX(), max.getX() - position.getX(),
+                    position.getY() - min.getY(), max.getY() - position.getY(),
+                    position.getZ() - min.getZ(), max.getZ() - position.getZ()};
+            int nearest = 0;
+            for (int i = 1; i < distances.length; i++) {
+                if (distances[i] < distances[nearest]) {
+                    nearest = i;
+                }
+            }
+            switch (nearest) {
+                case 0 -> newMin = new BlockPos(position.getX() + 1, min.getY(), min.getZ());
+                case 1 -> newMax = new BlockPos(position.getX() - 1, max.getY(), max.getZ());
+                case 2 -> newMin = new BlockPos(min.getX(), position.getY() + 1, min.getZ());
+                case 3 -> newMax = new BlockPos(max.getX(), position.getY() - 1, max.getZ());
+                case 4 -> newMin = new BlockPos(min.getX(), min.getY(), position.getZ() + 1);
+                case 5 -> newMax = new BlockPos(max.getX(), max.getY(), position.getZ() - 1);
+                default -> { }
+            }
+            if (newMin.getX() > newMax.getX() || newMin.getY() > newMax.getY()
+                    || newMin.getZ() > newMax.getZ()) {
+                feedback(player, "区域至少要保留一个方块。", true);
+                return;
+            }
+        }
+        if (tool == MapTool.BOUNDS) {
+            draft.boundsMin = newMin;
+            draft.boundsMax = newMax;
+        } else {
+            draft.resetMin = newMin;
+            draft.resetMax = newMax;
+        }
+        draft.dirty = true;
+        applyRegions(player, target, draft);
+    }
+
+    private MapDefinition.Region adjustBounds(MapDefinition.Region region, BlockPos position, boolean include) {
+        BlockPos min = region.min();
+        BlockPos max = region.max();
+        BlockPos newMin = min;
+        BlockPos newMax = max;
+        if (include) {
+            newMin = new BlockPos(Math.min(min.getX(), position.getX()), Math.min(min.getY(), position.getY()),
+                    Math.min(min.getZ(), position.getZ()));
+            newMax = new BlockPos(Math.max(max.getX(), position.getX()), Math.max(max.getY(), position.getY()),
+                    Math.max(max.getZ(), position.getZ()));
+        } else {
+            if (!contains(min, max, position)) return null;
+            long[] distances = {
+                    position.getX() - min.getX(), max.getX() - position.getX(),
+                    position.getY() - min.getY(), max.getY() - position.getY(),
+                    position.getZ() - min.getZ(), max.getZ() - position.getZ()};
+            int nearest = 0;
+            for (int index = 1; index < distances.length; index++) {
+                if (distances[index] < distances[nearest]) nearest = index;
+            }
+            switch (nearest) {
+                case 0 -> newMin = new BlockPos(position.getX() + 1, min.getY(), min.getZ());
+                case 1 -> newMax = new BlockPos(position.getX() - 1, max.getY(), max.getZ());
+                case 2 -> newMin = new BlockPos(min.getX(), position.getY() + 1, min.getZ());
+                case 3 -> newMax = new BlockPos(max.getX(), max.getY() - 1, max.getZ());
+                case 4 -> newMin = new BlockPos(min.getX(), min.getY(), position.getZ() + 1);
+                case 5 -> newMax = new BlockPos(max.getX(), max.getY(), position.getZ() - 1);
+                default -> { }
+            }
+        }
+        if (newMin.getX() > newMax.getX() || newMin.getY() > newMax.getY() || newMin.getZ() > newMax.getZ()) {
+            return null;
+        }
+        return new MapDefinition.Region(newMin, newMax);
+    }
+
+    private void saveCustomRegionBounds(ServerPlayer player, MapDefinition target,
+                                        MapDefinition.Region region) {
+        MapRegion selected = selectedRegion(player, target);
+        if (selected == null || selected.type() == MapRegion.Type.BOUNDS
+                || selected.type() == MapRegion.Type.RESET) {
+            feedback(player, "请先在规划器中创建或选择自定义区域。", true);
+            return;
+        }
+        MapRegion updated = new MapRegion(selected.id(), selected.displayName(), selected.type(), region,
+                selected.visibleInMatch(), selected.displayRange(), selected.appearance(),
+                selected.activation(), selected.activationValue(), selected.color(), selected.outline(),
+                selected.fill(), selected.priority(), selected.notes());
+        if (maps.saveDefinition(target.withRegion(updated))) {
+            feedback(player, "区域范围已保存：" + updated.displayName(), false);
+        } else {
+            feedback(player, "区域范围保存失败，请检查服务器日志。", true);
+        }
+    }
+
+    private void addSpawnAt(ServerPlayer player, MapDefinition target, MapTool tool, BlockPos position) {
+        Team team = tool.team();
+        SpawnPoint point = new SpawnPoint(player.serverLevel().dimension(), position, player.getYRot());
+        if (!maps.isValidSpawnFor(target, point)) {
+            feedback(player, "出生点保存失败：请确认位置在地图边界内且可安全站立。", true);
+            return;
+        }
+        List<SpawnPoint> updated = new ArrayList<>(target.spawns(team));
+        updated.add(point);
+        if (maps.saveDefinition(target.withTeamSpawns(team, updated))) {
+            feedback(player, "已添加 " + team.displayName() + " 出生点。", false);
+        } else {
+            feedback(player, "出生点保存失败，请检查服务器日志。", true);
+        }
+    }
+
+    private void removeSpawnAt(ServerPlayer player, MapDefinition target, MapTool tool, BlockPos position) {
+        Team team = tool.team();
+        List<SpawnPoint> current = target.spawns(team);
+        List<SpawnPoint> updated = new ArrayList<>();
+        for (SpawnPoint point : current) {
+            if (!point.blockPosition().equals(position)) {
+                updated.add(point);
+            }
+        }
+        if (updated.size() == current.size()) {
+            feedback(player, "这个方块没有对应的出生点。", true);
+            return;
+        }
+        if (maps.saveDefinition(target.withTeamSpawns(team, updated))) {
+            feedback(player, "已移除 " + team.displayName() + " 出生点。", false);
+        } else {
+            feedback(player, "出生点移除失败，请检查服务器日志。", true);
+        }
+    }
+
+    private boolean contains(BlockPos min, BlockPos max, BlockPos position) {
+        return position.getX() >= min.getX() && position.getX() <= max.getX()
+                && position.getY() >= min.getY() && position.getY() <= max.getY()
+                && position.getZ() >= min.getZ() && position.getZ() <= max.getZ();
+    }
+
+    private void feedback(ServerPlayer player, String message, boolean error) {
+        setMessage(player, message, error);
+        player.displayClientMessage(Component.literal(message), true);
     }
 
     private MapEditorView view(ServerPlayer player) {
@@ -552,7 +1027,9 @@ public final class MapEditorManager {
                 messages.getOrDefault(playerId, ""),
                 errors.getOrDefault(playerId, false),
                 definition == null ? 0 : definition.spawns(Team.TEAM_C).size(),
-                definition == null ? 0 : definition.spawns(Team.TEAM_D).size());
+                definition == null ? 0 : definition.spawns(Team.TEAM_D).size(),
+                definition == null ? List.of() : definition.regions(),
+                selectedTool(player), brushMode(player), selectedRegionId(player), brushRange(player));
     }
 
     private String snapshotStatus(MapDefinition definition) {

@@ -7,6 +7,8 @@ import cn.blockforge.generated.generatedmod.network.packet.HudStatSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.LobbyConfigSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.MapEditorActionPacket;
 import cn.blockforge.generated.generatedmod.network.packet.MapEditorSyncPacket;
+import cn.blockforge.generated.generatedmod.network.packet.MapBrushClickPacket;
+import cn.blockforge.generated.generatedmod.network.packet.MapRegionPacket;
 import cn.blockforge.generated.generatedmod.network.packet.MatchmakingActionPacket;
 import cn.blockforge.generated.generatedmod.network.packet.MatchmakingSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.MatchSyncPacket;
@@ -22,7 +24,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class FpsTdmNetwork {
-    private static final String PROTOCOL_VERSION = "11";
+    private static final String PROTOCOL_VERSION = "12";
     private static SimpleChannel channel;
     private static int nextId;
 
@@ -82,6 +84,16 @@ public final class FpsTdmNetwork {
                 .encoder(MapEditorSyncPacket::encode)
                 .decoder(MapEditorSyncPacket::new)
                 .consumerMainThread(MapEditorSyncPacket::handle)
+                .add();
+        channel.messageBuilder(MapRegionPacket.class, nextId(), NetworkDirection.PLAY_TO_SERVER)
+                .encoder(MapRegionPacket::encode)
+                .decoder(MapRegionPacket::new)
+                .consumerMainThread(MapRegionPacket::handle)
+                .add();
+        channel.messageBuilder(MapBrushClickPacket.class, nextId(), NetworkDirection.PLAY_TO_SERVER)
+                .encoder(MapBrushClickPacket::encode)
+                .decoder(MapBrushClickPacket::new)
+                .consumerMainThread(MapBrushClickPacket::handle)
                 .add();
         channel.messageBuilder(LobbyConfigSyncPacket.class, nextId(), NetworkDirection.PLAY_TO_CLIENT)
                 .encoder(LobbyConfigSyncPacket::encode)

@@ -27,5 +27,17 @@ public enum MapEditorAction {
     CLEAR_SPECTATOR,
     /** 客户端后台轮询，只读取状态，不确认或覆盖草稿失效告警。 */
     POLL,
-    ADD_TEAM_C, ADD_TEAM_D, CLEAR_TEAM_C, CLEAR_TEAM_D
+    ADD_TEAM_C, ADD_TEAM_D, CLEAR_TEAM_C, CLEAR_TEAM_D,
+    /** 规划器道具选择的当前编辑工具。 */
+    SELECT_TOOL,
+    /** 在地图工作台或道具菜单中领取规划器与画笔。 */
+    GIVE_TOOLS,
+    /** 保存或更新一个可编辑区域。 */
+    UPDATE_REGION,
+    /** 删除一个自定义区域。 */
+    DELETE_REGION,
+    /** 更新画笔右键选择距离。 */
+    SET_BRUSH_RANGE,
+    /** 切换画笔区域/方块模式。 */
+    SET_BRUSH_MODE
 }

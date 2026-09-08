@@ -223,7 +223,9 @@ class UiLayoutTest {
         var region = new cn.blockforge.generated.generatedmod.map.MapEditorView.RegionData(true, -32, 64, -32, 32, 96, 32);
         var view = new cn.blockforge.generated.generatedmod.map.MapEditorView(true, "arena-0", "废弃工厂", "minecraft:overworld",
                 region, region, region, region, 4, 4, 1, "已捕获", true, true, false, false,
-                List.of("arena-0|废弃工厂|AB12CD", "arena-1|山地要塞|", "arena-2|边境哨站|XY98ZT"), List.of(), "AB12CD", 0, "", false, 2, 2);
+                List.of("arena-0|废弃工厂|AB12CD", "arena-1|山地要塞|", "arena-2|边境哨站|XY98ZT"), List.of(), "AB12CD", 0, "", false, 2, 2,
+                List.of(), cn.blockforge.generated.generatedmod.map.MapTool.BOUNDS,
+                cn.blockforge.generated.generatedmod.map.MapBrushMode.REGION, "bounds", 2);
         cn.blockforge.generated.generatedmod.client.ClientMapEditorData.apply(new cn.blockforge.generated.generatedmod.network.packet.MapEditorSyncPacket(view));
     }
     private static void set(Class<?> type, Object target, String name, Object value) throws Exception {

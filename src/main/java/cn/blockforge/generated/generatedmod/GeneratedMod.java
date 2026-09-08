@@ -1,8 +1,10 @@
 package cn.blockforge.generated.generatedmod;
 
 import cn.blockforge.generated.generatedmod.config.FpsTdmConfig;
+import cn.blockforge.generated.generatedmod.item.ModItems;
 import cn.blockforge.generated.generatedmod.network.FpsTdmNetwork;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
@@ -16,7 +18,10 @@ public final class GeneratedMod {
 
     public GeneratedMod() {
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, FpsTdmConfig.SPEC);
-        FMLJavaModLoadingContext.get().getModEventBus().addListener(GeneratedMod::commonSetup);
+        IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
+        modEventBus.addListener(GeneratedMod::commonSetup);
+        ModItems.register(modEventBus);
+        modEventBus.addListener(ModItems::addCreative);
         MinecraftForge.EVENT_BUS.register(cn.blockforge.generated.generatedmod.event.MatchEvents.class);
         MinecraftForge.EVENT_BUS.register(cn.blockforge.generated.generatedmod.command.FpsCommand.class);
     }

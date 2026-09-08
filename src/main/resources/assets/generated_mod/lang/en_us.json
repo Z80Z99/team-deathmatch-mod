@@ -2,5 +2,9 @@
   "key.generated_mod.open_map_workbench": "Open Map Workbench",
   "key.generated_mod.open_lobby": "Open Lobby Menu",
   "key.generated_mod.open_hud": "Open HUD Config Window",
-  "key.categories.generated_mod": "Team Deathmatch"
+  "key.categories.generated_mod": "Team Deathmatch",
+  "item.generated_mod.map_planner": "Map Planner",
+  "item.generated_mod.map_planner.tooltip": "Right-click to open the region menu; left-click to select the aimed region.",
+  "item.generated_mod.map_brush": "Map Brush",
+  "item.generated_mod.map_brush.tooltip": "Left click endpoint A / remove (blocks only), right click endpoint B / add; sneak right-click opens settings."
 }
