@@ -24,7 +24,7 @@ public final class MapBrushScreen extends UiScreen {
     private UiCycleButton<MapBrushMode> modeControl;
     private int rangeValue;
     private int pendingRangeRequest;
-    private UiCycleButton<cn.blockforge.generated.generatedmod.map.MapTool> targetControl;
+    private UiButton targetControl;
 
     public MapBrushScreen() {
         super(Component.literal("地图画笔"));
@@ -43,12 +43,9 @@ public final class MapBrushScreen extends UiScreen {
         int controlWidth = innerWidth - 30;
         int helpX = innerLeft + innerWidth - 24;
         int targetY = flowRow(BUTTON_HEIGHT);
-        targetControl = flowWidget(new UiCycleButton<>(innerLeft, targetY, innerWidth, BUTTON_HEIGHT,
-                java.util.Arrays.asList(cn.blockforge.generated.generatedmod.map.MapTool.values()),
-                ClientMapEditorData.view().selectedTool(), tool -> "编辑目标：" + tool.displayName(),
-                tool -> FpsTdmNetwork.sendToServer(new MapEditorActionPacket(MapEditorAction.SELECT_TOOL, tool.id())),
-                "自定义区域请先在规划器中选中。出生点直接使用右键添加、左键移除。",
-                UiButton.Kind.SECONDARY), targetY);
+        targetControl = flowWidget(uiButton("在规划器中选择编辑目标", innerLeft, targetY, innerWidth,
+                () -> minecraft.setScreen(new MapPlannerScreen(ClientMapEditorData.view().regions())),
+                "先创建或选择区域，再用画笔调整范围。", UiButton.Kind.PRIMARY), targetY);
         int modeY = flowRow(BUTTON_HEIGHT);
         modeControl = flowWidget(new UiCycleButton<>(innerLeft, modeY, controlWidth, BUTTON_HEIGHT,
                 List.of(MapBrushMode.REGION, MapBrushMode.BLOCK), ClientMapEditorData.view().brushMode(),
@@ -132,9 +129,11 @@ public final class MapBrushScreen extends UiScreen {
                 rangeValue = ClientMapEditorData.view().brushRange();
                 pendingRangeRequest = 0;
             }
-            targetControl.setValue(ClientMapEditorData.view().selectedTool());
+            targetControl.setMessage(Component.literal(ClientMapEditorData.view().selectedRegionId().isBlank()
+                    ? "在规划器中选择编辑目标" : "更换目标：" + ClientMapEditorData.view().selectedTool().displayName()));
             modeControl.active = ClientMapEditorData.view().selectedTool().kind()
-                    != cn.blockforge.generated.generatedmod.map.MapTool.Kind.POINT;
+                    != cn.blockforge.generated.generatedmod.map.MapTool.Kind.POINT
+                    && !ClientMapEditorData.view().selectedRegionId().isBlank();
         }
     }
 

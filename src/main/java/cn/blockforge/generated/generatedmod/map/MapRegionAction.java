@@ -5,5 +5,7 @@ public enum MapRegionAction {
     SELECT,
     SAVE,
     DELETE,
-    CREATE
+    CREATE,
+    USE_BOUNDS_FOR_RESET,
+    USE_SEPARATE_RESET
 }

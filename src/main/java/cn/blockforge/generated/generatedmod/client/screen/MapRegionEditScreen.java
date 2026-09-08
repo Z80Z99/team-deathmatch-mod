@@ -53,6 +53,18 @@ public final class MapRegionEditScreen extends UiScreen {
 
         if (builtIn) {
             builtInInfoY = flowRow(58);
+            if ("bounds".equals(region.id())) {
+                int resetY = flowRow(BUTTON_HEIGHT);
+                flowWidget(uiButton("同时作为重置范围", innerLeft, resetY, innerWidth,
+                        () -> { FpsTdmNetwork.sendToServer(new MapRegionPacket(
+                                MapRegionAction.USE_BOUNDS_FOR_RESET, region, 0)); onClose(); },
+                        "重置范围会随地图边界一起调整。", UiButton.Kind.PRIMARY), resetY);
+                int separateY = flowRow(BUTTON_HEIGHT);
+                flowWidget(uiButton("使用独立重置区域", innerLeft, separateY, innerWidth,
+                        () -> { FpsTdmNetwork.sendToServer(new MapRegionPacket(
+                                MapRegionAction.USE_SEPARATE_RESET, region, 0)); onClose(); },
+                        "恢复单独配置的重置区域；没有配置时需要创建。", UiButton.Kind.SECONDARY), separateY);
+            }
             footerButton("删除区域", 0, 3, 0, () -> confirmAction("删除基础区域",
                             "删除后地图会标记为未完成，重新创建前不能开赛。", this::delete),
                     "删除后可从规划器重新创建。", UiButton.Kind.DANGER);

@@ -216,6 +216,8 @@ public final class MapManager {
         if (updated == null) {
             return false;
         }
+        if (updated.hasResetRegion() && updated.resetRegion().volume() >
+                cn.blockforge.generated.generatedmod.config.FpsTdmConfig.COMMON.maxSnapshotBlocks.get()) return false;
         if (!registry.save(updated)) {
             return false;
         }
@@ -293,8 +295,8 @@ public final class MapManager {
      * 有变动时直接写回地图定义，避免坏数据反复回到运行时。
      */
     private MapDefinition sanitizeSpawns(MapDefinition definition) {
-        if (definition == null) {
-            return null;
+        if (definition == null || !definition.isComplete()) {
+            return definition;
         }
         List<SpawnPoint> teamA = definition.teamASpawns().stream()
                 .filter(point -> isSpawnInsideBounds(definition, point)).toList();
@@ -302,11 +304,10 @@ public final class MapManager {
                 .filter(point -> isSpawnInsideBounds(definition, point)).toList();
         List<SpawnPoint> spectator = definition.spectatorSpawns().stream()
                 .filter(point -> isSpawnInsideBounds(definition, point)).toList();
-        MapDefinition cleaned = new MapDefinition(definition.id(), definition.displayName(), definition.world(),
-                definition.bounds(), definition.resetRegion(), teamA, teamB, spectator,
-                definition.spawns(Team.TEAM_C).stream().filter(point -> isSpawnInsideBounds(definition, point)).toList(),
-                definition.spawns(Team.TEAM_D).stream().filter(point -> isSpawnInsideBounds(definition, point)).toList(),
-                definition.customRegions());
+        MapDefinition cleaned = definition.withTeamSpawns(Team.TEAM_A, teamA)
+                .withTeamSpawns(Team.TEAM_B, teamB).withTeamSpawns(Team.SPECTATOR, spectator)
+                .withTeamSpawns(Team.TEAM_C, definition.spawns(Team.TEAM_C).stream().filter(point -> isSpawnInsideBounds(definition, point)).toList())
+                .withTeamSpawns(Team.TEAM_D, definition.spawns(Team.TEAM_D).stream().filter(point -> isSpawnInsideBounds(definition, point)).toList());
         if (cleaned.sameConfiguration(definition)) {
             return definition;
         }
@@ -406,11 +407,10 @@ public final class MapManager {
         int removed = (candidate.teamASpawns().size() - teamA.size())
                 + (candidate.teamBSpawns().size() - teamB.size())
                 + (candidate.spectatorSpawns().size() - spectator.size());
-        MapDefinition updated = new MapDefinition(candidate.id(), candidate.displayName(), candidate.world(),
-                candidate.bounds(), candidate.resetRegion(), teamA, teamB, spectator,
-                candidate.spawns(Team.TEAM_C).stream().filter(point -> isValidSpawnFor(candidate, point)).toList(),
-                candidate.spawns(Team.TEAM_D).stream().filter(point -> isValidSpawnFor(candidate, point)).toList(),
-                candidate.customRegions());
+        MapDefinition updated = candidate.withTeamSpawns(Team.TEAM_A, teamA)
+                .withTeamSpawns(Team.TEAM_B, teamB).withTeamSpawns(Team.SPECTATOR, spectator)
+                .withTeamSpawns(Team.TEAM_C, candidate.spawns(Team.TEAM_C).stream().filter(point -> isValidSpawnFor(candidate, point)).toList())
+                .withTeamSpawns(Team.TEAM_D, candidate.spawns(Team.TEAM_D).stream().filter(point -> isValidSpawnFor(candidate, point)).toList());
         removed += candidate.spawns(Team.TEAM_C).size() - updated.spawns(Team.TEAM_C).size()
                 + candidate.spawns(Team.TEAM_D).size() - updated.spawns(Team.TEAM_D).size();
         if (!saveDefinition(updated)) {

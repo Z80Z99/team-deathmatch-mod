@@ -583,7 +583,7 @@ public final class RoomRulesScreen extends UiScreen {
     private static String spawnName(SpawnSelectionStrategy value) {
         return switch (value) {
             case SEQUENTIAL -> "顺序";
-            case RANDOM -> "随机";
+            case RANDOM -> "地图内安全随机";
             case FARTHEST_FROM_ENEMIES -> "远离敌人";
         };
     }

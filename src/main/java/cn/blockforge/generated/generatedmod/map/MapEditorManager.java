@@ -285,6 +285,7 @@ public final class MapEditorManager {
         }
         ownership.setOwner(id, player.getUUID(), player.getGameProfile().getName());
         editingMapIds.put(player.getUUID(), id);
+        clearToolSelection(player.getUUID());
         drafts.remove(player.getUUID());
         invalidatedDrafts.remove(player.getUUID());
         setMessage(player, "地图 “" + name + "”（id：" + id + "）已创建并设为当前编辑目标。"
@@ -315,6 +316,7 @@ public final class MapEditorManager {
         }
         ownership.setOwner(newId, player.getUUID(), player.getGameProfile().getName());
         editingMapIds.put(player.getUUID(), newId);
+        clearToolSelection(player.getUUID());
         drafts.remove(player.getUUID());
         invalidatedDrafts.remove(player.getUUID());
         setMessage(player, "已通过邀请码导入 “" + source.displayName() + "”（你的副本 id：" + newId
@@ -481,6 +483,7 @@ public final class MapEditorManager {
         }
         if (!fallback.equals(id)) {
             editingMapIds.put(playerId, fallback);
+            clearToolSelection(playerId);
             drafts.remove(playerId);
             if (!fallback.isEmpty()) {
                 invalidatedDrafts.remove(playerId);
@@ -500,6 +503,10 @@ public final class MapEditorManager {
             return;
         }
         editingMapIds.put(player.getUUID(), target.id());
+        selectedTools.remove(player.getUUID());
+        selectedRegionIds.remove(player.getUUID());
+        brushFirstPoints.remove(player.getUUID());
+        brushSecondPoints.remove(player.getUUID());
         drafts.remove(player.getUUID());
         invalidatedDrafts.remove(player.getUUID());
         setMessage(player, "编辑目标已切换为 “" + target.displayName() + "”（" + target.id() + "）。", false);
@@ -592,7 +599,7 @@ public final class MapEditorManager {
     }
 
     public String selectedRegionId(ServerPlayer player) {
-        return selectedRegionIds.getOrDefault(player.getUUID(), "bounds");
+        return selectedRegionIds.getOrDefault(player.getUUID(), "");
     }
 
     public MapRegion selectedRegion(ServerPlayer player, MapDefinition definition) {
@@ -602,6 +609,13 @@ public final class MapEditorManager {
 
     public void selectRegion(ServerPlayer player, MapRegion region) {
         if (region == null) return;
+        MapDefinition target = targetDefinition(player);
+        if (target == null || target.region(region.id()) == null) {
+            clearToolSelection(player.getUUID());
+            feedback(player, "区域已不存在，请在规划器中重新选择。", true);
+            return;
+        }
+        region = target.region(region.id());
         UUID playerId = player.getUUID();
         selectedRegionIds.put(playerId, region.id());
         selectedTools.put(playerId, region.type() == MapRegion.Type.BOUNDS
@@ -610,6 +624,13 @@ public final class MapEditorManager {
         brushFirstPoints.remove(playerId);
         brushSecondPoints.remove(playerId);
         feedback(player, "已选择区域：" + region.displayName(), false);
+    }
+
+    private void clearToolSelection(UUID playerId) {
+        selectedTools.remove(playerId);
+        selectedRegionIds.remove(playerId);
+        brushFirstPoints.remove(playerId);
+        brushSecondPoints.remove(playerId);
     }
 
     public void handleRegion(ServerPlayer player, MapRegionAction action, MapRegion region, int requestId) {
@@ -632,6 +653,21 @@ public final class MapEditorManager {
             return;
         }
         switch (action) {
+            case USE_BOUNDS_FOR_RESET, USE_SEPARATE_RESET -> {
+                boolean enabled = action == MapRegionAction.USE_BOUNDS_FOR_RESET;
+                if (enabled && (!target.hasBounds() || target.bounds().volume() >
+                        cn.blockforge.generated.generatedmod.config.FpsTdmConfig.COMMON.maxSnapshotBlocks.get())) {
+                    feedback(player, "请先创建地图边界，并确保范围未超过重置方块数限制。", true);
+                } else if (maps.saveDefinition(target.withResetUsesBounds(enabled))) {
+                    maps.registry().deleteSnapshot(target.id());
+                    drafts.remove(player.getUUID());
+                    selectedTools.remove(player.getUUID());
+                    selectedRegionIds.remove(player.getUUID());
+                    brushFirstPoints.remove(player.getUUID());
+                    brushSecondPoints.remove(player.getUUID());
+                    feedback(player, enabled ? "重置范围已跟随地图边界。" : "已切换为独立重置区域。", false);
+                } else feedback(player, "重置范围设置保存失败。", true);
+            }
             case SELECT -> selectRegion(player, region == null ? target.region("bounds") : region);
             case CREATE -> {
                 MapRegion created = region == null ? MapRegion.custom(uniqueRegionId(target),
@@ -659,6 +695,9 @@ public final class MapEditorManager {
                     selectedTools.put(player.getUUID(), created.type() == MapRegion.Type.BOUNDS
                             ? MapTool.BOUNDS : created.type() == MapRegion.Type.RESET
                             ? MapTool.RESET : MapTool.CUSTOM);
+                    brushModes.put(player.getUUID(), MapBrushMode.REGION);
+                    brushFirstPoints.remove(player.getUUID());
+                    brushSecondPoints.remove(player.getUUID());
                     feedback(player, "已创建区域：" + created.displayName(), false);
                 } else {
                     feedback(player, "区域创建失败，请检查服务器日志。", true);
@@ -687,6 +726,7 @@ public final class MapEditorManager {
                         maps.registry().deleteSnapshot(target.id());
                     }
                     selectedRegionIds.put(player.getUUID(), "");
+                    selectedTools.remove(player.getUUID());
                     brushFirstPoints.remove(player.getUUID());
                     brushSecondPoints.remove(player.getUUID());
                     feedback(player, "区域已删除：" + region.displayName(), false);
@@ -746,7 +786,18 @@ public final class MapEditorManager {
             return;
         }
         UUID playerId = player.getUUID();
+        if (tool.kind() == MapTool.Kind.REGION) {
+            MapDefinition target = targetDefinition(player);
+            String id = tool == MapTool.BOUNDS ? "bounds" : tool == MapTool.RESET ? "reset" : selectedRegionId(player);
+            if (target == null || target.region(id) == null) {
+                feedback(player, "请先在规划器创建并选择区域。", true);
+                return;
+            }
+            selectRegion(player, target.region(id));
+            return;
+        }
         selectedTools.put(playerId, tool);
+        selectedRegionIds.put(playerId, tool.id());
         brushFirstPoints.remove(playerId);
         brushSecondPoints.remove(playerId);
         feedback(player, "已选择：" + tool.displayName(), false);
@@ -779,6 +830,12 @@ public final class MapEditorManager {
         }
         UUID playerId = player.getUUID();
         MapTool tool = selectedTool(player);
+        if (!selectedTools.containsKey(playerId)
+                || (tool.kind() == MapTool.Kind.REGION && target.region(selectedRegionId(player)) == null)) {
+            feedback(player, "画笔尚无编辑目标，请先用规划器创建或选中区域。", true);
+            sendView(player);
+            return;
+        }
         MapBrushMode mode = brushMode(player);
         if (tool.kind() == MapTool.Kind.POINT) mode = MapBrushMode.BLOCK;
         if (tool.kind() == MapTool.Kind.POINT) {
@@ -856,7 +913,7 @@ public final class MapEditorManager {
             return;
         }
         MapDefinition.Region range = new MapDefinition.Region(min, max);
-        if (tool == MapTool.RESET && range.volume() >
+        if ((tool == MapTool.RESET || target.resetUsesBounds() && tool == MapTool.BOUNDS) && range.volume() >
                 cn.blockforge.generated.generatedmod.config.FpsTdmConfig.COMMON.maxSnapshotBlocks.get()) {
             feedback(player, "重置区域超过服务器允许的最大方块数。", true);
             return;

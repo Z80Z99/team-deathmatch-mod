@@ -522,6 +522,7 @@ public final class FpsCommand {
             case MAP_LOADING -> "地图初始快照仍在捕获，请稍后再试。";
             case MAP_NOT_READY -> "当前地图快照不可用，请检查地图配置和服务器日志。";
             case NO_TEAM_SPAWNS -> "每支启用队伍至少需要一个出生点。";
+            case NO_SAFE_RANDOM_SPAWN -> "地图内未找到安全随机出生位置，请检查地面支撑、头顶空间和通路。";
             case MAP_BUSY -> "地图正在恢复，请等待恢复完成。";
         };
     }

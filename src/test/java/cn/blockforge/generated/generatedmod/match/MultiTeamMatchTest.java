@@ -76,6 +76,7 @@ class MultiTeamMatchTest {
 
     @Test void missingFourthSpawnPreventsStartingBeforeRosterChanges() throws Exception {
         MatchManager match = mock(MatchManager.class, CALLS_REAL_METHODS);
+        doReturn(SpawnSelectionStrategy.SEQUENTIAL).when(match).rulesSpawnStrategy();
         var maps = mock(cn.blockforge.generated.generatedmod.map.MapManager.class);
         var spawns = mock(cn.blockforge.generated.generatedmod.spawn.SpawnManager.class);
         var teams = mock(TeamManager.class);
@@ -113,6 +114,28 @@ class MultiTeamMatchTest {
         teams.prepareRoster(players.stream().map(ServerPlayer::getUUID).toList());
         for (int i = 0; i < players.size(); i++) assertEquals(Team.playing(4).get(Math.min(i, 3)), teams.getTeam(players.get(i)));
         assertEquals(6, teams.totalParticipants());
+    }
+
+    @Test void randomSpawningChecksSafetyInsteadOfConfiguredTeamPoints() throws Exception {
+        MatchManager match = mock(MatchManager.class, CALLS_REAL_METHODS);
+        var maps = mock(cn.blockforge.generated.generatedmod.map.MapManager.class);
+        var spawns = mock(cn.blockforge.generated.generatedmod.spawn.SpawnManager.class);
+        var teams = mock(TeamManager.class);
+        var definition = mock(cn.blockforge.generated.generatedmod.map.MapDefinition.class);
+        when(definition.isComplete()).thenReturn(true);
+        when(maps.currentMap()).thenReturn(Optional.of(definition));
+        when(maps.isReady()).thenReturn(true);
+        set(match, "maps", maps); set(match, "spawns", spawns); set(match, "teams", teams);
+        set(match, "state", MatchState.WAITING);
+        doReturn(SpawnSelectionStrategy.RANDOM).when(match).rulesSpawnStrategy();
+        when(spawns.findRandomSpawn()).thenReturn(Optional.empty());
+        assertEquals(MatchManager.StartResult.NO_SAFE_RANDOM_SPAWN, match.startMatch());
+        when(spawns.findRandomSpawn()).thenReturn(Optional.of(mock(cn.blockforge.generated.generatedmod.spawn.SpawnPoint.class)));
+        doReturn(0).when(match).rulesTargetKills();
+        doReturn(0).when(match).rulesMatchDurationSeconds();
+        assertEquals(MatchManager.StartResult.NO_END_CONDITION, match.startMatch());
+        verify(spawns, never()).getSpawns(any());
+        verifyNoInteractions(teams);
     }
 
     @Test void matchPacketSynchronizesAllFourScoresAndWinner() {

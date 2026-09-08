@@ -70,7 +70,7 @@ public final class MapRegionRenderer {
             drawRegion(poseStack, lines, region, lineAlpha);
         }
 
-        if (brush) {
+        if (brush && !view.selectedRegionId().isBlank()) {
             BlockPos target = MapToolClientState.brushTarget();
             BlockPos first = ClientMapEditorData.firstPoint();
             BlockPos second = ClientMapEditorData.secondPoint();

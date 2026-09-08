@@ -66,6 +66,14 @@ public final class SpawnManager {
     }
 
     public boolean teleportToTeamSpawn(ServerPlayer player, Team team, SpawnSelectionStrategy strategy) {
+        if (strategy == SpawnSelectionStrategy.RANDOM) {
+            Optional<SpawnPoint> random = findRandomSpawn();
+            if (random.isPresent()) return teleport(player, random.get());
+            player.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                    "地图内未找到安全的随机出生位置，暂时转为观战。"), false);
+            teleportToSpectator(player);
+            return false;
+        }
         List<SpawnPoint> points = getSpawns(team).stream()
                 .filter(this::isUsableCurrentMapSpawn)
                 .toList();
@@ -74,6 +82,11 @@ public final class SpawnManager {
         }
         SpawnPoint selected = selectSpawn(player, team, points, strategy);
         return teleport(player, selected);
+    }
+
+    public Optional<SpawnPoint> findRandomSpawn() {
+        MapDefinition map = maps.currentMap().orElse(null);
+        return map == null ? Optional.empty() : SafeSpawnFinder.find(server.getLevel(map.world()), map);
     }
 
     public boolean teleportToSpectator(ServerPlayer player) {
@@ -164,6 +177,8 @@ public final class SpawnManager {
             return false;
         }
         player.teleportTo(level, point.x(), point.y(), point.z(), point.yaw(), point.pitch());
+        player.fallDistance = 0;
+        player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
         return true;
     }
 

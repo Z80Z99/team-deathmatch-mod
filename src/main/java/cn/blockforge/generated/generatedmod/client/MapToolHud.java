@@ -44,7 +44,9 @@ public final class MapToolHud {
             left.add("菜单内可编辑区域属性");
         }
         if (brush) {
-            left.add("编辑：" + view.selectedTool().displayName());
+            left.add(view.selectedRegionId().isBlank() ? "画笔未启用：先用规划器选择目标"
+                    : "编辑：" + view.regions().stream().filter(region -> region.id().equals(view.selectedRegionId()))
+                    .map(MapRegion::displayName).findFirst().orElse(view.selectedTool().displayName()));
             boolean point = view.selectedTool().kind() == cn.blockforge.generated.generatedmod.map.MapTool.Kind.POINT;
             boolean corners = view.brushMode() == cn.blockforge.generated.generatedmod.map.MapBrushMode.REGION;
             left.add(point ? "左键：移除出生点" : corners ? "左键：选择第一个角（实际方块）" : "左键：收缩区域边缘");

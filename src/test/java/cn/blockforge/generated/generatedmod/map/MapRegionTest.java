@@ -12,6 +12,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MapRegionTest {
+    @Test void sharedResetFollowsBoundaryThroughEditsCopiesAndJson() {
+        var point = new MapDefinition.Region(BlockPos.ZERO, BlockPos.ZERO);
+        var map = MapDefinition.incomplete("shared", "shared", Level.OVERWORLD, point)
+                .withRegion(MapRegion.builtIn("bounds", "bounds", MapRegion.Type.BOUNDS, point, 1))
+                .withResetUsesBounds(true);
+        assertTrue(map.isComplete());
+        var enlarged = new MapDefinition.Region(BlockPos.ZERO, new BlockPos(10, 5, 10));
+        var edited = map.withRegion(MapRegion.builtIn("bounds", "bounds", MapRegion.Type.BOUNDS, enlarged, 1));
+        var decoded = MapDefinition.fromJson(edited.copyAs("copy").withTeamSpawns(Team.TEAM_A, List.of()).toJson(), "copy");
+        assertTrue(decoded.resetUsesBounds());
+        assertEquals(enlarged, decoded.resetRegion());
+        assertEquals(1, decoded.regions().size());
+        assertTrue(!decoded.withoutRegion("bounds").isComplete());
+        assertTrue(!decoded.withResetUsesBounds(false).hasResetRegion());
+    }
     @org.junit.jupiter.api.BeforeAll
     static void bootstrap() {
         cn.blockforge.generated.generatedmod.MinecraftTestBootstrap.initialize();

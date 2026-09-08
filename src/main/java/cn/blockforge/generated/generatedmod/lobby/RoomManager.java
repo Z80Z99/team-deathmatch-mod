@@ -431,7 +431,13 @@ public final class RoomManager {
         }
         String missingSpawns = room.teams().stream().filter(team -> matchManager.spawns().getSpawns(team).isEmpty())
                 .map(Team::displayName).collect(java.util.stream.Collectors.joining("、"));
-        if (!missingSpawns.isEmpty()) {
+        if (room.rules().spawnSelectionStrategy() == cn.blockforge.generated.generatedmod.match.SpawnSelectionStrategy.RANDOM
+                && matchManager.spawns().findRandomSpawn().isEmpty()) {
+            cancelStart(room, "地图内未找到安全随机出生位置，需要有地面支撑、足够头顶空间和周围通路。", true);
+            return;
+        }
+        if (room.rules().spawnSelectionStrategy() != cn.blockforge.generated.generatedmod.match.SpawnSelectionStrategy.RANDOM
+                && !missingSpawns.isEmpty()) {
             cancelStart(room, "地图缺少 " + missingSpawns + " 的出生点，请先在地图编辑器补齐。", true);
             return;
         }
@@ -692,6 +698,7 @@ public final class RoomManager {
             case MAP_LOADING -> "地图快照仍在捕获";
             case MAP_NOT_READY -> "地图快照不可用";
             case NO_TEAM_SPAWNS -> "每支启用队伍都需要出生点";
+            case NO_SAFE_RANDOM_SPAWN -> "地图内未找到安全随机出生位置";
             case MAP_BUSY -> "地图正在恢复";
         };
     }

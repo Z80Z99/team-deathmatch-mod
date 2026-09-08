@@ -362,7 +362,11 @@ public final class MatchManager {
         if (!maps.isReady()) {
             return StartResult.MAP_NOT_READY;
         }
-        if (activeTeams().stream().anyMatch(team -> spawns.getSpawns(team).isEmpty())) {
+        if (rulesSpawnStrategy() == SpawnSelectionStrategy.RANDOM && spawns.findRandomSpawn().isEmpty()) {
+            return StartResult.NO_SAFE_RANDOM_SPAWN;
+        }
+        if (rulesSpawnStrategy() != SpawnSelectionStrategy.RANDOM
+                && activeTeams().stream().anyMatch(team -> spawns.getSpawns(team).isEmpty())) {
             return StartResult.NO_TEAM_SPAWNS;
         }
         if (rulesTargetKills() <= 0 && rulesMatchDurationSeconds() <= 0) {
@@ -1269,6 +1273,7 @@ public final class MatchManager {
         MAP_LOADING,
         MAP_NOT_READY,
         NO_TEAM_SPAWNS,
+        NO_SAFE_RANDOM_SPAWN,
         MAP_BUSY
     }
 }

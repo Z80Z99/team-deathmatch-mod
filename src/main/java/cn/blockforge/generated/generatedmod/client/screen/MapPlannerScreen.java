@@ -23,7 +23,8 @@ import java.util.List;
 /** 规划器的区域选择与编辑菜单。 */
 public final class MapPlannerScreen extends UiScreen {
     private static final int MENU_WIDTH = 350;
-    private final List<MapRegion> regions;
+    private List<MapRegion> regions;
+    private int lastRevision = -1;
     private final List<RegionButton> buttons = new ArrayList<>();
     private final CameraType previousCameraType;
     private List<String> helpLines = List.of();
@@ -38,6 +39,7 @@ public final class MapPlannerScreen extends UiScreen {
 
     @Override
     protected void init() {
+        lastRevision = ClientMapEditorData.revision();
         buttons.clear();
         beginLayout(MENU_WIDTH, 0, BUTTON_HEIGHT * 2 + 8, true, true);
         int titleY = flowRow(18);
@@ -78,9 +80,23 @@ public final class MapPlannerScreen extends UiScreen {
         flowWidget(uiButton("新增自定义区域", innerLeft, createY, controlWidth, this::createRegion,
                 "创建一个新的可编辑区域。", UiButton.Kind.PRIMARY), createY);
         flowWidget(helpButton(helpX, createY,
-                "新增区域会先复制当前地图边界作为初始范围。",
+                "新增区域从脚下一个方块开始，并成为画笔目标。",
                 "创建后可用画笔在区域内重新圈定两个端点。",
                 "区域名称、类型、显示与生效逻辑可在编辑页调整。"), createY);
+        int spawnY = flowRow(BUTTON_HEIGHT);
+        flowWidget(new cn.blockforge.generated.generatedmod.client.ui.UiCycleButton<>(innerLeft, spawnY,
+                innerWidth, BUTTON_HEIGHT,
+                List.of(cn.blockforge.generated.generatedmod.map.MapTool.SPAWN_A,
+                        cn.blockforge.generated.generatedmod.map.MapTool.SPAWN_B,
+                        cn.blockforge.generated.generatedmod.map.MapTool.SPAWN_C,
+                        cn.blockforge.generated.generatedmod.map.MapTool.SPAWN_D,
+                        cn.blockforge.generated.generatedmod.map.MapTool.SPECTATOR),
+                cn.blockforge.generated.generatedmod.map.MapTool.SPAWN_A,
+                tool -> "编辑出生点：" + tool.displayName(), tool -> {
+                    FpsTdmNetwork.sendToServer(new cn.blockforge.generated.generatedmod.network.packet.MapEditorActionPacket(
+                            cn.blockforge.generated.generatedmod.map.MapEditorAction.SELECT_TOOL, tool.id()));
+                    onClose();
+                }, "选择队伍后使用画笔添加或移除出生点。", UiButton.Kind.SECONDARY), spawnY);
 
         footerButton("地图工作台", 0, 2, 0, this::openWorkbench,
                 "打开地图工作台。", UiButton.Kind.SECONDARY);
@@ -128,11 +144,8 @@ public final class MapPlannerScreen extends UiScreen {
 
     private void createRegion() {
         MapEditorView view = ClientMapEditorData.view();
-        MapDefinition.Region bounds = view.hasTarget() && view.bounds().present()
-                ? new MapDefinition.Region(
-                        new BlockPos(view.bounds().minX(), view.bounds().minY(), view.bounds().minZ()),
-                        new BlockPos(view.bounds().maxX(), view.bounds().maxY(), view.bounds().maxZ()))
-                : new MapDefinition.Region(minecraft.player.blockPosition(), minecraft.player.blockPosition());
+        if (minecraft == null || minecraft.player == null) return;
+        MapDefinition.Region bounds = new MapDefinition.Region(minecraft.player.blockPosition(), minecraft.player.blockPosition());
         MapRegion region = MapRegion.custom("", "自定义区域", MapRegion.Type.CUSTOM, bounds);
         FpsTdmNetwork.sendToServer(new MapRegionPacket(MapRegionAction.CREATE, region, 0));
         onClose();
@@ -165,6 +178,15 @@ public final class MapPlannerScreen extends UiScreen {
     private void openWorkbench() {
         if (minecraft != null) {
             MapLibraryScreen.open(this);
+        }
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (lastRevision != ClientMapEditorData.revision()) {
+            regions = ClientMapEditorData.view().regions();
+            rebuildWidgets();
         }
     }
 
