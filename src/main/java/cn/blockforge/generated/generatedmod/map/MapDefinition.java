@@ -201,8 +201,8 @@ public final class MapDefinition {
                 boundsConfigured, resetConfigured);
     }
 
-    public MapDefinition withoutRegion(String id) {
-        String normalized = MapRegion.normalizeId(id);
+    public MapDefinition withoutRegion(String regionId) {
+        String normalized = MapRegion.normalizeId(regionId);
         if ("bounds".equals(normalized)) return new MapDefinition(id, displayName, world, bounds, resetRegion,
                 teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns, customRegions,
                 false, resetConfigured);

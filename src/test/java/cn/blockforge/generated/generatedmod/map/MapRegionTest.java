@@ -68,6 +68,13 @@ class MapRegionTest {
         assertTrue(complete.isComplete());
 
         MapDefinition decoded = MapDefinition.fromJson(complete.withoutRegion("bounds").toJson(), "blank");
+        assertEquals("blank", decoded.id());
+        assertEquals("blank", complete.withoutRegion("reset").id());
+        MapRegion custom = MapRegion.custom("zone", "zone", MapRegion.Type.CUSTOM, point);
+        MapDefinition removedCustom = complete.withRegion(custom).withoutRegion("zone");
+        assertEquals("blank", removedCustom.id());
+        assertTrue(removedCustom.customRegions().isEmpty());
+        assertTrue(removedCustom.isComplete());
         assertTrue(!decoded.hasBounds());
         assertTrue(decoded.hasResetRegion());
         assertTrue(!decoded.isComplete());
