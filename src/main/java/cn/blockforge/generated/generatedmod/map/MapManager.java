@@ -100,8 +100,8 @@ public final class MapManager {
 
         MapDefinition definition;
         try {
-            definition = new MapDefinition(id, displayName, level.dimension(), region, region,
-                    teamA, teamB, spectator);
+            definition = MapDefinition.incomplete(id, displayName, level.dimension(),
+                    new MapDefinition.Region(center, center));
         } catch (RuntimeException error) {
             LOGGER.warn("构造新地图 {} 失败", id, error);
             return CreateResult.INVALID_POSITION;
@@ -111,15 +111,6 @@ public final class MapManager {
             return registry.get(id).isPresent() ? CreateResult.ALREADY_EXISTS : CreateResult.IO_ERROR;
         }
 
-        if (resetManager != null) {
-            resetManager.close();
-        }
-        current = definition;
-        resetManager = new MapResetManager(server, definition, registry.snapshotFile(definition.id()));
-        if (!resetManager.isReady() && !resetManager.isCapturing() && !resetManager.capture()) {
-            LOGGER.warn("地图 {} 已创建，但初始快照未能开始：{}", id, resetManager.lastError());
-            return CreateResult.CREATED_NOT_READY;
-        }
         return CreateResult.CREATED;
     }
 
@@ -131,6 +122,7 @@ public final class MapManager {
         if (resetManager != null && resetManager.isResetting()) {
             return LoadResult.BUSY;
         }
+        if (!found.get().isComplete()) return LoadResult.INCOMPLETE;
         MapDefinition definition = sanitizeSpawns(found.get());
         if (current != null && current.id().equals(definition.id())) {
             resetManager.updateDefinition(definition);
@@ -444,6 +436,11 @@ public final class MapManager {
         if (current == null) {
             return "当前地图：未选择；已注册 " + registry.definitions().size() + " 张";
         }
+        if (!current.isComplete()) {
+            String missing = !current.hasBounds() && !current.hasResetRegion() ? "地图边界、重置区域"
+                    : !current.hasBounds() ? "地图边界" : "重置区域";
+            return current.id() + "（" + current.displayName() + "），未完成：缺少" + missing;
+        }
         String reset = resetManager == null ? "无快照" : resetManager.isReady() ? "快照就绪"
                 : resetManager.isCapturing() ? "快照捕获 " + progress(resetManager.processedBlocks(), resetManager.totalBlocks())
                 : "不可用：" + resetManager.lastError();
@@ -530,6 +527,7 @@ public final class MapManager {
         ALREADY_CURRENT,
         LOADING,
         NOT_FOUND,
+        INCOMPLETE,
         BUSY,
         FAILED
     }

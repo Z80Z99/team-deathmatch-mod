@@ -237,8 +237,10 @@ public final class MapEditorScreen extends UiScreen {
         int y = summaryY;
         divider(graphics, innerLeft, y + SUMMARY_HEIGHT - 1, innerWidth);
         String state = view.draftInvalidated() ? "草稿失效" : !view.hasTarget() ? "无目标"
+                : !view.bounds().present() || !view.resetRegion().present() ? "未完成"
                 : !view.canEdit() ? "不可编辑" : view.locked() ? "任务锁定" : "可编辑";
-        int stateColor = view.draftInvalidated() || !view.hasTarget() ? UiTheme.ERROR
+        int stateColor = view.draftInvalidated() || !view.hasTarget()
+                || !view.bounds().present() || !view.resetRegion().present() ? UiTheme.ERROR
                 : !view.canEdit() ? UiTheme.SUBTLE
                 : view.locked() ? UiTheme.WARNING : UiTheme.SUCCESS;
         int badgeWidth = Math.min(88, Math.max(54, innerWidth / 8));
@@ -247,6 +249,13 @@ public final class MapEditorScreen extends UiScreen {
         if (!view.hasTarget()) {
             graphics.drawString(font, fit("在地图工作台里新建一张地图，或用别人的邀请码导入一份副本。",
                     innerWidth - 16), innerLeft + 8, y + 28, UiTheme.MUTED, false);
+            return;
+        }
+        if (!view.bounds().present() || !view.resetRegion().present()) {
+            String missing = !view.bounds().present() && !view.resetRegion().present()
+                    ? "地图边界、重置区域" : !view.bounds().present() ? "地图边界" : "重置区域";
+            graphics.drawString(font, fit("缺少：" + missing + "。请打开规划器创建。", innerWidth - 110),
+                    innerLeft + 8, y + 28, UiTheme.ERROR, false);
             return;
         }
         int titleWidth = Math.max(1, innerWidth - badgeWidth - 14);

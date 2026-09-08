@@ -20,6 +20,8 @@ public final class MapDefinition {
     private final ResourceKey<Level> world;
     private final Region bounds;
     private final Region resetRegion;
+    private final boolean boundsConfigured;
+    private final boolean resetConfigured;
     private final List<SpawnPoint> teamASpawns;
     private final List<SpawnPoint> teamBSpawns;
     private final List<SpawnPoint> spectatorSpawns;
@@ -48,6 +50,16 @@ public final class MapDefinition {
                          List<SpawnPoint> teamBSpawns, List<SpawnPoint> spectatorSpawns,
                          List<SpawnPoint> teamCSpawns, List<SpawnPoint> teamDSpawns,
                          List<MapRegion> customRegions) {
+        this(id, displayName, world, bounds, resetRegion, teamASpawns, teamBSpawns, spectatorSpawns,
+                teamCSpawns, teamDSpawns, customRegions, true, true);
+    }
+
+    private MapDefinition(String id, String displayName, ResourceKey<Level> world,
+                          Region bounds, Region resetRegion, List<SpawnPoint> teamASpawns,
+                          List<SpawnPoint> teamBSpawns, List<SpawnPoint> spectatorSpawns,
+                          List<SpawnPoint> teamCSpawns, List<SpawnPoint> teamDSpawns,
+                          List<MapRegion> customRegions, boolean boundsConfigured,
+                          boolean resetConfigured) {
         this.id = normalizeId(id);
         if (!isValidId(this.id)) {
             throw new IllegalArgumentException("地图 id 不能为空，且只能使用字母、数字、点、下划线和短横线");
@@ -59,6 +71,8 @@ public final class MapDefinition {
         }
         this.resetRegion = resetRegion;
         this.bounds = bounds == null ? resetRegion : bounds;
+        this.boundsConfigured = boundsConfigured;
+        this.resetConfigured = resetConfigured;
         this.teamASpawns = copy(teamASpawns);
         this.teamBSpawns = copy(teamBSpawns);
         this.spectatorSpawns = copy(spectatorSpawns);
@@ -85,6 +99,22 @@ public final class MapDefinition {
 
     public Region resetRegion() {
         return resetRegion;
+    }
+
+    public boolean hasBounds() { return boundsConfigured; }
+    public boolean hasResetRegion() { return resetConfigured; }
+    public boolean isComplete() { return boundsConfigured && resetConfigured; }
+
+    public static MapDefinition incomplete(String id, String displayName, ResourceKey<Level> world,
+                                           Region placeholder) {
+        return new MapDefinition(id, displayName, world, placeholder, placeholder,
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), false, false);
+    }
+
+    public MapDefinition copyAs(String newId) {
+        return new MapDefinition(newId, displayName, world, bounds, resetRegion,
+                teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns, customRegions,
+                boundsConfigured, resetConfigured);
     }
 
     public List<MapRegion> customRegions() {
@@ -118,19 +148,20 @@ public final class MapDefinition {
                 team == Team.TEAM_A ? points : teamASpawns, team == Team.TEAM_B ? points : teamBSpawns,
                 team == Team.SPECTATOR ? points : spectatorSpawns,
                 team == Team.TEAM_C ? points : teamCSpawns, team == Team.TEAM_D ? points : teamDSpawns,
-                customRegions);
+                customRegions, boundsConfigured, resetConfigured);
     }
 
     public MapDefinition withRegions(Region updatedBounds, Region updatedResetRegion) {
         return new MapDefinition(id, displayName, world, updatedBounds, updatedResetRegion,
-                teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns, customRegions);
+                teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns, customRegions,
+                true, true);
     }
 
     public List<MapRegion> regions() {
         List<MapRegion> result = new ArrayList<>();
-        result.add(MapRegion.builtIn("bounds", "地图边界", MapRegion.Type.BOUNDS, bounds,
+        if (boundsConfigured) result.add(MapRegion.builtIn("bounds", "地图边界", MapRegion.Type.BOUNDS, bounds,
                 MapRegion.Type.BOUNDS.defaultColor()));
-        result.add(MapRegion.builtIn("reset", "重置区域", MapRegion.Type.RESET, resetRegion,
+        if (resetConfigured) result.add(MapRegion.builtIn("reset", "重置区域", MapRegion.Type.RESET, resetRegion,
                 MapRegion.Type.RESET.defaultColor()));
         result.addAll(customRegions);
         return result;
@@ -145,10 +176,14 @@ public final class MapDefinition {
     public MapDefinition withRegion(MapRegion updated) {
         if (updated == null) return this;
         if ("bounds".equals(updated.id()) && updated.type() == MapRegion.Type.BOUNDS) {
-            return withRegions(updated.region(), resetRegion);
+            return new MapDefinition(id, displayName, world, updated.region(), resetRegion,
+                    teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns, customRegions,
+                    true, resetConfigured);
         }
         if ("reset".equals(updated.id()) && updated.type() == MapRegion.Type.RESET) {
-            return withRegions(bounds, updated.region());
+            return new MapDefinition(id, displayName, world, bounds, updated.region(),
+                    teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns, customRegions,
+                    boundsConfigured, true);
         }
         List<MapRegion> next = new ArrayList<>();
         boolean replaced = false;
@@ -162,16 +197,23 @@ public final class MapDefinition {
         }
         if (!replaced) next.add(updated);
         return new MapDefinition(id, displayName, world, bounds, resetRegion,
-                teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns, next);
+                teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns, next,
+                boundsConfigured, resetConfigured);
     }
 
     public MapDefinition withoutRegion(String id) {
         String normalized = MapRegion.normalizeId(id);
-        if ("bounds".equals(normalized) || "reset".equals(normalized)) return this;
+        if ("bounds".equals(normalized)) return new MapDefinition(id, displayName, world, bounds, resetRegion,
+                teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns, customRegions,
+                false, resetConfigured);
+        if ("reset".equals(normalized)) return new MapDefinition(id, displayName, world, bounds, resetRegion,
+                teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns, customRegions,
+                boundsConfigured, false);
         List<MapRegion> next = new ArrayList<>();
         for (MapRegion region : customRegions) if (!region.id().equals(normalized)) next.add(region);
         return new MapDefinition(id, displayName, world, bounds, resetRegion,
-                teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns, next);
+                teamASpawns, teamBSpawns, spectatorSpawns, teamCSpawns, teamDSpawns, next,
+                boundsConfigured, resetConfigured);
     }
 
     /**
@@ -185,6 +227,8 @@ public final class MapDefinition {
                 && world.equals(other.world)
                 && bounds.equals(other.bounds)
                 && resetRegion.equals(other.resetRegion)
+                && boundsConfigured == other.boundsConfigured
+                && resetConfigured == other.resetConfigured
                 && customRegions.equals(other.customRegions);
     }
 
@@ -205,6 +249,8 @@ public final class MapDefinition {
         object.addProperty("world", world.location().toString());
         object.add("bounds", bounds.toJson());
         object.add("resetRegion", resetRegion.toJson());
+        object.addProperty("boundsConfigured", boundsConfigured);
+        object.addProperty("resetConfigured", resetConfigured);
         JsonObject spawns = new JsonObject();
         spawns.add("teamA", spawnArray(teamASpawns));
         spawns.add("teamB", spawnArray(teamBSpawns));
@@ -238,9 +284,11 @@ public final class MapDefinition {
                 "teamB", "team_b", "teamBSpawns", "teamB spawns", "team_b_spawns");
         List<SpawnPoint> spectator = spawnList(spawnObject, world,
                 "spectator", "spectatorSpawn", "spectatorSpawns", "spectator spawn", "spectator_spawns");
+        boolean hasBounds = !object.has("boundsConfigured") || object.get("boundsConfigured").getAsBoolean();
+        boolean hasReset = !object.has("resetConfigured") || object.get("resetConfigured").getAsBoolean();
         return new MapDefinition(id, displayName, world, bounds, resetRegion, teamA, teamB, spectator,
                 spawnList(spawnObject, world, "teamC", "team_c"), spawnList(spawnObject, world, "teamD", "team_d"),
-                parseRegions(object.get("regions")));
+                parseRegions(object.get("regions")), hasBounds, hasReset);
     }
 
     public static String normalizeId(String value) {

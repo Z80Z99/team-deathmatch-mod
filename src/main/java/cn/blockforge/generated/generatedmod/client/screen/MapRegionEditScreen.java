@@ -53,8 +53,11 @@ public final class MapRegionEditScreen extends UiScreen {
 
         if (builtIn) {
             builtInInfoY = flowRow(58);
-            footerButton("关闭", 0, 2, 0, this::onClose, "返回规划器菜单。", UiButton.Kind.SECONDARY);
-            footerButton("用画笔调整范围", 1, 2, 0, this::closeToGame,
+            footerButton("删除区域", 0, 3, 0, () -> confirmAction("删除基础区域",
+                            "删除后地图会标记为未完成，重新创建前不能开赛。", this::delete),
+                    "删除后可从规划器重新创建。", UiButton.Kind.DANGER);
+            footerButton("关闭", 1, 3, 0, this::onClose, "返回规划器菜单。", UiButton.Kind.SECONDARY);
+            footerButton("用画笔调整", 2, 3, 0, this::closeToGame,
                     "关闭菜单并使用地图画笔调整这个区域的范围。", UiButton.Kind.PRIMARY);
             return;
         }
@@ -230,11 +233,11 @@ public final class MapRegionEditScreen extends UiScreen {
         }
         if (builtIn) {
             int y = builtInInfoY + 4;
-            graphics.drawString(font, fit("这是内置区域，范围请用地图画笔调整。", innerWidth - 16),
+            graphics.drawString(font, fit("这是地图作者创建的基础区域，可用画笔调整范围。", innerWidth - 16),
                     innerLeft + 8, y, UiTheme.TEXT, false);
             graphics.drawString(font, fit("当前范围：" + region.region(), innerWidth - 16),
                     innerLeft + 8, y + 18, UiTheme.MUTED, false);
-            graphics.drawString(font, fit("内置区域不能删除，也不能修改类型。", innerWidth - 16),
+            graphics.drawString(font, fit("可以删除；缺失时地图不能用于比赛。", innerWidth - 16),
                     innerLeft + 8, y + 36, UiTheme.MUTED, false);
         }
         super.render(graphics, mouseX, mouseY, partialTick);

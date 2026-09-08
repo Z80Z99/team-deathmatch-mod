@@ -1,6 +1,7 @@
 package cn.blockforge.generated.generatedmod.lobby;
 
 import cn.blockforge.generated.generatedmod.map.MapManager;
+import cn.blockforge.generated.generatedmod.map.MapDefinition;
 import cn.blockforge.generated.generatedmod.match.MatchManager;
 import cn.blockforge.generated.generatedmod.match.Team;
 import cn.blockforge.generated.generatedmod.network.FpsTdmNetwork;
@@ -494,6 +495,14 @@ public final class RoomManager {
             room.state(RoomState.OPEN);
             return false;
         }
+        MapDefinition selected = matchManager.maps().registry().get(room.mapId()).orElse(null);
+        if (selected != null && !selected.isComplete()) {
+            String missing = !selected.hasBounds() && !selected.hasResetRegion() ? "地图边界、重置区域"
+                    : !selected.hasBounds() ? "地图边界" : "重置区域";
+            sendRoomMessage(room, "地图尚未完成，缺少：" + missing + "。请由地图作者创建后再开赛。", true);
+            room.state(RoomState.OPEN);
+            return false;
+        }
         MapManager.LoadResult result = matchManager.maps().loadMap(room.mapId());
         if (result == MapManager.LoadResult.NOT_FOUND || result == MapManager.LoadResult.FAILED
                 || result == MapManager.LoadResult.BUSY) {
@@ -679,6 +688,7 @@ public final class RoomManager {
             case NO_PLAYERS -> "没有参赛玩家";
             case NO_END_CONDITION -> "没有设置结束条件";
             case NO_MAP -> "没有地图";
+            case MAP_INCOMPLETE -> "地图缺少地图边界或重置区域";
             case MAP_LOADING -> "地图快照仍在捕获";
             case MAP_NOT_READY -> "地图快照不可用";
             case NO_TEAM_SPAWNS -> "每支启用队伍都需要出生点";

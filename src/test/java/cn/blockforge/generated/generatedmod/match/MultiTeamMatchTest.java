@@ -79,7 +79,9 @@ class MultiTeamMatchTest {
         var maps = mock(cn.blockforge.generated.generatedmod.map.MapManager.class);
         var spawns = mock(cn.blockforge.generated.generatedmod.spawn.SpawnManager.class);
         var teams = mock(TeamManager.class);
-        when(maps.currentMap()).thenReturn(Optional.of(mock(cn.blockforge.generated.generatedmod.map.MapDefinition.class)));
+        var definition = mock(cn.blockforge.generated.generatedmod.map.MapDefinition.class);
+        when(definition.isComplete()).thenReturn(true);
+        when(maps.currentMap()).thenReturn(Optional.of(definition));
         when(maps.isReady()).thenReturn(true);
         for (Team team : Team.playing(3)) when(spawns.getSpawns(team))
                 .thenReturn(List.of(mock(cn.blockforge.generated.generatedmod.spawn.SpawnPoint.class)));

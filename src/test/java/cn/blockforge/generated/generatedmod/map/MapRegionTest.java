@@ -51,4 +51,25 @@ class MapRegionTest {
                 .filter(candidate -> candidate.type() == MapRegion.Type.CAPTURE).toList());
         assertTrue(edited.sameConfiguration(MapDefinition.fromJson(edited.toJson(), "map")));
     }
+
+    @Test
+    void blankMapRequiresAuthorCreatedFoundationRegionsAndCanDeleteThem() {
+        MapDefinition.Region point = new MapDefinition.Region(BlockPos.ZERO, BlockPos.ZERO);
+        MapDefinition blank = MapDefinition.incomplete("blank", "Blank", Level.OVERWORLD, point);
+        assertTrue(blank.regions().isEmpty());
+        assertTrue(!blank.isComplete());
+
+        MapDefinition withBounds = blank.withRegion(MapRegion.builtIn("bounds", "地图边界",
+                MapRegion.Type.BOUNDS, point, MapRegion.Type.BOUNDS.defaultColor()));
+        assertTrue(withBounds.hasBounds());
+        assertTrue(!withBounds.hasResetRegion());
+        MapDefinition complete = withBounds.withRegion(MapRegion.builtIn("reset", "重置区域",
+                MapRegion.Type.RESET, point, MapRegion.Type.RESET.defaultColor()));
+        assertTrue(complete.isComplete());
+
+        MapDefinition decoded = MapDefinition.fromJson(complete.withoutRegion("bounds").toJson(), "blank");
+        assertTrue(!decoded.hasBounds());
+        assertTrue(decoded.hasResetRegion());
+        assertTrue(!decoded.isComplete());
+    }
 }

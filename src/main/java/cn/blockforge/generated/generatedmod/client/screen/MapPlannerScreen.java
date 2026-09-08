@@ -70,6 +70,10 @@ public final class MapPlannerScreen extends UiScreen {
             flowWidget(regionHelpButton(helpX, y, region), y);
         }
 
+        MapEditorView view = ClientMapEditorData.view();
+        if (!view.bounds().present()) addFoundationButton("创建地图边界", MapRegion.Type.BOUNDS);
+        if (!view.resetRegion().present()) addFoundationButton("创建重置区域", MapRegion.Type.RESET);
+
         int createY = flowRow(BUTTON_HEIGHT);
         flowWidget(uiButton("新增自定义区域", innerLeft, createY, controlWidth, this::createRegion,
                 "创建一个新的可编辑区域。", UiButton.Kind.PRIMARY), createY);
@@ -83,6 +87,23 @@ public final class MapPlannerScreen extends UiScreen {
         footerButton("继续编辑", 1, 2, 0, this::onClose, "返回游戏，保留当前视角。", UiButton.Kind.PRIMARY);
         footerButton("恢复进入前视角", 0, 1, 1, this::exitEditMode,
                 "恢复打开本菜单之前的视角，并返回游戏。", UiButton.Kind.SECONDARY);
+    }
+
+    private void addFoundationButton(String label, MapRegion.Type type) {
+        int y = flowRow(BUTTON_HEIGHT);
+        flowWidget(uiButton(label, innerLeft, y, innerWidth, () -> createFoundation(type),
+                "在脚下创建初始区域；随后用画笔选择两个角。", UiButton.Kind.PRIMARY), y);
+    }
+
+    private void createFoundation(MapRegion.Type type) {
+        if (minecraft == null || minecraft.player == null) return;
+        BlockPos point = minecraft.player.blockPosition();
+        String id = type == MapRegion.Type.BOUNDS ? "bounds" : "reset";
+        String name = type == MapRegion.Type.BOUNDS ? "地图边界" : "重置区域";
+        MapRegion region = MapRegion.builtIn(id, name, type,
+                new MapDefinition.Region(point, point), type.defaultColor());
+        FpsTdmNetwork.sendToServer(new MapRegionPacket(MapRegionAction.CREATE, region, 0));
+        onClose();
     }
 
     private UiButton helpButton(int x, int y, String... lines) {
@@ -107,7 +128,7 @@ public final class MapPlannerScreen extends UiScreen {
 
     private void createRegion() {
         MapEditorView view = ClientMapEditorData.view();
-        MapDefinition.Region bounds = view.hasTarget()
+        MapDefinition.Region bounds = view.hasTarget() && view.bounds().present()
                 ? new MapDefinition.Region(
                         new BlockPos(view.bounds().minX(), view.bounds().minY(), view.bounds().minZ()),
                         new BlockPos(view.bounds().maxX(), view.bounds().maxY(), view.bounds().maxZ()))

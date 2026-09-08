@@ -271,18 +271,10 @@ public final class MapEditorManager {
             setMessage(player, "当前位置无法生成合法的初始地图区域。", true);
             return;
         }
-        int xOffset = Math.min(5, Math.max(0, (region.max().getX() - region.min().getX()) / 3));
-        int spawnY = Math.max(region.min().getY(), Math.min(region.max().getY(), center.getY()));
-        List<SpawnPoint> teamA = List.of(new SpawnPoint(level.dimension(),
-                Math.max(region.min().getX(), center.getX() - xOffset) + 0.5D, spawnY,
-                center.getZ() + 0.5D, 0.0F, 0.0F));
-        List<SpawnPoint> teamB = List.of(new SpawnPoint(level.dimension(),
-                Math.min(region.max().getX(), center.getX() + xOffset) + 0.5D, spawnY,
-                center.getZ() + 0.5D, 180.0F, 0.0F));
         MapDefinition definition;
         try {
-            definition = new MapDefinition(id, name, level.dimension(), region, region,
-                    teamA, teamB, List.of());
+            definition = MapDefinition.incomplete(id, name, level.dimension(),
+                    new MapDefinition.Region(center, center));
         } catch (RuntimeException error) {
             setMessage(player, "地图创建失败：" + error.getMessage(), true);
             return;
@@ -296,7 +288,7 @@ public final class MapEditorManager {
         drafts.remove(player.getUUID());
         invalidatedDrafts.remove(player.getUUID());
         setMessage(player, "地图 “" + name + "”（id：" + id + "）已创建并设为当前编辑目标。"
-                + "先移动站位设置边界，再保存区域。", false);
+                + "当前为空白地图，请先创建地图边界和重置区域。", false);
     }
 
     private void importByCode(ServerPlayer player, String rawCode) {
@@ -316,10 +308,7 @@ public final class MapEditorManager {
             return;
         }
         String newId = uniqueMapId(player, friendlyPart(source));
-        MapDefinition copy = new MapDefinition(newId, source.displayName(), source.world(),
-                source.bounds(), source.resetRegion(),
-                source.teamASpawns(), source.teamBSpawns(), source.spectatorSpawns(),
-                source.spawns(Team.TEAM_C), source.spawns(Team.TEAM_D), source.customRegions());
+        MapDefinition copy = source.copyAs(newId);
         if (!maps.registerMap(copy)) {
             setMessage(player, "导入副本写入失败，请检查服务器日志。", true);
             return;
@@ -647,14 +636,29 @@ public final class MapEditorManager {
             case CREATE -> {
                 MapRegion created = region == null ? MapRegion.custom(uniqueRegionId(target),
                         "自定义区域", MapRegion.Type.CUSTOM, target.bounds()) : region;
+                if (created.type() == MapRegion.Type.BOUNDS) {
+                    created = MapRegion.builtIn("bounds", "地图边界", MapRegion.Type.BOUNDS,
+                            created.region(), MapRegion.Type.BOUNDS.defaultColor());
+                } else if (created.type() == MapRegion.Type.RESET) {
+                    created = MapRegion.builtIn("reset", "重置区域", MapRegion.Type.RESET,
+                            created.region(), MapRegion.Type.RESET.defaultColor());
+                }
                 if (created.id().isBlank()) created = new MapRegion(uniqueRegionId(target),
                         created.displayName(), created.type(), created.region(), created.visibleInMatch(),
                         created.displayRange(), created.appearance(), created.activation(),
                         created.activationValue(), created.color(), created.outline(), created.fill(),
                         created.priority(), created.notes());
-                if (maps.saveDefinition(target.withRegion(created))) {
+                if (created.type() != MapRegion.Type.BOUNDS && created.type() != MapRegion.Type.RESET
+                        && !target.hasBounds()) {
+                    feedback(player, "请先创建地图边界，再添加玩法区域。", true);
+                } else if ((created.type() == MapRegion.Type.BOUNDS && target.hasBounds())
+                        || (created.type() == MapRegion.Type.RESET && target.hasResetRegion())) {
+                    feedback(player, "该基础区域已经存在，可以直接编辑。", true);
+                } else if (maps.saveDefinition(target.withRegion(created))) {
                     selectedRegionIds.put(player.getUUID(), created.id());
-                    selectedTools.put(player.getUUID(), MapTool.CUSTOM);
+                    selectedTools.put(player.getUUID(), created.type() == MapRegion.Type.BOUNDS
+                            ? MapTool.BOUNDS : created.type() == MapRegion.Type.RESET
+                            ? MapTool.RESET : MapTool.CUSTOM);
                     feedback(player, "已创建区域：" + created.displayName(), false);
                 } else {
                     feedback(player, "区域创建失败，请检查服务器日志。", true);
@@ -665,8 +669,8 @@ public final class MapEditorManager {
                     feedback(player, "区域保存失败：缺少区域 ID。", true);
                 } else if (!player.serverLevel().dimension().equals(target.world())) {
                     feedback(player, "请先传送到该地图所在维度，再保存区域。", true);
-                } else if (!target.bounds().contains(region.region().min())
-                        || !target.bounds().contains(region.region().max())) {
+                } else if (region.type() != MapRegion.Type.BOUNDS && target.hasBounds()
+                        && regionOutsideBounds(target, region)) {
                     feedback(player, "区域必须在地图边界内。", true);
                 } else if (maps.saveDefinition(target.withRegion(region))) {
                     selectedRegionIds.put(player.getUUID(), region.id());
@@ -676,11 +680,15 @@ public final class MapEditorManager {
                 }
             }
             case DELETE -> {
-                if (region == null || "bounds".equals(region.id()) || "reset".equals(region.id())) {
-                    feedback(player, "地图边界和重置区域不能删除。", true);
+                if (region == null) {
+                    feedback(player, "没有可删除的区域。", true);
                 } else if (maps.saveDefinition(target.withoutRegion(region.id()))) {
-                    selectedRegionIds.put(player.getUUID(), "bounds");
-                    selectedTools.put(player.getUUID(), MapTool.BOUNDS);
+                    if (region.type() == MapRegion.Type.BOUNDS || region.type() == MapRegion.Type.RESET) {
+                        maps.registry().deleteSnapshot(target.id());
+                    }
+                    selectedRegionIds.put(player.getUUID(), "");
+                    brushFirstPoints.remove(player.getUUID());
+                    brushSecondPoints.remove(player.getUUID());
                     feedback(player, "区域已删除：" + region.displayName(), false);
                 } else {
                     feedback(player, "区域删除失败，请检查服务器日志。", true);
@@ -689,6 +697,11 @@ public final class MapEditorManager {
             default -> feedback(player, "不支持的区域操作。", true);
         }
         sendView(player, requestId);
+    }
+
+    private static boolean regionOutsideBounds(MapDefinition target, MapRegion region) {
+        return !target.bounds().contains(region.region().min())
+                || !target.bounds().contains(region.region().max());
     }
 
     private void giveTools(ServerPlayer player) {
@@ -830,7 +843,6 @@ public final class MapEditorManager {
 
     private void applyRegionEndpoints(ServerPlayer player, MapDefinition target, MapTool tool,
                                       BlockPos first, BlockPos second) {
-        Draft draft = draftFor(player.getUUID(), target);
         BlockPos min = new BlockPos(
                 Math.min(first.getX(), second.getX()),
                 Math.min(first.getY(), second.getY()),
@@ -843,15 +855,24 @@ public final class MapEditorManager {
             saveCustomRegionBounds(player, target, new MapDefinition.Region(min, max));
             return;
         }
-        if (tool == MapTool.BOUNDS) {
-            draft.boundsMin = min;
-            draft.boundsMax = max;
-        } else {
-            draft.resetMin = min;
-            draft.resetMax = max;
+        MapDefinition.Region range = new MapDefinition.Region(min, max);
+        if (tool == MapTool.RESET && range.volume() >
+                cn.blockforge.generated.generatedmod.config.FpsTdmConfig.COMMON.maxSnapshotBlocks.get()) {
+            feedback(player, "重置区域超过服务器允许的最大方块数。", true);
+            return;
         }
-        draft.dirty = true;
-        applyRegions(player, target, draft);
+        MapRegion.Type type = tool == MapTool.BOUNDS ? MapRegion.Type.BOUNDS : MapRegion.Type.RESET;
+        String id = tool == MapTool.BOUNDS ? "bounds" : "reset";
+        String name = tool == MapTool.BOUNDS ? "地图边界" : "重置区域";
+        MapDefinition updated = target.withRegion(MapRegion.builtIn(id, name, type, range, type.defaultColor()));
+        if (maps.saveDefinition(updated)) {
+            maps.registry().deleteSnapshot(target.id());
+            drafts.remove(player.getUUID());
+            feedback(player, name + "已保存。" + (updated.isComplete()
+                    ? "地图基础区域已完整。" : "还需要创建另一个基础区域。"), false);
+        } else {
+            feedback(player, name + "保存失败，请检查服务器日志。", true);
+        }
     }
 
     private void adjustRegion(ServerPlayer player, MapDefinition target, MapTool tool,
@@ -1047,8 +1068,8 @@ public final class MapEditorManager {
                 definition == null ? "" : definition.id(),
                 definition == null ? "" : definition.displayName(),
                 definition == null ? "" : definition.world().location().toString(),
-                definition == null ? MapEditorView.RegionData.empty() : regionData(definition.bounds()),
-                definition == null ? MapEditorView.RegionData.empty() : regionData(definition.resetRegion()),
+                definition == null || !definition.hasBounds() ? MapEditorView.RegionData.empty() : regionData(definition.bounds()),
+                definition == null || !definition.hasResetRegion() ? MapEditorView.RegionData.empty() : regionData(definition.resetRegion()),
                 draft == null ? MapEditorView.RegionData.empty() : regionData(draft.regionBounds()),
                 draft == null ? MapEditorView.RegionData.empty() : regionData(draft.regionReset()),
                 definition == null ? 0 : definition.teamASpawns().size(),
@@ -1191,10 +1212,14 @@ public final class MapEditorManager {
         private static Draft from(MapDefinition definition) {
             Draft draft = new Draft(definition);
             if (definition != null) {
-                draft.boundsMin = definition.bounds().min();
-                draft.boundsMax = definition.bounds().max();
-                draft.resetMin = definition.resetRegion().min();
-                draft.resetMax = definition.resetRegion().max();
+                if (definition.hasBounds()) {
+                    draft.boundsMin = definition.bounds().min();
+                    draft.boundsMax = definition.bounds().max();
+                }
+                if (definition.hasResetRegion()) {
+                    draft.resetMin = definition.resetRegion().min();
+                    draft.resetMax = definition.resetRegion().max();
+                }
             }
             return draft;
         }

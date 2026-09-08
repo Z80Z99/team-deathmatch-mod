@@ -353,6 +353,9 @@ public final class MatchManager {
         if (maps.currentMap().isEmpty()) {
             return StartResult.NO_MAP;
         }
+        if (!maps.currentMap().orElseThrow().isComplete()) {
+            return StartResult.MAP_INCOMPLETE;
+        }
         if (maps.isLoading()) {
             return StartResult.MAP_LOADING;
         }
@@ -1262,6 +1265,7 @@ public final class MatchManager {
         NO_PLAYERS,
         NO_END_CONDITION,
         NO_MAP,
+        MAP_INCOMPLETE,
         MAP_LOADING,
         MAP_NOT_READY,
         NO_TEAM_SPAWNS,

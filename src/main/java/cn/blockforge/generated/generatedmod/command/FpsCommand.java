@@ -225,6 +225,7 @@ public final class FpsCommand {
             case ALREADY_CURRENT -> success(context, "地图已经是当前地图，初始快照已就绪。");
             case LOADING -> success(context, "地图初始快照仍在捕获中：" + manager.maps().resetProgress());
             case NOT_FOUND -> failure(context, "未找到地图配置：" + id);
+            case INCOMPLETE -> failure(context, "地图尚未完成：请先创建地图边界和重置区域。");
             case BUSY -> failure(context, "地图正在恢复，暂时不能切换。");
             case FAILED -> failure(context, "地图无法加载：" + manager.maps().resetManager().lastError());
         }
@@ -517,6 +518,7 @@ public final class FpsCommand {
             case NO_PLAYERS -> "没有可参加比赛的玩家。";
             case NO_END_CONDITION -> "击杀目标和时间限制不能同时为 0。";
             case NO_MAP -> "尚未选择地图，请先执行 /fps map load <map>。";
+            case MAP_INCOMPLETE -> "地图尚未完成，请先创建地图边界和重置区域。";
             case MAP_LOADING -> "地图初始快照仍在捕获，请稍后再试。";
             case MAP_NOT_READY -> "当前地图快照不可用，请检查地图配置和服务器日志。";
             case NO_TEAM_SPAWNS -> "每支启用队伍至少需要一个出生点。";
