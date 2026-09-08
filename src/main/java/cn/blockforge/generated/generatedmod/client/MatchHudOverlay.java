@@ -39,16 +39,16 @@ public final class MatchHudOverlay {
                     global.backgroundOpacityPercent(), width, height);
         }
         HudContext context = HudContext.match(ClientMatchData.mode);
-        if (elements.scoreVisible() && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
+        if (elements.builtInEnabled(HudContext.BuiltIn.SCORE) && elements.scoreVisible() && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
                 HudContext.BuiltIn.SCORE, elements, width, height, partialTick)) {
             renderScore(forgeGui, graphics, width, height, elements);
         }
-        if (elements.feedVisible() && ClientMatchData.killFeedActive()
+        if (elements.builtInEnabled(HudContext.BuiltIn.FEED) && elements.feedVisible() && ClientMatchData.killFeedActive()
                 && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
                 HudContext.BuiltIn.FEED, elements, width, height, partialTick)) {
             renderKillFeed(forgeGui, graphics, width, height, elements);
         }
-        if (elements.textVisible() && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
+        if (elements.builtInEnabled(HudContext.BuiltIn.TEXT) && elements.textVisible() && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
                 HudContext.BuiltIn.TEXT, elements, width, height, partialTick)) {
             renderTeamHint(forgeGui, graphics, width, height, elements);
         }
@@ -200,8 +200,8 @@ public final class MatchHudOverlay {
             values.put("wins_" + suffix, Integer.toString(stats.wins()));
         }
         values.put("time", ClientMatchData.phaseTimerText());
-        values.put("round", ClientMatchData.roundText());
-        values.put("target", ClientMatchData.targetText());
+        values.put("round", Integer.toString(ClientMatchData.roundNumber));
+        values.put("target", Integer.toString(HudParameters.target()));
         values.put("team", ClientMatchData.myTeam.displayName());
         values.put("sizes", ClientMatchData.teamSizesText());
         values.put("hint", hintText());

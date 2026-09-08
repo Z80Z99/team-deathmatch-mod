@@ -34,7 +34,7 @@ import java.util.Map;
 public final class ClientHudLayout {
     private static final Logger LOGGER = LoggerFactory.getLogger("generated_mod_hud_layout");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int VERSION = 5;
+    private static final int VERSION = 6;
     private static final int SCORE_BIT = 1;
     private static final int TEXT_BIT = 1 << 1;
     private static final int FEED_BIT = 1 << 2;
@@ -139,6 +139,7 @@ public final class ClientHudLayout {
             CUSTOM_ELEMENTS.put(context, new ArrayList<>());
         }
         loaded = true;
+        flattenExamples();
         save();
         return snapshot();
     }
@@ -152,10 +153,19 @@ public final class ClientHudLayout {
         loaded = true;
         Path file = configFile();
         if (!Files.isRegularFile(file)) {
+            flattenExamples();
             return;
         }
         try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             JsonObject object = JsonParser.parseReader(reader).getAsJsonObject();
+            if (integer(object, "version", 1) < 6) {
+                Path backup = file.resolveSibling("client-hud.before-v6.json");
+                if (!Files.exists(backup)) {
+                    try { Files.copy(file, backup); }
+                    catch (IOException error) { LOGGER.warn("无法备份旧 HUD 配置：{}", backup, error); }
+                }
+                migrateTemplates(object);
+            }
             if (object.has("contexts")) {
                 readVersion2(object);
             } else {
@@ -164,6 +174,55 @@ public final class ClientHudLayout {
         } catch (Exception error) {
             LOGGER.warn("读取客户端 HUD 配置失败，将使用默认值：{}", file, error);
         }
+        flattenExamples();
+    }
+
+    private static void flattenExamples() {
+        Draft draft = new Snapshot(global, CONTEXTS, CUSTOM_ELEMENTS).draft();
+        for (HudContext context : HudContext.values()) HudAssemblies.splitAll(draft, context);
+        Snapshot result = draft.build();
+        for (HudContext context : HudContext.values()) {
+            CONTEXTS.put(context, result.elements(context));
+            CUSTOM_ELEMENTS.put(context, new ArrayList<>(result.customElements(context)));
+        }
+    }
+
+    static void migrateTemplates(JsonObject object) {
+        if (integer(object, "version", 1) >= VERSION) return;
+        if (object.has("contexts") && object.get("contexts").isJsonObject()) {
+            for (var scene : object.getAsJsonObject("contexts").entrySet()) {
+                if (!scene.getValue().isJsonObject()) continue;
+                JsonObject fields = scene.getValue().getAsJsonObject();
+                for (String key : new ArrayList<>(fields.keySet())) {
+                    if (key.endsWith("Template") && fields.get(key).isJsonPrimitive()) {
+                        fields.addProperty(key, HudParameters.migrateTemplate(fields.get(key).getAsString()));
+                    }
+                }
+            }
+        }
+        if (object.has("customElements") && object.get("customElements").isJsonObject()) {
+            for (var scene : object.getAsJsonObject("customElements").entrySet()) {
+                if (!scene.getValue().isJsonArray()) continue;
+                for (var item : scene.getValue().getAsJsonArray()) {
+                    if (!item.isJsonObject()) continue;
+                    JsonObject fields = item.getAsJsonObject();
+                    String source = string(fields, "source", "");
+                    String text = string(fields, "text", "");
+                    if (!source.isBlank() && !text.contains("%s") && !text.contains("%v") && !text.contains("%m")) {
+                        text = text.isBlank() ? "%s" : text + " %s";
+                    }
+                    text = switch (source) {
+                        case "round_text" -> text.replace("%s", "回合 %s    胜场 {wins_a}:{wins_b}");
+                        case "target_text" -> text.replace("%s", "目标 %s");
+                        case "winner_text" -> text.replace("%s", "%s 获胜");
+                        case "queue_text" -> text.replace("%s", "%s 人");
+                        default -> text;
+                    };
+                    fields.addProperty("text", text);
+                }
+            }
+        }
+        object.addProperty("version", VERSION);
     }
 
     private static void readVersion2(JsonObject object) {
@@ -347,7 +406,7 @@ public final class ClientHudLayout {
                     feedVisible, feedXPercent, feedYPercent, feedScalePercent, feedOpacityPercent,
                     bannerVisible, bannerXPercent, bannerYPercent, bannerScalePercent, bannerOpacityPercent,
                     "{mode} · {phase}", "A队 {score_a}", "B队 {score_b}", "{time}",
-                    "{round}    {target}", "{hint}", "⚔ {killer} 击杀 {victim}",
+                    "回合 {round}    目标 {target}", "{hint}", "⚔ {killer} 击杀 {victim}",
                     "{matching_line1}", "{matching_line2}", UiTheme.ACCENT, UiTheme.ACCENT,
                     UiTheme.ACCENT, UiTheme.ACCENT);
         }
@@ -678,13 +737,22 @@ public final class ClientHudLayout {
      */
     public record CustomElement(String id, String type, String text, int xPercent, int yPercent,
                                 int width, int height, int opacityPercent, int color, boolean visible,
-                                String source, int scalePercent, boolean background, boolean border, boolean shadow) {
+                                String source, int scalePercent, boolean background, boolean border, boolean shadow,
+                                Placement placement) {
         public CustomElement {
             id = id == null || id.isBlank() ? "element" : id;
             type = type == null ? "text" : type;
             text = text == null ? "自定义元素" : text;
             source = source == null ? "" : source;
             scalePercent = Math.max(50, Math.min(300, scalePercent));
+            placement = placement == null ? Placement.NONE : placement;
+        }
+
+        public CustomElement(String id, String type, String text, int xPercent, int yPercent,
+                             int width, int height, int opacityPercent, int color, boolean visible,
+                             String source, int scalePercent, boolean background, boolean border, boolean shadow) {
+            this(id, type, text, xPercent, yPercent, width, height, opacityPercent, color, visible,
+                    source, scalePercent, background, border, shadow, Placement.NONE);
         }
 
         /** 旧十参构造：未绑定数据源、默认字号。 */
@@ -745,7 +813,7 @@ public final class ClientHudLayout {
             if (xPercent < 0 || xPercent > 100 || yPercent < 0 || yPercent > 100) {
                 return "自定义 HUD 位置必须在 0% 到 100% 之间。";
             }
-            if (width < 8 || width > 1000 || height < 8 || height > 400) {
+            if (width < 1 || width > 1000 || height < 1 || height > 400) {
                 return "自定义 HUD 尺寸超出允许范围。";
             }
             if (opacityPercent < 0 || opacityPercent > 100) {
@@ -768,18 +836,39 @@ public final class ClientHudLayout {
             object.addProperty("background", background);
             object.addProperty("border", border);
             object.addProperty("shadow", shadow);
+            object.add("placement", GSON.toJsonTree(placement));
             return object;
         }
 
         static CustomElement read(JsonObject object) {
             return new CustomElement(string(object, "id", "element"), string(object, "type", "text"),
                     string(object, "text", "自定义元素"), integer(object, "xPercent", 50, 0, 100),
-                    integer(object, "yPercent", 50, 0, 100), integer(object, "width", 180, 8, 1000),
-                    integer(object, "height", 24, 8, 400), integer(object, "opacityPercent", 85, 0, 100),
+                    integer(object, "yPercent", 50, 0, 100), integer(object, "width", 180, 1, 1000),
+                    integer(object, "height", 24, 1, 400), integer(object, "opacityPercent", 85, 0, 100),
                     integer(object, "color", UiTheme.ACCENT), bool(object, "visible", true),
                     string(object, "source", ""), integer(object, "scalePercent", 100, 50, 300),
                      bool(object, "background", false), bool(object, "border", false),
-                     bool(object, "shadow", false));
+                     bool(object, "shadow", false), object.has("placement")
+                            ? GSON.fromJson(object.get("placement"), Placement.class) : Placement.NONE);
+        }
+    }
+
+    /** Each atom owns its anchor and offset; no parent element is required for positioning. */
+    public record Placement(int offsetX, int offsetY, int referenceWidth, int referenceHeight,
+                            String example, String condition) {
+        public static final Placement NONE = new Placement(0, 0, 0, 0, "", "");
+        public Placement {
+            offsetX = Math.max(-2000, Math.min(2000, offsetX));
+            offsetY = Math.max(-2000, Math.min(2000, offsetY));
+            referenceWidth = Math.max(0, Math.min(2000, referenceWidth));
+            referenceHeight = Math.max(0, Math.min(2000, referenceHeight));
+            example = example == null ? "" : example;
+            condition = condition == null ? "" : condition;
+        }
+        public float fit(int width, int height) {
+            return referenceWidth == 0 || referenceHeight == 0 ? 1F
+                    : Math.max(.01F, Math.min(1F, Math.min((width - 16F) / referenceWidth,
+                    (height - 16F) / referenceHeight)));
         }
     }
 

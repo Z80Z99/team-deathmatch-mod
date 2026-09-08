@@ -72,12 +72,16 @@ public final class HudCustomRenderer {
 
     public static void draw(GuiGraphics graphics, Font font, CustomElement element,
                             HudGeometry.Rect rect, boolean editor) {
+        if (!HudParameters.visible(element.placement().condition(), editor)) return;
         ElementRenderer external = EXTERNAL_RENDERERS.get(element.type());
         if (external != null) {
             external.render(graphics, font, element, rect, editor);
             return;
         }
         int alpha = Math.max(0, Math.min(100, element.opacityPercent()));
+        if (!editor && element.placement().condition().equals("feed")) {
+            alpha = alpha * Math.min(20, Math.max(0, ClientMatchData.killFeedTicksLeft())) / 20;
+        }
         int color = UiTheme.withAlpha(element.color(), alpha);
         switch (element.type()) {
             case "block" -> {
@@ -136,10 +140,12 @@ public final class HudCustomRenderer {
             graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
                     UiTheme.withAlpha(UiTheme.PANEL, alpha));
         }
-        int inner = Math.max(1, rect.width() - 4);
+        label = HudParameters.render(label, editor);
+        int inset = rect.height() < 6 ? 0 : 2;
+        int inner = Math.max(1, rect.width() - inset * 2);
         int filled = ratio <= 0.0 ? 0 : Math.max(1, (int) Math.round(inner * Math.min(1.0, ratio)));
-        graphics.fill(rect.left() + 2, rect.top() + 2, rect.left() + 2 + filled,
-                Math.max(rect.top() + 3, rect.bottom() - 2), color);
+        graphics.fill(rect.left() + inset, rect.top() + inset, rect.left() + inset + filled,
+                rect.bottom() - inset, color);
         if (element.border()) {
             graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(),
                     UiTheme.withAlpha(UiTheme.BORDER, alpha));
@@ -162,12 +168,13 @@ public final class HudCustomRenderer {
         } else if (!element.source().isBlank()) {
             content = element.text() + "（源缺失）";
         }
-        float scale = Math.max(0.5F, Math.min(3.0F, element.scalePercent() / 100.0F));
+        content = HudParameters.render(content, editor);
+        float scale = Math.max(0.5F, Math.min(3.0F, element.scalePercent() / 100.0F)) * rect.scale();
         graphics.pose().pushPose();
         graphics.pose().translate(rect.centerX(), rect.centerY(), 0.0F);
         graphics.pose().scale(scale, scale, 1.0F);
-        int halfWidth = rect.width() / 2;
-        int halfHeight = rect.height() / 2;
+        int halfWidth = Math.round(rect.width() / scale) / 2;
+        int halfHeight = Math.round(rect.height() / scale) / 2;
         if (element.shadow()) {
             graphics.fill(-halfWidth + 2, -halfHeight + 2, halfWidth + 2, halfHeight + 2,
                     UiTheme.withAlpha(UiTheme.SHADOW, alpha));
@@ -177,10 +184,11 @@ public final class HudCustomRenderer {
                     UiTheme.withAlpha(UiTheme.PANEL_RAISED, alpha));
         }
         if (element.border()) {
-            graphics.renderOutline(-halfWidth, -halfHeight, rect.width(), rect.height(), color);
+            graphics.renderOutline(-halfWidth, -halfHeight, halfWidth * 2, halfHeight * 2, color);
         }
         // 坐标已按 scale 放大，限宽要换算回本地坐标，文字才不会溢出面板。
-        int localLimit = Math.max(16, Math.round((rect.width() - 8) / scale));
+        int padding = element.placement().example().isBlank() ? 8 : 0;
+        int localLimit = Math.max(1, Math.round((rect.width() - padding) / scale));
         graphics.drawCenteredString(font, UiTheme.fit(font, content, localLimit), 0, -4, color);
         graphics.pose().popPose();
     }

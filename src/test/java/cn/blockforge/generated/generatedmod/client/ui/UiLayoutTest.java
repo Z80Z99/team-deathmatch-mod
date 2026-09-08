@@ -75,7 +75,7 @@ class UiLayoutTest {
                     () -> new RoomCreateScreen(null), () -> new RoomScreen(null), () -> new MatchmakingScreen(null),
                     () -> new MapLibraryScreen(null), () -> new RoomMapSelectScreen(null),
                     () -> new MapCreateScreen(null), () -> new MapEditorScreen(null),
-                    () -> rulesScreen(), () -> new HudLayoutScreen(null));
+                    () -> rulesScreen(), () -> new HudLayoutScreen(null), () -> new HudParameterHelpScreen(null));
             for (int[] size : List.of(new int[]{320, 240}, new int[]{480, 270}, new int[]{640, 360}, new int[]{960, 540})) {
                 for (Supplier<Screen> factory : factories) {
                     Screen screen = spy(factory.get());
@@ -132,12 +132,19 @@ class UiLayoutTest {
                     }
                     if (screen instanceof HudLayoutScreen) {
                         press(screen, "属性"); snapshot(screen, "属性", size);
+                        Field editDraft = HudLayoutScreen.class.getDeclaredField("draft"); editDraft.setAccessible(true);
+                        var beforeDelete = ((cn.blockforge.generated.generatedmod.client.ClientHudLayout.Draft) editDraft.get(screen)).build();
+                        press(screen, "删除此元素");
+                        var afterDelete = ((cn.blockforge.generated.generatedmod.client.ClientHudLayout.Draft) editDraft.get(screen)).build();
+                        assertNotEquals(beforeDelete, afterDelete);
+                        Method undo = HudLayoutScreen.class.getDeclaredMethod("undo"); undo.setAccessible(true); undo.invoke(screen);
+                        assertEquals(beforeDelete, ((cn.blockforge.generated.generatedmod.client.ClientHudLayout.Draft) editDraft.get(screen)).build());
                         press(screen, "死斗"); press(screen, ">"); snapshot(screen, "战斗预览", size);
                         Field draftField = HudLayoutScreen.class.getDeclaredField("draft");
                         draftField.setAccessible(true);
                         var draft = (cn.blockforge.generated.generatedmod.client.ClientHudLayout.Draft) draftField.get(screen);
                         for (var preset : cn.blockforge.generated.generatedmod.client.HudPreset.values()) {
-                            preset.apply(draft.of(cn.blockforge.generated.generatedmod.client.HudContext.TEAM_DEATHMATCH),
+                            preset.apply(draft,
                                     cn.blockforge.generated.generatedmod.client.HudContext.TEAM_DEATHMATCH);
                             snapshot(screen, preset.name(), size);
                         }

@@ -58,7 +58,7 @@ public final class SceneHudOverlay {
                                        MatchmakingStatus status, boolean forming, RoomView room) {
         ClientHudLayout.Elements elements = ClientHudLayout.elements(HudContext.MATCHING);
         Font font = Minecraft.getInstance().font;
-        if (elements.bannerVisible() && !renderOverride(graphics, font, HudContext.MATCHING,
+        if (elements.builtInEnabled(HudContext.BuiltIn.BANNER) && elements.bannerVisible() && !renderOverride(graphics, font, HudContext.MATCHING,
                 elements, width, height, partialTick)) {
             Map<String, String> values = matchingTemplateValues(status, forming, room);
             drawBanner(graphics, font, elements, width, height,
@@ -89,7 +89,7 @@ public final class SceneHudOverlay {
     private static void renderRoom(GuiGraphics graphics, float partialTick, int width, int height, RoomView room) {
         ClientHudLayout.Elements elements = ClientHudLayout.elements(HudContext.ROOM);
         Font font = Minecraft.getInstance().font;
-        if (elements.bannerVisible()) {
+        if (elements.builtInEnabled(HudContext.BuiltIn.BANNER) && elements.bannerVisible()) {
             if (!renderOverride(graphics, font, HudContext.ROOM, elements, width, height, partialTick)) {
                 Map<String, String> values = roomTemplateValues(room);
                 drawBanner(graphics, font, elements, width, height,

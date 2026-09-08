@@ -181,6 +181,10 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
 
     @Override
     protected void init() {
+        for (HudContext context : HudContext.values()) {
+            cn.blockforge.generated.generatedmod.client.HudAssemblies.splitAll(draft, context);
+        }
+        if (selectedCustom() == null) selected = defaultSelection();
         choices.close();
         rows.clear();
         widgets.clear();
@@ -223,7 +227,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             }
             if (propertyTab) addPropertyControls(); else addComponentList();
         }
-        rows.removeIf(row -> row.kind() == RowKind.NOTE);
+        rows.removeIf(row -> row.kind() == RowKind.NOTE && !row.text().startsWith("示例由"));
         addFooter();
         clampScroll();
         layoutRows();
@@ -279,12 +283,15 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     }
 
     private String defaultSelection() {
-        return activeContext.isMatch() ? "score" : "banner";
+        return draft.customElements(activeContext).stream().filter(e -> !e.type().equals("block"))
+                .map(e -> "custom:" + e.id()).findFirst().orElse("");
     }
 
     // ---------------------------------------------------------------- 组件列表
 
     private void addComponentList() {
+        rows.add(Row.note("示例由独立元素拼成。\n文字、数值、底板均可单独删除。"));
+        addLayoutPresets();
         rows.add(Row.header("场景组件"));
         if (activeContext.isMatch()) {
             addBuiltInRow("score", "记分板（内置）", () -> current().scoreVisible);
@@ -317,7 +324,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                 "文字模块：固定文字或绑定任一统计接口作计数组件（我的击杀、我方伤害…）。");
         registerAddButton("+色块", 1, columns, addButtonLine, "block", "纯色块：常用作底板、比分底或装饰。");
         registerAddButton("+进度条", 2, columns, addButtonLine, "progress",
-                "进度条：可绑定进度来源（房间总击杀进度、成局人数进度、C4 安装进度…）。");
+                "进度条：可绑定胜利进度、成局人数、生命百分比等真实统计来源。");
         registerAddButton("+图片", 3, columns, addButtonLine, "image", "图片模块：使用 config/fpsmod/hud_images 里的 PNG。");
         UiButton remove = new UiButton(0, 0, 10, CONTROL, Component.literal("删除当前模块"), ignored -> {
             ClientHudLayout.CustomElement chosen = selectedCustom();
@@ -335,6 +342,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     }
 
     private void addBuiltInRow(String key, String label, java.util.function.BooleanSupplier visible) {
+        if (!current().builtInEnabled(HudContext.BuiltIn.valueOf(key.toUpperCase(Locale.ROOT)))) return;
         UiButton button = new UiButton(0, 0, 10, CONTROL,
                 Component.literal(label + (visible.getAsBoolean() ? "" : "〔关〕")),
                 ignored -> {
@@ -385,10 +393,11 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         ClientHudLayout.CustomElement chosen = selectedCustom();
         if (chosen != null) {
             addCustomProperties(chosen);
-        } else {
+        } else if (!selected.isBlank()) {
             addBuiltInProperties();
+        } else {
+            rows.add(Row.header("未选择元素"));
         }
-        addLayoutPresets();
         rows.add(new Row(null, "拖动画面中的面板/模块即可摆位置；滚轮在右侧列内滚动。",
                 RowKind.NOTE, NOTE_ROW * 2, UNGROUPED_LINE, 0, 1));
     }
@@ -399,14 +408,32 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         for (cn.blockforge.generated.generatedmod.client.HudPreset preset
                 : cn.blockforge.generated.generatedmod.client.HudPreset.values()) {
             UiButton button = new UiButton(0, 0, 10, CONTROL, Component.literal(preset.label()), ignored -> {
-                editDiscrete(() -> preset.apply(current(), activeContext));
+                editDiscrete(() -> preset.apply(draft, activeContext));
+                selected = defaultSelection();
                 rebuildWidgets();
                 setStatus("已应用“" + preset.label() + "”模板，可撤销；保存后保留。", UiTheme.SUCCESS);
             }, UiButton.Kind.SECONDARY);
             button.setTooltip(Tooltip.create(Component.literal(preset.description()
-                    + "覆盖当前场景的内置组件样式，保留独立模块与背景。")));
+                    + "替换当前场景的示例元素，保留自行添加的元素与背景；可撤销。")));
             register(button, CONTROL);
         }
+        rows.add(Row.header("添加组件示例"));
+        for (HudContext.BuiltIn component : HudContext.BuiltIn.values()) {
+            if (activeContext.isMatch() == (component == HudContext.BuiltIn.BANNER)) continue;
+            UiButton sample = new UiButton(0, 0, 10, CONTROL, Component.literal("+ " + component.displayName()), ignored -> {
+                editDiscrete(() -> {
+                    current().setBuiltInEnabled(component, true);
+                    cn.blockforge.generated.generatedmod.client.HudAssemblies.split(draft, activeContext, component);
+                });
+                selected = defaultSelection();
+                rebuildWidgets();
+            }, UiButton.Kind.SECONDARY);
+            sample.setTooltip(Tooltip.create(Component.literal("添加由独立元素拼成的示例，各元素可分别编辑和删除。")));
+            register(sample, CONTROL);
+        }
+    }
+
+    private void addLegacyPositionPresets() {
         rows.add(Row.header("快速布局预设"));
         UiButton compact = new UiButton(0, 0, 10, CONTROL, Component.literal("紧凑"),
                 ignored -> applyPreset("compact"), UiButton.Kind.SECONDARY);
@@ -516,6 +543,12 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     private void addCustomProperties(ClientHudLayout.CustomElement chosen) {
         String id = chosen.id();
         rows.add(Row.header("属性 · " + chosen.displayName()));
+        UiButton remove = new UiButton(0, 0, 10, CONTROL, Component.literal("删除此元素"), ignored -> {
+            editDiscrete(() -> draft.removeCustomElement(activeContext, id));
+            selected = defaultSelection();
+            rebuildWidgets();
+        }, UiButton.Kind.DANGER);
+        register(remove, CONTROL);
         addToggle("显示该模块", () -> intOf(id, e -> e.visible() ? 1 : 0, 1) == 1,
                 value -> replaceById(id, e -> e.visible = value));
 
@@ -524,12 +557,13 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         boolean image = "image".equals(chosen.type());
 
         if (textLike || progress) {
+            addParameterHelp();
             addTextEditor(chosen);
             addSourcePicker(chosen);
             if (progress) {
                 rows.add(Row.note("进度来源：绑定后按数值/上限填充；普通数值按百分数解释。"));
             } else {
-                rows.add(Row.note("模板：%s=值 %v=原始数 %m=上限；不带占位符时按前缀拼接。"));
+                rows.add(Row.note("模板：%s=值 %v=原始数 %m=上限；固定文字不追加数值。"));
             }
         }
         if (textLike) {
@@ -554,7 +588,18 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                 value -> replaceById(id, e -> e.xPercent = value),
                 () -> intOf(id, ClientHudLayout.CustomElement::yPercent, 50),
                 value -> replaceById(id, e -> e.yPercent = value));
-        addSliderPair("宽度 px", "高度 px", 8, 1000, 8, 400,
+        if (chosen.placement().referenceWidth() > 0) {
+            addSliderPair("横向偏移 px", "纵向偏移 px", -1000, 1000,
+                    () -> intOf(id, e -> e.placement().offsetX(), 0),
+                    value -> replaceById(id, e -> e.placement = new ClientHudLayout.Placement(value,
+                            e.placement.offsetY(), e.placement.referenceWidth(), e.placement.referenceHeight(),
+                            e.placement.example(), e.placement.condition())),
+                    () -> intOf(id, e -> e.placement().offsetY(), 0),
+                    value -> replaceById(id, e -> e.placement = new ClientHudLayout.Placement(e.placement.offsetX(),
+                            value, e.placement.referenceWidth(), e.placement.referenceHeight(),
+                            e.placement.example(), e.placement.condition())));
+        }
+        addSliderPair("宽度 px", "高度 px", 1, 1000, 1, 400,
                 () -> intOf(id, ClientHudLayout.CustomElement::width, 180),
                 value -> replaceById(id, e -> e.width = value),
                 () -> intOf(id, ClientHudLayout.CustomElement::height, 24),
@@ -562,6 +607,35 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         addSlider("不透明度 %", 0, 100,
                 () -> intOf(id, ClientHudLayout.CustomElement::opacityPercent, 85),
                 value -> replaceById(id, e -> e.opacityPercent = value));
+        UiCycleButton<String> condition = new UiCycleButton<>(0, 0, 10, CONTROL,
+                List.of("", "feed", "team_c", "team_d", "forming", "queued"), chosen.placement().condition(),
+                value -> "显示条件：" + switch (value) {
+                    case "feed" -> "击杀播报有效期"; case "team_c" -> "至少三队";
+                    case "team_d" -> "至少四队"; case "forming" -> "已成局倒计时";
+                    case "queued" -> "等待成局"; default -> "始终";
+                }, value -> replaceByIdDiscrete(id, e -> e.placement = new ClientHudLayout.Placement(
+                        e.placement.offsetX(), e.placement.offsetY(), e.placement.referenceWidth(),
+                        e.placement.referenceHeight(), e.placement.example(), value)),
+                "条件不满足时不绘制此元素；选择始终可取消条件。", UiButton.Kind.SECONDARY);
+        register(condition, CONTROL);
+    }
+
+    private void addParameterHelp() {
+        UiButton help = new UiButton(0, 0, 10, CONTROL, Component.literal("参数配置 · 帮助"), ignored -> {
+            commitHistoryEdit();
+            minecraft.setScreen(new HudParameterHelpScreen(this));
+        }, UiButton.Kind.SECONDARY) {
+            @Override
+            protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+                graphics.drawString(font, "参数配置", getX(), getY() + 7, UiTheme.TEXT, false);
+                int x = getX() + Math.min(getWidth() - 22, font.width("参数配置") + 8);
+                graphics.fill(x, getY(), x + 22, getY() + 22, UiTheme.PANEL_RAISED);
+                graphics.renderOutline(x, getY(), 22, 22, isHoveredOrFocused() ? UiTheme.ACCENT : UiTheme.BORDER);
+                graphics.drawCenteredString(font, "?", x + 11, getY() + 7, UiTheme.TEXT);
+            }
+        };
+        help.setTooltip(Tooltip.create(Component.literal("参数说明书：含义、格式与示例。参数只替换值，标签由模板填写。")));
+        register(help, CONTROL);
     }
 
     /** 颜色行 + 可展开色板（预设网格 / HSV / 十六进制）。 */
@@ -670,7 +744,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
 
     private void addTextEditor(ClientHudLayout.CustomElement chosen) {
         UiEditBox editor = new UiEditBox(font, 0, 0, 10, CONTROL, Component.literal("模块文字"));
-        editor.setMaxLength(64);
+        editor.setMaxLength(256);
         editor.setValue(chosen.text());
         editor.setResponder(value -> {
             ClientHudLayout.CustomElement live = customById(chosen.id());
@@ -678,7 +752,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                 replace(live, e -> e.text = value);
             }
         });
-        editor.setTooltip(Tooltip.create(Component.literal("文字内容 / 进度条标签；绑定数据源时这里是模板或前缀。")));
+        editor.setTooltip(Tooltip.create(Component.literal("输入：回合 {round}，显示：回合 1。固定文字不追加数值；点 ? 查看参数。")));
         activeEditor = register(editor, CONTROL);
     }
 
@@ -954,6 +1028,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         boolean background;
         boolean border;
         boolean shadow;
+        ClientHudLayout.Placement placement;
 
         CustomDraft(ClientHudLayout.CustomElement source) {
             text = source.text();
@@ -969,6 +1044,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             background = source.background();
             border = source.border();
             shadow = source.shadow();
+            placement = source.placement();
         }
     }
 
@@ -988,7 +1064,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         draft.replaceCustomElement(activeContext, new ClientHudLayout.CustomElement(old.id(),
                 old.type(), mirror.text, mirror.xPercent, mirror.yPercent, mirror.width,
                 mirror.height, mirror.opacityPercent, mirror.color, mirror.visible,
-                mirror.source, mirror.scalePercent, mirror.background, mirror.border, mirror.shadow));
+                mirror.source, mirror.scalePercent, mirror.background, mirror.border, mirror.shadow, mirror.placement));
         return true;
     }
 
@@ -1140,14 +1216,19 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             contexts.put(activeContext, ClientHudLayout.Elements.defaultsFor(activeContext));
             modules.put(activeContext, List.of());
             draft = new ClientHudLayout.Snapshot(draft.global.build(), contexts, modules).draft();
+            cn.blockforge.generated.generatedmod.client.HudAssemblies.splitAll(draft, activeContext);
         });
         rebuildWidgets();
         setStatus("当前场景已恢复默认。可以用撤销退回。", UiTheme.SUCCESS);
     }
 
     private void resetAll() {
-        editDiscrete(() -> draft = new ClientHudLayout.Snapshot(ClientHudLayout.Global.defaults(),
-                Map.of(), Map.of()).draft());
+        editDiscrete(() -> {
+            draft = new ClientHudLayout.Snapshot(ClientHudLayout.Global.defaults(), Map.of(), Map.of()).draft();
+            for (HudContext context : HudContext.values()) {
+                cn.blockforge.generated.generatedmod.client.HudAssemblies.splitAll(draft, context);
+            }
+        });
         rebuildWidgets();
         setStatus("全部场景已恢复默认。可以用撤销退回。", UiTheme.SUCCESS);
     }
@@ -1393,6 +1474,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
 
     private boolean pickBuiltInByKey(ClientHudLayout.Elements values, String key,
                                      double mouseX, double mouseY) {
+        if (key.isBlank() || !values.builtInEnabled(HudContext.BuiltIn.valueOf(key.toUpperCase(Locale.ROOT)))) return false;
         HudGeometry.Rect rect;
         Drag nextDrag;
         boolean visible;
@@ -1444,12 +1526,9 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     private boolean pickCustomElement(double mouseX, double mouseY) {
         List<ClientHudLayout.CustomElement> elements = draft.customElements(activeContext);
         ClientHudLayout.CustomElement active = selectedCustom();
-        if (active != null && active.visible() && pickCustomElement(active, mouseX, mouseY)) {
-            return true;
-        }
         for (int index = elements.size() - 1; index >= 0; index--) {
             ClientHudLayout.CustomElement element = elements.get(index);
-            if (element == active || !element.visible()) {
+            if (!element.visible()) {
                 continue;
             }
             if (pickCustomElement(element, mouseX, mouseY)) {
@@ -1460,6 +1539,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     }
 
     private boolean pickCustomElement(ClientHudLayout.CustomElement element, double mouseX, double mouseY) {
+        if (!cn.blockforge.generated.generatedmod.client.HudParameters.visible(element.placement().condition(), true)) return false;
         HudGeometry.Rect rect = HudGeometry.custom(element, width, height);
         if (!rect.contains(mouseX, mouseY)) {
             return false;
@@ -1522,6 +1602,15 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             case CUSTOM -> {
                 ClientHudLayout.CustomElement live = customById(dragCustomId);
                 if (live != null) {
+                    if (live.placement().referenceWidth() > 0) {
+                        var p = live.placement();
+                        float fit = p.fit(width, height);
+                        int offsetX = Math.round((float) (mouseX - grabX - width * live.xPercent() / 100F) / fit);
+                        int offsetY = Math.round((float) (mouseY - grabY - height * live.yPercent() / 100F) / fit);
+                        replace(live, e -> e.placement = new ClientHudLayout.Placement(offsetX, offsetY,
+                                p.referenceWidth(), p.referenceHeight(), p.example(), p.condition()));
+                        return true;
+                    }
                     int x = clamp(Math.round((int) (mouseX - grabX) * 100.0F / width), 0, 100);
                     int y = clamp(Math.round((int) (mouseY - grabY) * 100.0F / height), 0, 100);
                     if (x != live.xPercent() || y != live.yPercent()) {
@@ -1687,7 +1776,8 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         ClientHudLayout.Elements values = draft.elements(activeContext);
         ClientHudLayout.CustomElement chosen = selectedCustom();
         HudCustomRenderer.render(graphics, font, draft.customElements(activeContext),
-                width, height, true, true, chosen == null ? "" : chosen.id());
+                width, height, true, true);
+        if (values.builtInMask() != 0) {
         if (activeContext.isMatch()) {
             HudGeometry.Rect score = HudGeometry.score(values, width, height);
             if (values.scoreVisible() && !selected.equals("score")) {
@@ -1718,9 +1808,10 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             }
         }
         renderSelectedBuiltIn(graphics, values);
-        if (chosen != null && chosen.visible()) {
+        }
+        if (chosen != null && chosen.visible()
+                && cn.blockforge.generated.generatedmod.client.HudParameters.visible(chosen.placement().condition(), true)) {
             HudGeometry.Rect rect = HudGeometry.custom(chosen, width, height);
-            HudCustomRenderer.draw(graphics, font, chosen, rect, true);
             graphics.renderOutline(rect.left() - 2, rect.top() - 2, rect.width() + 4,
                     rect.height() + 4, 0xFFFFD27A);
             graphics.drawString(font, "拖动该模块", rect.left(), Math.max(2, rect.top() - 20),
@@ -1777,8 +1868,8 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         values.put("wins_a", "1"); values.put("wins_b", "0");
         values.put("wins_c", "0"); values.put("wins_d", "0");
         values.put("time", "03:45");
-        values.put("round", "回合 1");
-        values.put("target", "目标 25");
+        values.put("round", "1");
+        values.put("target", "25");
         values.put("team", "A队");
         values.put("sizes", "A队 4人 · B队 4人");
         values.put("hint", "队伍：A队 · A队 4人 · B队 4人");

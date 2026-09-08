@@ -317,6 +317,8 @@ public final class HudStats {
             number("team_" + key + "_size", team.displayName() + "人数", Group.SCORE, () -> ClientMatchData.stats(team).size(), HudStats::inMatch, 4);
             number("match_kills_" + key, team.displayName() + "整场击杀", Group.TEAM, () -> ClientMatchData.stats(team).kills(), HudStats::inMatch, 12);
             number("team_" + key + "_damage", team.displayName() + "造成伤害", Group.TEAM, () -> ClientMatchData.stats(team).damage(), HudStats::inMatch, 600);
+            progress("team_" + key + "_progress", team.displayName() + "击杀进度", Group.PROGRESS,
+                    () -> ClientMatchData.stats(team).score(), () -> Math.max(1, ClientMatchData.targetKills), HudStats::inMatch, 8, 25);
         }
         number("score_sum", "双方本轮总分", Group.SCORE,
                 () -> allStats().mapToInt(value -> value.score()).sum(), HudStats::inMatch, 21);
@@ -328,7 +330,7 @@ public final class HudStats {
         number("wins_b", "B队胜场", Group.SCORE, () -> ClientMatchData.teamBWins, HudStats::inMatch, 0);
         number("my_wins", "我方胜场", Group.SCORE, HudStats::myTeamWins, HudStats::inMatch, 1);
         number("enemy_wins", "敌方胜场", Group.SCORE, HudStats::enemyTeamWins, HudStats::inMatch, 0);
-        number("round", "当前回合数", Group.SCORE, () -> ClientMatchData.roundNumber, HudStats::inMatch, 2);
+        number("round", "当前回合数", Group.SCORE, () -> ClientMatchData.roundNumber, HudStats::inMatch, 1);
         number("target_kills", "目标击杀数", Group.SCORE, () -> ClientMatchData.targetKills, HudStats::inMatch, 25);
         number("team_a_size", "A队人数", Group.SCORE, () -> ClientMatchData.teamASize, HudStats::inMatch, 4);
         number("team_b_size", "B队人数", Group.SCORE, () -> ClientMatchData.teamBSize, HudStats::inMatch, 4);
@@ -384,6 +386,11 @@ public final class HudStats {
                 () -> Math.max(1, ClientMatchData.targetKills), HudStats::inMatch, 21, 25);
         progress("my_wins_progress", "我方胜场进度", Group.PROGRESS,
                 HudStats::myTeamWins, () -> Math.max(1, ClientMatchData.roundsToWin), HudStats::inMatch, 1, 3);
+        for (Team team : Team.playing(4)) {
+            String key = team.key().substring(5);
+            progress("team_" + key + "_wins_progress", team.displayName() + "胜场进度", Group.PROGRESS,
+                    () -> ClientMatchData.stats(team).wins(), () -> Math.max(1, ClientMatchData.roundsToWin), HudStats::inMatch, 1, 3);
+        }
         progress("health_percent", "我的血量百分比", Group.STATUS,
                 () -> {
                     var player = Minecraft.getInstance().player;
@@ -395,10 +402,9 @@ public final class HudStats {
         text("phase_text", "比赛阶段", Group.TEXT, ClientMatchData::phaseText, HudStats::inMatch, "进行中");
         text("my_team_text", "我的队伍", Group.TEXT,
                 () -> ClientMatchData.myTeam.displayName(), HudStats::inMatch, "A队");
-        text("round_text", "回合与胜场", Group.TEXT, ClientMatchData::roundText, HudStats::inMatch,
-                "回合 2    胜场 1:0");
-        text("target_text", "胜利条件", Group.TEXT, ClientMatchData::targetText, HudStats::inMatch, "目标 25");
-        text("team_sizes_text", "双方人数", Group.TEXT, ClientMatchData::teamSizesText, HudStats::inMatch,
+        text("round_text", "回合数（兼容别名）", Group.TEXT, () -> Integer.toString(ClientMatchData.roundNumber), HudStats::inMatch, "1");
+        text("target_text", "目标数（兼容别名）", Group.TEXT, () -> Integer.toString(HudParameters.target()), HudStats::inMatch, "25");
+        text("team_sizes_text", "兼容整句：队伍人数汇总", Group.TEXT, ClientMatchData::teamSizesText, HudStats::inMatch,
                 "A队 4人  ·  B队 4人");
         text("kill_feed_text", "最近击杀公告", Group.TEXT, () -> {
             if (!ClientMatchData.killFeedActive()) {
@@ -407,11 +413,13 @@ public final class HudStats {
             return "⚔ " + ClientMatchData.killFeedText();
         }, HudStats::inMatch, "⚔ Steve  击杀  Alex");
         text("winner_text", "胜者", Group.TEXT, () -> ClientMatchData.winner == null
-                ? "" : ClientMatchData.winner.displayName() + " 获胜", HudStats::inMatch, "A队 获胜");
+                ? "" : ClientMatchData.winner.displayName(), HudStats::inMatch, "A队");
         text("hint_text", "底部状态提示", Group.TEXT, MatchHudOverlay::hintText, HudStats::inMatch,
                 "队伍：A队  ·  A队 4人  ·  B队 4人");
 
         // ---- 正在匹配 HUD 全量内容
+        text("matching_state", "匹配阶段", Group.MATCHING,
+                () -> forming() ? "已匹配" : "正在匹配", HudStats::inQueue, "正在匹配");
         number("queue_size", "队列人数", Group.MATCHING, () -> ClientLobbyData.matchmaking().queueSize(),
                 HudStats::inQueue, 3);
         number("queue_need", "成局需要人数", Group.MATCHING,
@@ -427,18 +435,18 @@ public final class HudStats {
                 HudStats::inQueue, 3, 6);
         progress("ready_progress", "开赛准备进度", Group.MATCHING, ClientLobbyData::dynamicReadySeconds,
                 () -> 5, HudStats::forming, 3, 5);
-        text("matching_line1", "匹配横幅第一行", Group.MATCHING, () -> {
+        text("matching_line1", "兼容整句：匹配横幅第一行", Group.MATCHING, () -> {
             RoomView room = roomOrNull();
             return SceneHudOverlay.matchingLineOne(ClientLobbyData.matchmaking(), forming(), room);
         }, HudStats::inQueue, "正在匹配  3/6 人成局");
-        text("matching_line2", "匹配横幅第二行", Group.MATCHING, () -> {
+        text("matching_line2", "兼容整句：匹配横幅第二行", Group.MATCHING, () -> {
             RoomView room = roomOrNull();
             return SceneHudOverlay.matchingLineTwo(ClientLobbyData.matchmaking(), forming(), room);
         }, HudStats::inQueue, "已等待 00:18  ·  序位 2");
         text("queue_text", "队列人数文本", Group.MATCHING,
                 () -> ClientLobbyData.matchmaking().queueSize() + "/"
-                        + MatchmakingManager.MIN_PLAYERS_TO_FORM + " 人",
-                HudStats::inQueue, "3/6 人");
+                        + MatchmakingManager.MIN_PLAYERS_TO_FORM,
+                HudStats::inQueue, "3/6");
         text("matching_message_text", "匹配提示消息", Group.MATCHING, ClientLobbyData::matchmakingMessage,
                 HudStats::inQueue, "已进入匹配队列");
 
@@ -493,11 +501,11 @@ public final class HudStats {
                 case RUNNING -> "比赛进行中";
             };
         }, HudStats::inRoom, "开放中");
-        text("room_line1", "房间横幅第一行", Group.ROOM, () -> {
+        text("room_line1", "兼容整句：房间横幅第一行", Group.ROOM, () -> {
             RoomView room = roomOrNull();
             return room == null ? "" : SceneHudOverlay.roomLineOne(room);
         }, HudStats::inRoom, "房间  样例作战大厅  ·  团队死斗");
-        text("room_line2", "房间横幅第二行", Group.ROOM, () -> {
+        text("room_line2", "兼容整句：房间横幅第二行", Group.ROOM, () -> {
             RoomView room = roomOrNull();
             return room == null ? "" : SceneHudOverlay.roomLineTwo(room);
         }, HudStats::inRoom, "人数 4/12  ·  房主 Steve  ·  开放中");
@@ -569,16 +577,19 @@ public final class HudStats {
 
     /**
      * 模块文字模板：{@code %s}=格式化值，{@code %v}=原始数值，{@code %m}=上限；
-     * 不含占位符时按「前缀 + 值」拼接（前缀为空则只显示值）。
+     * 不含占位符时原样输出；旧配置加载时显式补上 %s。
      */
     public static String applyTemplate(String template, String formatted, String raw, String max) {
         if (template == null) {
             template = "";
         }
-        if (template.contains("%s") || template.contains("%v") || template.contains("%m")) {
-            return template.replace("%s", formatted).replace("%v", raw).replace("%m", max);
+        var matcher = java.util.regex.Pattern.compile("%[svm]").matcher(template);
+        StringBuffer output = new StringBuffer();
+        while (matcher.find()) {
+            String value = switch (matcher.group()) { case "%s" -> formatted; case "%v" -> raw; default -> max; };
+            matcher.appendReplacement(output, java.util.regex.Matcher.quoteReplacement(value == null ? "" : value));
         }
-        return template.isBlank() ? formatted : template + " " + formatted;
+        return matcher.appendTail(output).toString();
     }
 
     /** 把公开统计值替换进内置 HUD 模板；未知占位符会原样保留，方便第三方扩展。 */
@@ -587,10 +598,14 @@ public final class HudStats {
         if (values == null) {
             return result;
         }
-        for (Map.Entry<String, String> entry : values.entrySet()) {
-            result = result.replace("{" + entry.getKey() + "}", entry.getValue() == null ? "" : entry.getValue());
+        var matcher = java.util.regex.Pattern.compile("\\{([a-zA-Z0-9_:.]+)\\}").matcher(result);
+        StringBuffer output = new StringBuffer();
+        while (matcher.find()) {
+            String replacement = values.getOrDefault(matcher.group(1), matcher.group());
+            matcher.appendReplacement(output, java.util.regex.Matcher.quoteReplacement(
+                    replacement == null ? "" : replacement));
         }
-        return result;
+        return matcher.appendTail(output).toString();
     }
 
     /** 进度条标签：绑定源后按模板渲染百分比。 */

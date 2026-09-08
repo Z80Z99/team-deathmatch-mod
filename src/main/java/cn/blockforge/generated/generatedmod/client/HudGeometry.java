@@ -73,13 +73,15 @@ public final class HudGeometry {
 
     /** 自定义模块：按中心锚点换算屏幕矩形。 */
     public static Rect custom(ClientHudLayout.CustomElement element, int screenWidth, int screenHeight) {
-        int width = Math.max(8, Math.min(screenWidth - SCREEN_MARGIN * 2, element.width()));
-        int height = Math.max(8, Math.min(screenHeight - SCREEN_MARGIN * 2, element.height()));
-        int centerX = centered(screenWidth, element.xPercent(), width,
-                SCREEN_MARGIN, Math.max(SCREEN_MARGIN, screenWidth - SCREEN_MARGIN));
-        int centerY = centered(screenHeight, element.yPercent(), height,
-                SCREEN_MARGIN, Math.max(SCREEN_MARGIN, screenHeight - SCREEN_MARGIN));
-        return new Rect(centerX - width / 2, centerY - height / 2, width, height, 1.0F, width, height);
+        float scale = element.placement().fit(screenWidth, screenHeight);
+        int width = Math.max(1, Math.min(screenWidth - 16, Math.round(element.width() * scale)));
+        int height = Math.max(1, Math.min(screenHeight - 16, Math.round(element.height() * scale)));
+        int centerX = clamp(Math.round(screenWidth * element.xPercent() / 100F
+                + element.placement().offsetX() * scale), 8 + width / 2, screenWidth - 8 - (width + 1) / 2);
+        int centerY = clamp(Math.round(screenHeight * element.yPercent() / 100F
+                + element.placement().offsetY() * scale), 8 + height / 2, screenHeight - 8 - (height + 1) / 2);
+        return new Rect(centerX - width / 2, centerY - height / 2, width, height, scale,
+                element.width(), element.height());
     }
 
     /** 大厅场景横幅（正在匹配 / 房间中）：两行文字，中心锚点。 */
