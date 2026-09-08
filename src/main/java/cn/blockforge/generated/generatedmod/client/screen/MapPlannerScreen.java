@@ -119,7 +119,10 @@ public final class MapPlannerScreen extends UiScreen {
     }
 
     private void showHelp(String... lines) {
-        List<String> next = List.of(lines);
+        List<String> next = java.util.Arrays.stream(lines)
+                .flatMap(line -> font.getSplitter().splitLines(line, innerWidth - 16,
+                        net.minecraft.network.chat.Style.EMPTY).stream())
+                .map(net.minecraft.network.chat.FormattedText::getString).toList();
         helpLines = helpLines.equals(next) ? List.of() : next;
         rebuildWidgets();
     }
@@ -153,8 +156,8 @@ public final class MapPlannerScreen extends UiScreen {
         if (!helpLines.isEmpty()) {
             int y = helpY + 4;
             for (String line : helpLines) {
-                graphics.drawString(font, fit(line, innerWidth - 16),
-                        innerLeft + 8, y, UiTheme.TEXT, false);
+                if (bandFits(y, 12)) graphics.drawString(font, line,
+                        innerLeft + 8, bandScreenY(y), UiTheme.TEXT, false);
                 y += 12;
             }
         }

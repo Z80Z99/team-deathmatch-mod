@@ -44,9 +44,11 @@ public final class MapToolHud {
             left.add("菜单内可编辑区域属性");
         }
         if (brush) {
-            left.add("画笔：" + view.brushMode().displayName() + "模式");
-            left.add("左键：端点A / 移除（仅方块）");
-            left.add("右键：端点B / 添加");
+            left.add("编辑：" + view.selectedTool().displayName());
+            boolean point = view.selectedTool().kind() == cn.blockforge.generated.generatedmod.map.MapTool.Kind.POINT;
+            boolean corners = view.brushMode() == cn.blockforge.generated.generatedmod.map.MapBrushMode.REGION;
+            left.add(point ? "左键：移除出生点" : corners ? "左键：选择第一个角（实际方块）" : "左键：收缩区域边缘");
+            left.add(point ? "右键：添加出生点" : corners ? "右键：选择对角，自动保存" : "右键：扩展区域到目标位置");
             left.add("蹲+右键：画笔菜单");
             left.add("右键距离：" + view.brushRange() + "格");
         }

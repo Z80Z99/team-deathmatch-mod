@@ -65,7 +65,7 @@ public final class MapEditorScreen extends UiScreen {
         actionsY4 = flowRow(BUTTON_HEIGHT);
         targetY = flowRow(18);
         summaryY = flowRow(SUMMARY_HEIGHT);
-        hintY = flowRow(6);
+        hintY = flowRow(24);
         lastRevision = ClientMapEditorData.revision();
 
         addActionTabs();
@@ -104,16 +104,16 @@ public final class MapEditorScreen extends UiScreen {
     }
 
     private void addRegionActions() {
-        addAction(ActionPage.REGIONS, 0, actionsY1, "边界最小 ← 当前", MapEditorAction.SET_BOUNDS_MIN,
-                "用服务器读取的当前位置设置地图 bounds 最小点。", UiButton.Kind.SECONDARY);
-        addAction(ActionPage.REGIONS, 1, actionsY1, "边界最大 ← 当前", MapEditorAction.SET_BOUNDS_MAX,
-                "用服务器读取的当前位置设置地图 bounds 最大点。", UiButton.Kind.SECONDARY);
+        addAction(ActionPage.REGIONS, 0, actionsY1, "边界第一角：脚下", MapEditorAction.SET_BOUNDS_MIN,
+                "站到地图一个角，点击记录位置；随后移动到对角记录第二角。", UiButton.Kind.SECONDARY);
+        addAction(ActionPage.REGIONS, 1, actionsY1, "边界第二角：脚下", MapEditorAction.SET_BOUNDS_MAX,
+                "站到地图另一角，点击记录位置；最后点击保存区域。", UiButton.Kind.SECONDARY);
         addAction(ActionPage.REGIONS, 2, actionsY1, "保存区域", MapEditorAction.APPLY_REGIONS,
                 "保存草稿区域；旧快照作废，载入比赛时由服务器重新捕获。", UiButton.Kind.PRIMARY);
-        addAction(ActionPage.REGIONS, 0, actionsY2, "重置区最小 ← 当前", MapEditorAction.SET_RESET_MIN,
-                "用当前位置设置 resetRegion 最小点。", UiButton.Kind.SECONDARY);
-        addAction(ActionPage.REGIONS, 1, actionsY2, "重置区最大 ← 当前", MapEditorAction.SET_RESET_MAX,
-                "用当前位置设置 resetRegion 最大点。", UiButton.Kind.SECONDARY);
+        addAction(ActionPage.REGIONS, 0, actionsY2, "重置区第一角：脚下", MapEditorAction.SET_RESET_MIN,
+                "记录需要赛后恢复的区域的一个角。", UiButton.Kind.SECONDARY);
+        addAction(ActionPage.REGIONS, 1, actionsY2, "重置区第二角：脚下", MapEditorAction.SET_RESET_MAX,
+                "记录需要赛后恢复的区域的对角，再点击保存区域。", UiButton.Kind.SECONDARY);
     }
 
     private void addSpawnActions() {
@@ -229,9 +229,7 @@ public final class MapEditorScreen extends UiScreen {
 
         paintBand(graphics, summaryY, SUMMARY_HEIGHT, () -> renderSummary(graphics, view));
         final int hintBand = hintY;
-        paintBand(graphics, hintBand, 6, () -> progress(graphics, innerLeft, hintBand, innerWidth, 3,
-                ((view.teamACount() > 0 ? 1 : 0) + (view.teamBCount() > 0 ? 1 : 0)
-                        + (view.spectatorCount() > 0 ? 1 : 0)) / 3.0F, UiTheme.SUCCESS));
+        paintBand(graphics, hintBand, 24, () -> renderActionHint(graphics, view));
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 

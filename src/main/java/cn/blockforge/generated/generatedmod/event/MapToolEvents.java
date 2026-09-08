@@ -22,7 +22,7 @@ public final class MapToolEvents {
             return;
         }
         if (event.getEntity() instanceof ServerPlayer player && MatchManager.get() != null) {
-            MatchManager.get().mapEditor().brushLeft(player, event.getPos());
+            // The validated custom packet owns editing; vanilla events only suppress world interaction.
             event.setCanceled(true);
         }
     }
@@ -36,11 +36,6 @@ public final class MapToolEvents {
         if (!(event.getEntity() instanceof ServerPlayer player) || MatchManager.get() == null) {
             return;
         }
-        if (player.isShiftKeyDown()) {
-            MatchManager.get().mapEditor().toggleBrushMode(player);
-        } else {
-            MatchManager.get().mapEditor().brushRight(player, event.getPos());
-        }
         event.setCanceled(true);
     }
 
@@ -52,7 +47,6 @@ public final class MapToolEvents {
         }
         if (event.getEntity() instanceof ServerPlayer player && MatchManager.get() != null
                 && player.isShiftKeyDown()) {
-            MatchManager.get().mapEditor().toggleBrushMode(player);
             event.setCanceled(true);
         }
     }

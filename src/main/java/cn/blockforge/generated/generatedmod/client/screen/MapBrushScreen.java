@@ -19,6 +19,11 @@ public final class MapBrushScreen extends UiScreen {
     private static final int MENU_WIDTH = 320;
     private List<String> helpLines = List.of();
     private int helpY;
+    private int lastRevision = -1;
+    private int ticks;
+    private UiCycleButton<MapBrushMode> modeControl;
+    private UiCycleButton<Integer> rangeControl;
+    private UiCycleButton<cn.blockforge.generated.generatedmod.map.MapTool> targetControl;
 
     public MapBrushScreen() {
         super(Component.literal("地图画笔"));
@@ -36,20 +41,28 @@ public final class MapBrushScreen extends UiScreen {
 
         int controlWidth = innerWidth - 30;
         int helpX = innerLeft + innerWidth - 24;
+        int targetY = flowRow(BUTTON_HEIGHT);
+        targetControl = flowWidget(new UiCycleButton<>(innerLeft, targetY, innerWidth, BUTTON_HEIGHT,
+                java.util.Arrays.asList(cn.blockforge.generated.generatedmod.map.MapTool.values()),
+                ClientMapEditorData.view().selectedTool(), tool -> "编辑目标：" + tool.displayName(),
+                tool -> FpsTdmNetwork.sendToServer(new MapEditorActionPacket(MapEditorAction.SELECT_TOOL, tool.id())),
+                "自定义区域请先在规划器中选中。出生点直接使用右键添加、左键移除。",
+                UiButton.Kind.SECONDARY), targetY);
         int modeY = flowRow(BUTTON_HEIGHT);
-        flowWidget(new UiCycleButton<>(innerLeft, modeY, controlWidth, BUTTON_HEIGHT,
+        modeControl = flowWidget(new UiCycleButton<>(innerLeft, modeY, controlWidth, BUTTON_HEIGHT,
                 List.of(MapBrushMode.REGION, MapBrushMode.BLOCK), ClientMapEditorData.view().brushMode(),
-                MapBrushMode::displayName, this::setMode,
+                mode -> mode == MapBrushMode.REGION ? "操作：两角框选" : "操作：调整边缘", this::setMode,
                 "切换区域模式和方块模式。", UiButton.Kind.SECONDARY), modeY);
         flowWidget(helpButton(helpX, modeY,
-                "区域模式：左键记录端点 A，右键记录端点 B。",
-                "方块模式：左键排除方块，右键加入方块。",
+                "两角框选：左键选择一个角，右键选择对角。",
+                "调整边缘：右键扩展区域，左键收缩边缘。",
+                "区域始终为长方体，不能单独挖掉内部方块。",
                 "切换模式会清空尚未配对的端点。"), modeY);
 
         int rangeY = flowRow(BUTTON_HEIGHT);
-        flowWidget(new UiCycleButton<>(innerLeft, rangeY, controlWidth, BUTTON_HEIGHT,
-                List.of(1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64),
-                ClientMapEditorData.view().brushRange(), value -> value + " 格", this::setRange,
+        rangeControl = flowWidget(new UiCycleButton<>(innerLeft, rangeY, controlWidth, BUTTON_HEIGHT,
+                java.util.stream.IntStream.rangeClosed(1, 64).boxed().toList(),
+                ClientMapEditorData.view().brushRange(), value -> "空气取点距离：" + value + " 格", this::setRange,
                 "右键选择空气时距离玩家前方的格数。", UiButton.Kind.SECONDARY), rangeY);
         flowWidget(helpButton(helpX, rangeY,
                 "右键可在空气位置取点，默认距离前方 2 格。",
@@ -76,14 +89,18 @@ public final class MapBrushScreen extends UiScreen {
     }
 
     private void toggleHelp() {
-        showHelp(","+                "手持画笔时，屏幕左下和右下会显示操作与目标信息。",
-                "蹲下右键打开本菜单；普通右键记录端点 B 或加入方块。",
-                "左键记录端点 A、排除方块或移除出生点，不会破坏世界方块。",
-                "区域和方块目标会有半透明玻璃样指示框。");
+        showHelp("1. 在地图工作台选择地图，再选择编辑目标。",
+                "2. 关闭菜单，拿着画笔左键点选一个角。",
+                "3. 右键点选对角，圈出的长方体自动保存。",
+                "出生点：右键添加，左键移除，无需选择模式。",
+                "设置选择后自动记住；蹲下右键可再次调整。");
     }
 
     private void showHelp(String... lines) {
-        List<String> next = List.of(lines);
+        List<String> next = java.util.Arrays.stream(lines)
+                .flatMap(line -> font.getSplitter().splitLines(line, innerWidth - 16,
+                        net.minecraft.network.chat.Style.EMPTY).stream())
+                .map(net.minecraft.network.chat.FormattedText::getString).toList();
         helpLines = helpLines.equals(next) ? List.of() : next;
         rebuildWidgets();
     }
@@ -95,13 +112,29 @@ public final class MapBrushScreen extends UiScreen {
     }
 
     @Override
+    public void tick() {
+        super.tick();
+        if (++ticks % 20 == 1) {
+            FpsTdmNetwork.sendToServer(new MapEditorActionPacket(MapEditorAction.POLL, ""));
+        }
+        if (lastRevision != ClientMapEditorData.revision()) {
+            lastRevision = ClientMapEditorData.revision();
+            modeControl.setValue(ClientMapEditorData.view().brushMode());
+            rangeControl.setValue(ClientMapEditorData.view().brushRange());
+            targetControl.setValue(ClientMapEditorData.view().selectedTool());
+            modeControl.active = ClientMapEditorData.view().selectedTool().kind()
+                    != cn.blockforge.generated.generatedmod.map.MapTool.Kind.POINT;
+        }
+    }
+
+    @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderShell(graphics, "蹲下右键打开");
+        renderShell(graphics, "设置自动保存 · 蹲下右键打开");
         if (!helpLines.isEmpty()) {
             int y = helpY + 4;
             for (String line : helpLines) {
-                graphics.drawString(font, fit(line, innerWidth - 16),
-                        innerLeft + 8, y, UiTheme.TEXT, false);
+                if (bandFits(y, 12)) graphics.drawString(font, line,
+                        innerLeft + 8, bandScreenY(y), UiTheme.TEXT, false);
                 y += 12;
             }
         }

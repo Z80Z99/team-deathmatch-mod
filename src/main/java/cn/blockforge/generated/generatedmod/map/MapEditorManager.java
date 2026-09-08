@@ -183,6 +183,7 @@ public final class MapEditorManager {
             case SET_BRUSH_MODE -> {
                 MapBrushMode mode = MapBrushMode.parse(mapId);
                 brushModes.put(playerId, mode);
+                saveBrushPreferences(player);
                 brushFirstPoints.remove(playerId);
                 brushSecondPoints.remove(playerId);
                 feedback(player, "画笔模式：" + mode.displayName(), false);
@@ -567,16 +568,36 @@ public final class MapEditorManager {
     }
 
     public MapBrushMode brushMode(ServerPlayer player) {
-        return brushModes.getOrDefault(player.getUUID(), MapBrushMode.REGION);
+        return brushModes.computeIfAbsent(player.getUUID(), id -> MapBrushMode.parse(
+                brushPreferences(player).getString("mode")));
     }
 
     public int brushRange(ServerPlayer player) {
-        return brushRanges.getOrDefault(player.getUUID(), 2);
+        return brushRanges.computeIfAbsent(player.getUUID(), id -> {
+            int saved = brushPreferences(player).getInt("range");
+            return saved <= 0 ? 2 : Math.min(64, saved);
+        });
+    }
+
+    private net.minecraft.nbt.CompoundTag brushPreferences(ServerPlayer player) {
+        var data = player.getPersistentData();
+        String key = net.minecraft.world.entity.player.Player.PERSISTED_NBT_TAG;
+        if (!data.contains(key, 10)) data.put(key, new net.minecraft.nbt.CompoundTag());
+        var persisted = data.getCompound(key);
+        if (!persisted.contains("tdmBrush", 10)) persisted.put("tdmBrush", new net.minecraft.nbt.CompoundTag());
+        return persisted.getCompound("tdmBrush");
+    }
+
+    private void saveBrushPreferences(ServerPlayer player) {
+        var preferences = brushPreferences(player);
+        preferences.putString("mode", brushMode(player).id());
+        preferences.putInt("range", brushRange(player));
     }
 
     public void setBrushRange(ServerPlayer player, int range) {
         int safe = Math.max(1, Math.min(64, range));
         brushRanges.put(player.getUUID(), safe);
+        saveBrushPreferences(player);
         feedback(player, "画笔右键选择距离：" + safe + " 格。", false);
     }
 
@@ -596,7 +617,6 @@ public final class MapEditorManager {
         selectedTools.put(playerId, region.type() == MapRegion.Type.BOUNDS
                 ? MapTool.BOUNDS : region.type() == MapRegion.Type.RESET
                 ? MapTool.RESET : MapTool.CUSTOM);
-        brushModes.put(playerId, MapBrushMode.REGION);
         brushFirstPoints.remove(playerId);
         brushSecondPoints.remove(playerId);
         feedback(player, "已选择区域：" + region.displayName(), false);
@@ -697,8 +717,6 @@ public final class MapEditorManager {
         }
         UUID playerId = player.getUUID();
         selectedTools.put(playerId, tool);
-        brushModes.put(playerId, tool.kind() == MapTool.Kind.REGION
-                ? MapBrushMode.REGION : MapBrushMode.BLOCK);
         brushFirstPoints.remove(playerId);
         brushSecondPoints.remove(playerId);
         feedback(player, "已选择：" + tool.displayName(), false);
@@ -709,6 +727,7 @@ public final class MapEditorManager {
         MapBrushMode next = brushMode(player) == MapBrushMode.REGION
                 ? MapBrushMode.BLOCK : MapBrushMode.REGION;
         brushModes.put(playerId, next);
+        saveBrushPreferences(player);
         brushFirstPoints.remove(playerId);
         brushSecondPoints.remove(playerId);
         feedback(player, "画笔模式：" + next.displayName(), false);
@@ -731,21 +750,17 @@ public final class MapEditorManager {
         UUID playerId = player.getUUID();
         MapTool tool = selectedTool(player);
         MapBrushMode mode = brushMode(player);
-        if (tool.kind() == MapTool.Kind.POINT && mode == MapBrushMode.REGION) {
-            feedback(player, "出生点请使用方块模式：蹲下右键切换。", true);
-            sendView(player);
-            return;
-        }
+        if (tool.kind() == MapTool.Kind.POINT) mode = MapBrushMode.BLOCK;
         if (tool.kind() == MapTool.Kind.POINT) {
             position = position.above();
         }
         if (mode == MapBrushMode.REGION) {
             if (leftClick) {
                 brushFirstPoints.put(playerId, position.immutable());
-                feedback(player, "已记录端点 A。", false);
+                feedback(player, "已记录第一个角。右键选择对角，完成后自动保存。", false);
             } else {
                 brushSecondPoints.put(playerId, position.immutable());
-                feedback(player, "已记录端点 B。", false);
+                feedback(player, "已记录第二个角。左键选择另一角，完成后自动保存。", false);
             }
             BlockPos first = brushFirstPoints.get(playerId);
             BlockPos second = brushSecondPoints.get(playerId);

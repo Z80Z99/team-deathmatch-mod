@@ -58,7 +58,7 @@ public final class MapToolClientEvents {
             MapEditorView view = ClientMapEditorData.view();
             List<MapRegion> hits = MapRegionPicker.pick(minecraft, view, 128.0D);
             minecraft.setScreen(new MapPlannerScreen(hits.isEmpty() ? view.regions() : hits));
-            event.setCanceled(true);
+            if (event.isCancelable()) event.setCanceled(true);
             return;
         }
 
@@ -69,7 +69,7 @@ public final class MapToolClientEvents {
             FpsTdmNetwork.sendToServer(new MapBrushClickPacket(
                     MapRegionPicker.brushTarget(minecraft, view.brushRange()), false));
         }
-        event.setCanceled(true);
+        if (event.isCancelable()) event.setCanceled(true);
     }
 
     private static void handleLeftClick(PlayerInteractEvent event) {
@@ -84,7 +84,7 @@ public final class MapToolClientEvents {
                 FpsTdmNetwork.sendToServer(new MapRegionPacket(MapRegionAction.SELECT, first, 0));
                 minecraft.player.displayClientMessage(Component.literal("已选择区域：" + first.displayName()), true);
             }
-            event.setCanceled(true);
+            if (event.isCancelable()) event.setCanceled(true);
             return;
         }
         if (event.getItemStack().is(ModItems.MAP_BRUSH.get())) {
@@ -93,7 +93,7 @@ public final class MapToolClientEvents {
             if (target != null) {
                 FpsTdmNetwork.sendToServer(new MapBrushClickPacket(target, true));
             }
-            event.setCanceled(true);
+            if (event.isCancelable()) event.setCanceled(true);
         }
     }
 }
