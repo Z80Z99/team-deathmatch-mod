@@ -7,7 +7,6 @@ import cn.blockforge.generated.generatedmod.map.MapEditorView;
 import cn.blockforge.generated.generatedmod.map.MapRegion;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
@@ -26,6 +25,10 @@ import java.util.List;
 /** 手持地图道具时绘制区域呼吸外框和画笔玻璃指示。 */
 @Mod.EventBusSubscriber(modid = GeneratedMod.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class MapRegionRenderer {
+    private static final MultiBufferSource.BufferSource LINE_BUFFERS = MultiBufferSource.immediate(
+            new com.mojang.blaze3d.vertex.BufferBuilder(4096));
+    private static final MultiBufferSource.BufferSource FILL_BUFFERS = MultiBufferSource.immediate(
+            new com.mojang.blaze3d.vertex.BufferBuilder(4096));
     private MapRegionRenderer() {
     }
 
@@ -56,10 +59,9 @@ public final class MapRegionRenderer {
         PoseStack poseStack = event.getPoseStack();
         poseStack.pushPose();
         poseStack.translate(-position.x, -position.y, -position.z);
-        MultiBufferSource.BufferSource buffers =
-                MultiBufferSource.immediate(Tesselator.getInstance().getBuilder());
-        VertexConsumer lines = buffers.getBuffer(RenderType.lines());
-        VertexConsumer fills = buffers.getBuffer(RenderType.debugFilledBox());
+        // Keep both builders alive: switching types on one immediate builder invalidates the first consumer.
+        VertexConsumer lines = LINE_BUFFERS.getBuffer(RenderType.lines());
+        VertexConsumer fills = FILL_BUFFERS.getBuffer(RenderType.debugFilledBox());
         RenderSystem.disableDepthTest();
         float pulse = 0.5F + 0.5F * (float) Math.sin((minecraft.player.tickCount + event.getPartialTick()) * 0.16D);
 
@@ -79,6 +81,20 @@ public final class MapRegionRenderer {
 
         if (brush) {
             BlockPos target = MapToolClientState.brushTarget();
+            BlockPos first = ClientMapEditorData.firstPoint();
+            BlockPos second = ClientMapEditorData.secondPoint();
+            BlockPos anchor = first != null ? first : second;
+            if (anchor != null) {
+                BlockPos end = first != null && second != null ? second : target;
+                LevelRenderer.renderLineBox(poseStack, lines,
+                        Math.min(anchor.getX(), end.getX()) - 0.01D,
+                        Math.min(anchor.getY(), end.getY()) - 0.01D,
+                        Math.min(anchor.getZ(), end.getZ()) - 0.01D,
+                        Math.max(anchor.getX(), end.getX()) + 1.01D,
+                        Math.max(anchor.getY(), end.getY()) + 1.01D,
+                        Math.max(anchor.getZ(), end.getZ()) + 1.01D, 1.0F, 0.85F, 0.2F, 1.0F);
+                drawBlock(poseStack, lines, fills, anchor, 1.0F, 0.85F, 0.2F, 0.2F, 1.0F);
+            }
             boolean air = MapToolClientState.brushTargetAir();
             float red = air ? 0.45F : 1.0F;
             float green = air ? 0.85F : 0.75F;
@@ -87,8 +103,8 @@ public final class MapRegionRenderer {
                     0.30F + 0.12F * pulse, 0.85F + 0.15F * pulse);
         }
 
-        buffers.endBatch(RenderType.debugFilledBox());
-        buffers.endBatch(RenderType.lines());
+        FILL_BUFFERS.endBatch();
+        LINE_BUFFERS.endBatch();
         RenderSystem.enableDepthTest();
         poseStack.popPose();
     }

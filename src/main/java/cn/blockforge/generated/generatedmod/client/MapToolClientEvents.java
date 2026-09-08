@@ -53,6 +53,10 @@ public final class MapToolClientEvents {
         boolean planner = event.getItemStack().is(ModItems.MAP_PLANNER.get());
         boolean brush = event.getItemStack().is(ModItems.MAP_BRUSH.get());
         if (!planner && !brush) return;
+        if (minecraft.screen != null) {
+            if (event.isCancelable()) event.setCanceled(true);
+            return;
+        }
 
         if (planner) {
             MapEditorView view = ClientMapEditorData.view();
@@ -88,8 +92,14 @@ public final class MapToolClientEvents {
             return;
         }
         if (event.getItemStack().is(ModItems.MAP_BRUSH.get())) {
+            if (event instanceof PlayerInteractEvent.LeftClickBlock block
+                    && block.getAction() != PlayerInteractEvent.LeftClickBlock.Action.START) {
+                if (event.isCancelable()) event.setCanceled(true);
+                return;
+            }
             MapEditorView view = ClientMapEditorData.view();
-            BlockPos target = MapRegionPicker.brushTarget(minecraft, view.brushRange(), false);
+            BlockPos target = event instanceof PlayerInteractEvent.LeftClickBlock
+                    ? event.getPos() : MapRegionPicker.brushTarget(minecraft, 6, false);
             if (target != null) {
                 FpsTdmNetwork.sendToServer(new MapBrushClickPacket(target, true));
             }

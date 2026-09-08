@@ -21,9 +21,17 @@ public final class MapEditorSyncPacket {
     private static final int MAX_TEXT = 256;
     private static final int MAX_MAPS = 64;
     private final MapEditorView view;
+    private final BlockPos firstPoint;
+    private final BlockPos secondPoint;
 
     public MapEditorSyncPacket(MapEditorView view) {
+        this(view, null, null);
+    }
+
+    public MapEditorSyncPacket(MapEditorView view, BlockPos firstPoint, BlockPos secondPoint) {
         this.view = view;
+        this.firstPoint = firstPoint;
+        this.secondPoint = secondPoint;
     }
 
     public MapEditorSyncPacket(FriendlyByteBuf buffer) {
@@ -49,6 +57,8 @@ public final class MapEditorSyncPacket {
         int responseRequestId = Math.max(0, buffer.readVarInt());
         String message = buffer.readUtf(MAX_TEXT);
         boolean error = buffer.readBoolean();
+        int teamC = buffer.readVarInt();
+        int teamD = buffer.readVarInt();
         List<MapRegion> regions = readRegions(buffer);
         MapTool selectedTool = MapTool.parse(buffer.readUtf(MAX_TEXT));
         MapBrushMode brushMode = MapBrushMode.parse(buffer.readUtf(MAX_TEXT));
@@ -56,8 +66,10 @@ public final class MapEditorSyncPacket {
         int brushRange = buffer.readVarInt();
         view = new MapEditorView(hasTarget, mapId, displayName, world, bounds, reset, draftBounds, draftReset,
                 teamA, teamB, spectator, snapshot, canEdit, isAdmin, locked, draftInvalidated,
-                ownedMaps, serverMaps, shareCode, responseRequestId, message, error, buffer.readVarInt(), buffer.readVarInt(),
+                ownedMaps, serverMaps, shareCode, responseRequestId, message, error, teamC, teamD,
                 regions, selectedTool, brushMode, selectedRegionId, brushRange);
+        firstPoint = buffer.readBoolean() ? buffer.readBlockPos() : null;
+        secondPoint = buffer.readBoolean() ? buffer.readBlockPos() : null;
     }
 
     public void encode(FriendlyByteBuf buffer) {
@@ -90,6 +102,10 @@ public final class MapEditorSyncPacket {
         buffer.writeUtf(view.brushMode().id(), MAX_TEXT);
         buffer.writeUtf(view.selectedRegionId(), MAX_TEXT);
         buffer.writeVarInt(view.brushRange());
+        buffer.writeBoolean(firstPoint != null);
+        if (firstPoint != null) buffer.writeBlockPos(firstPoint);
+        buffer.writeBoolean(secondPoint != null);
+        if (secondPoint != null) buffer.writeBlockPos(secondPoint);
     }
 
     public void handle(Supplier<NetworkEvent.Context> contextSupplier) {
@@ -100,6 +116,8 @@ public final class MapEditorSyncPacket {
     }
 
     public MapEditorView view() { return view; }
+    public BlockPos firstPoint() { return firstPoint; }
+    public BlockPos secondPoint() { return secondPoint; }
 
     private static void writeStrings(FriendlyByteBuf buffer, List<String> values) {
         int count = Math.min(MAX_MAPS, values == null ? 0 : values.size());

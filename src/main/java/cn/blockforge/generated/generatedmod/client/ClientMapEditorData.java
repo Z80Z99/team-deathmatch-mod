@@ -7,17 +7,25 @@ import cn.blockforge.generated.generatedmod.network.packet.MapEditorSyncPacket;
 public final class ClientMapEditorData {
     private static MapEditorView view = empty();
     private static int revision;
+    private static net.minecraft.core.BlockPos firstPoint;
+    private static net.minecraft.core.BlockPos secondPoint;
+    public static net.minecraft.core.BlockPos firstPoint() { return firstPoint; }
+    public static net.minecraft.core.BlockPos secondPoint() { return secondPoint; }
 
     private ClientMapEditorData() {
     }
 
     public static void apply(MapEditorSyncPacket packet) {
         view = packet.view();
+        firstPoint = packet.firstPoint();
+        secondPoint = packet.secondPoint();
         revision++;
     }
 
     public static void clear() {
         view = empty();
+        firstPoint = null;
+        secondPoint = null;
         revision++;
     }
 

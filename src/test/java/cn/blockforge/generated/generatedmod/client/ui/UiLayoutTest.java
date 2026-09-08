@@ -58,6 +58,9 @@ class UiLayoutTest {
         Minecraft minecraft = mock(Minecraft.class);
         Font font = mock(Font.class);
         set(Minecraft.class, minecraft, "font", font);
+        var options = mock(net.minecraft.client.Options.class);
+        when(options.getCameraType()).thenReturn(net.minecraft.client.CameraType.FIRST_PERSON);
+        set(Minecraft.class, minecraft, "options", options);
         set(Minecraft.class, minecraft, "gameDirectory", new java.io.File("build/ui-fixture"));
         when(font.width(anyString())).thenAnswer(call -> UiRenderCapture.measure(call.getArgument(0)));
         when(font.plainSubstrByWidth(anyString(), anyInt())).thenAnswer(call -> {
@@ -75,6 +78,7 @@ class UiLayoutTest {
                     () -> new RoomCreateScreen(null), () -> new RoomScreen(null), () -> new MatchmakingScreen(null),
                     () -> new MapLibraryScreen(null), () -> new RoomMapSelectScreen(null),
                     () -> new MapCreateScreen(null), () -> new MapEditorScreen(null),
+                    () -> new MapBrushScreen(), () -> new MapPlannerScreen(List.of()),
                     () -> rulesScreen(), () -> new HudLayoutScreen(null), () -> new HudParameterHelpScreen(null));
             for (int[] size : List.of(new int[]{320, 240}, new int[]{480, 270}, new int[]{640, 360}, new int[]{960, 540})) {
                 for (Supplier<Screen> factory : factories) {

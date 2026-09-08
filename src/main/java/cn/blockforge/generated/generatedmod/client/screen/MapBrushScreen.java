@@ -22,7 +22,8 @@ public final class MapBrushScreen extends UiScreen {
     private int lastRevision = -1;
     private int ticks;
     private UiCycleButton<MapBrushMode> modeControl;
-    private UiCycleButton<Integer> rangeControl;
+    private int rangeValue;
+    private int pendingRangeRequest;
     private UiCycleButton<cn.blockforge.generated.generatedmod.map.MapTool> targetControl;
 
     public MapBrushScreen() {
@@ -31,7 +32,7 @@ public final class MapBrushScreen extends UiScreen {
 
     @Override
     protected void init() {
-        beginLayout(MENU_WIDTH, 260, BUTTON_HEIGHT * 2 + 8, true, true);
+        beginLayout(MENU_WIDTH, 260, BUTTON_HEIGHT, true, true);
         int titleY = flowRow(18);
         flowWidget(uiButton("？", innerLeft + innerWidth - 24, titleY, 22, this::toggleHelp,
                 "查看画笔的全部使用说明。", UiButton.Kind.SECONDARY), titleY);
@@ -59,11 +60,15 @@ public final class MapBrushScreen extends UiScreen {
                 "区域始终为长方体，不能单独挖掉内部方块。",
                 "切换模式会清空尚未配对的端点。"), modeY);
 
-        int rangeY = flowRow(BUTTON_HEIGHT);
-        rangeControl = flowWidget(new UiCycleButton<>(innerLeft, rangeY, controlWidth, BUTTON_HEIGHT,
-                java.util.stream.IntStream.rangeClosed(1, 64).boxed().toList(),
-                ClientMapEditorData.view().brushRange(), value -> "空气取点距离：" + value + " 格", this::setRange,
-                "右键选择空气时距离玩家前方的格数。", UiButton.Kind.SECONDARY), rangeY);
+        int rangeY = flowRow(BUTTON_HEIGHT + 12) + 12;
+        rangeValue = ClientMapEditorData.view().brushRange();
+        flowWidget(uiButton("-", innerLeft, rangeY, 22,
+                () -> setRange(rangeValue - 1), "距离减少 1 格", UiButton.Kind.SECONDARY), rangeY);
+        flowWidget(new cn.blockforge.generated.generatedmod.client.ui.UiSlider(font,
+                innerLeft + 26, rangeY, controlWidth - 52, BUTTON_HEIGHT, 1, 64,
+                () -> rangeValue, this::setRange, "空气距离", " 格"), rangeY);
+        flowWidget(uiButton("+", innerLeft + controlWidth - 22, rangeY, 22,
+                () -> setRange(rangeValue + 1), "距离增加 1 格", UiButton.Kind.SECONDARY), rangeY);
         flowWidget(helpButton(helpX, rangeY,
                 "右键可在空气位置取点，默认距离前方 2 格。",
                 "如果中间有方块，会优先停在方块位置。",
@@ -84,8 +89,11 @@ public final class MapBrushScreen extends UiScreen {
     }
 
     private void setRange(int range) {
-        FpsTdmNetwork.sendToServer(new MapEditorActionPacket(MapEditorAction.SET_BRUSH_RANGE,
-                Integer.toString(range)));
+        rangeValue = Math.max(1, Math.min(64, range));
+        MapEditorActionPacket packet = new MapEditorActionPacket(MapEditorAction.SET_BRUSH_RANGE,
+                Integer.toString(rangeValue));
+        pendingRangeRequest = packet.requestId();
+        FpsTdmNetwork.sendToServer(packet);
     }
 
     private void toggleHelp() {
@@ -120,7 +128,10 @@ public final class MapBrushScreen extends UiScreen {
         if (lastRevision != ClientMapEditorData.revision()) {
             lastRevision = ClientMapEditorData.revision();
             modeControl.setValue(ClientMapEditorData.view().brushMode());
-            rangeControl.setValue(ClientMapEditorData.view().brushRange());
+            if (pendingRangeRequest == 0 || ClientMapEditorData.view().responseRequestId() >= pendingRangeRequest) {
+                rangeValue = ClientMapEditorData.view().brushRange();
+                pendingRangeRequest = 0;
+            }
             targetControl.setValue(ClientMapEditorData.view().selectedTool());
             modeControl.active = ClientMapEditorData.view().selectedTool().kind()
                     != cn.blockforge.generated.generatedmod.map.MapTool.Kind.POINT;
@@ -130,6 +141,8 @@ public final class MapBrushScreen extends UiScreen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderShell(graphics, "设置自动保存 · 蹲下右键打开");
+        renderStatus(graphics, pendingRangeRequest != 0 ? "正在保存距离…" : ClientMapEditorData.view().message(),
+                ClientMapEditorData.view().error() ? UiTheme.ERROR : UiTheme.TEXT);
         if (!helpLines.isEmpty()) {
             int y = helpY + 4;
             for (String line : helpLines) {
@@ -152,4 +165,5 @@ public final class MapBrushScreen extends UiScreen {
     public boolean isPauseScreen() {
         return false;
     }
+
 }

@@ -51,6 +51,9 @@ public final class MapToolHud {
             left.add(point ? "右键：添加出生点" : corners ? "右键：选择对角，自动保存" : "右键：扩展区域到目标位置");
             left.add("蹲+右键：画笔菜单");
             left.add("右键距离：" + view.brushRange() + "格");
+            if (ClientMapEditorData.firstPoint() != null) left.add("第一角：" + ClientMapEditorData.firstPoint().toShortString());
+            if (ClientMapEditorData.secondPoint() != null) left.add("第二角：" + ClientMapEditorData.secondPoint().toShortString());
+            if (!view.message().isBlank()) left.add(view.message());
         }
         drawPanel(graphics, font, left, 8, screenHeight - 8 - left.size() * LINE_HEIGHT - 8,
                 PANEL_WIDTH, UiTheme.INFO);

@@ -544,7 +544,8 @@ public final class MapEditorManager {
                 base.ownedMaps(), base.serverMaps(), base.shareCode(),
                 responseRequestId, message, error, base.teamCCount(), base.teamDCount(),
                 base.regions(), base.selectedTool(), base.brushMode(),
-                base.selectedRegionId(), base.brushRange())), player);
+                base.selectedRegionId(), base.brushRange()),
+                brushFirstPoints.get(playerId), brushSecondPoints.get(playerId)), player);
     }
 
     public void onLogout(ServerPlayer player) {
@@ -691,9 +692,25 @@ public final class MapEditorManager {
     }
 
     private void giveTools(ServerPlayer player) {
-        player.getInventory().add(new ItemStack(ModItems.MAP_PLANNER.get()));
-        player.getInventory().add(new ItemStack(ModItems.MAP_BRUSH.get()));
-        feedback(player, "已发放地图规划器和地图画笔。", false);
+        int added = 0;
+        boolean full = false;
+        for (var item : List.of(ModItems.MAP_PLANNER.get(), ModItems.MAP_BRUSH.get())) {
+            int result = giveMissingTool(player.getInventory(), player.containerMenu.getCarried(), item);
+            if (result > 0) added++;
+            if (result < 0) full = true;
+        }
+        feedback(player, full ? "背包空间不足，请腾出空位后再领取缺少的工具。"
+                : added == 0 ? "你已持有两种工具，无需重复领取。" : "已补齐缺少的工具。", full);
+    }
+
+    static int giveMissingTool(net.minecraft.world.entity.player.Inventory inventory, ItemStack carried,
+                               net.minecraft.world.item.Item item) {
+        if (carried.is(item)) return 0;
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            if (inventory.getItem(slot).is(item)) return 0;
+        }
+        if (inventory.getFreeSlot() < 0) return -1;
+        return inventory.add(new ItemStack(item)) ? 1 : -1;
     }
 
     private static int parseRange(String value) {
@@ -766,8 +783,11 @@ public final class MapEditorManager {
             BlockPos second = brushSecondPoints.get(playerId);
             if (first != null && second != null) {
                 applyRegionEndpoints(player, target, tool, first, second);
-                brushFirstPoints.remove(playerId);
-                brushSecondPoints.remove(playerId);
+                if (!errors.getOrDefault(playerId, false)) {
+                    brushFirstPoints.remove(playerId);
+                    brushSecondPoints.remove(playerId);
+                }
+                player.displayClientMessage(Component.literal(messages.getOrDefault(playerId, "")), true);
             }
         } else if (tool.kind() == MapTool.Kind.REGION) {
             adjustRegion(player, target, tool, position, !leftClick);

@@ -34,7 +34,6 @@ public final class MapPlannerScreen extends UiScreen {
         this.regions = List.copyOf(regions == null ? List.of() : regions);
         Minecraft minecraft = Minecraft.getInstance();
         this.previousCameraType = minecraft.options.getCameraType();
-        minecraft.options.setCameraType(CameraType.THIRD_PERSON_BACK);
     }
 
     @Override
@@ -46,6 +45,17 @@ public final class MapPlannerScreen extends UiScreen {
                 "查看规划器的全部使用说明。", UiButton.Kind.SECONDARY), titleY);
         if (!helpLines.isEmpty()) {
             helpY = flowRow(helpLines.size() * 12 + 10);
+        }
+        int cameraY = flowRow(BUTTON_HEIGHT);
+        CameraType[] cameras = {CameraType.FIRST_PERSON, CameraType.THIRD_PERSON_BACK, CameraType.THIRD_PERSON_FRONT};
+        String[] labels = {"第一人称", "背后观察", "正面观察"};
+        for (int i = 0; i < cameras.length; i++) {
+            CameraType camera = cameras[i];
+            UiButton button = uiButton(labels[i], columnX(i, 3, 4), cameraY, columnWidth(3, 4),
+                    () -> { minecraft.options.setCameraType(camera); rebuildWidgets(); },
+                    "切换到" + labels[i] + "，关闭菜单后保留此选择。", UiButton.Kind.SECONDARY);
+            button.setSelected(minecraft.options.getCameraType() == camera);
+            flowWidget(button, cameraY);
         }
 
         int controlWidth = innerWidth - 30;
@@ -68,13 +78,11 @@ public final class MapPlannerScreen extends UiScreen {
                 "创建后可用画笔在区域内重新圈定两个端点。",
                 "区域名称、类型、显示与生效逻辑可在编辑页调整。"), createY);
 
-        footerButton("地图工作台", 0, 4, 0, this::openWorkbench,
+        footerButton("地图工作台", 0, 2, 0, this::openWorkbench,
                 "打开地图工作台。", UiButton.Kind.SECONDARY);
-        footerButton("关闭", 1, 4, 0, this::onClose, "关闭菜单，但保留当前视角。", UiButton.Kind.SECONDARY);
-        footerButton("切换视角", 2, 4, 0, this::toggleCamera,
-                "在第一人称和第三人称之间切换。", UiButton.Kind.SECONDARY);
-        footerButton("退出编辑模式", 3, 4, 0, this::exitEditMode,
-                "关闭菜单并恢复原来的视角。", UiButton.Kind.DANGER);
+        footerButton("继续编辑", 1, 2, 0, this::onClose, "返回游戏，保留当前视角。", UiButton.Kind.PRIMARY);
+        footerButton("恢复进入前视角", 0, 1, 1, this::exitEditMode,
+                "恢复打开本菜单之前的视角，并返回游戏。", UiButton.Kind.SECONDARY);
     }
 
     private UiButton helpButton(int x, int y, String... lines) {
@@ -115,7 +123,8 @@ public final class MapPlannerScreen extends UiScreen {
                 "站在区域 A 内指向区域 B 时，会优先选择 B。",
                 "多个区域重叠时，菜单会列出全部可编辑目标。",
                 "悬停菜单中的区域名称，对应边框会呼吸发光。",
-                "关闭菜单保留视角；退出编辑模式才恢复原视角。");
+                "打开菜单不改变视角。可直接选择第一人称、背后或正面。",
+                "继续编辑保留选择；恢复进入前视角会还原并关闭。");
     }
 
     private void showHelp(String... lines) {
@@ -125,13 +134,6 @@ public final class MapPlannerScreen extends UiScreen {
                 .map(net.minecraft.network.chat.FormattedText::getString).toList();
         helpLines = helpLines.equals(next) ? List.of() : next;
         rebuildWidgets();
-    }
-
-    private void toggleCamera() {
-        Minecraft minecraft = Minecraft.getInstance();
-        CameraType current = minecraft.options.getCameraType();
-        minecraft.options.setCameraType(current == CameraType.FIRST_PERSON
-                ? CameraType.THIRD_PERSON_BACK : CameraType.FIRST_PERSON);
     }
 
     private void exitEditMode() {
