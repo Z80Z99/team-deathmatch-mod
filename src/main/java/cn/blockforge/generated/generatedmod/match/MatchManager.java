@@ -479,6 +479,8 @@ public final class MatchManager {
             resetToWaiting();
         }
 
+        spawns.tickRandomSpawns((state == MatchState.PLAYING || state == MatchState.WARMUP)
+                && rulesSpawnStrategy() == SpawnSelectionStrategy.RANDOM);
         processDownedPlayers();
         enforceArenaRules();
         if (server.getTickCount() % stateBroadcastInterval(isMatchActive()) == 0) {
@@ -528,6 +530,7 @@ public final class MatchManager {
 
     /** 统一处理击杀记分、公告与回合终点判定。返回 true 表示回合已结束。 */
     private boolean creditKill(ServerPlayer victim, Team victimTeam, DamageSource source) {
+        if (rulesSpawnStrategy() == SpawnSelectionStrategy.RANDOM) spawns.refreshRandomSpawnsAfterDeath();
         ServerPlayer killer = resolveKiller(source);
         Team killerTeam = killer == null ? Team.SPECTATOR : teams.getTeam(killer);
         if (killer != null && killer != victim && killerTeam.isPlayable() && killerTeam != victimTeam) {

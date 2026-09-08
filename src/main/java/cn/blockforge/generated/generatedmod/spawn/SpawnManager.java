@@ -21,6 +21,7 @@ public final class SpawnManager {
     private final MinecraftServer server;
     private final MapManager maps;
     private final EnumMap<Team, Integer> sequentialIndexes = new EnumMap<>(Team.class);
+    private final DynamicSpawnPool randomSpawns = new DynamicSpawnPool();
 
     public SpawnManager(MinecraftServer server, MapManager maps) {
         this.server = server;
@@ -86,7 +87,20 @@ public final class SpawnManager {
 
     public Optional<SpawnPoint> findRandomSpawn() {
         MapDefinition map = maps.currentMap().orElse(null);
-        return map == null ? Optional.empty() : SafeSpawnFinder.find(server.getLevel(map.world()), map);
+        return randomSpawns.find(map == null ? null : server.getLevel(map.world()), map);
+    }
+
+    public void refreshRandomSpawnsAfterDeath() {
+        randomSpawns.requestRefresh();
+    }
+
+    public void tickRandomSpawns(boolean enabled) {
+        if (!enabled) {
+            randomSpawns.clear();
+            return;
+        }
+        MapDefinition map = maps.currentMap().orElse(null);
+        randomSpawns.tick(map == null ? null : server.getLevel(map.world()), map, server.getTickCount());
     }
 
     public boolean teleportToSpectator(ServerPlayer player) {
