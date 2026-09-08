@@ -22,12 +22,10 @@ import net.minecraftforge.fml.common.Mod;
 
 import java.util.List;
 
-/** 手持地图道具时绘制区域呼吸外框和画笔玻璃指示。 */
+/** 手持地图道具时只绘制区域和取点目标的外框。 */
 @Mod.EventBusSubscriber(modid = GeneratedMod.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class MapRegionRenderer {
     private static final MultiBufferSource.BufferSource LINE_BUFFERS = MultiBufferSource.immediate(
-            new com.mojang.blaze3d.vertex.BufferBuilder(4096));
-    private static final MultiBufferSource.BufferSource FILL_BUFFERS = MultiBufferSource.immediate(
             new com.mojang.blaze3d.vertex.BufferBuilder(4096));
     private MapRegionRenderer() {
     }
@@ -59,24 +57,17 @@ public final class MapRegionRenderer {
         PoseStack poseStack = event.getPoseStack();
         poseStack.pushPose();
         poseStack.translate(-position.x, -position.y, -position.z);
-        // Keep both builders alive: switching types on one immediate builder invalidates the first consumer.
         VertexConsumer lines = LINE_BUFFERS.getBuffer(RenderType.lines());
-        VertexConsumer fills = FILL_BUFFERS.getBuffer(RenderType.debugFilledBox());
         RenderSystem.disableDepthTest();
         float pulse = 0.5F + 0.5F * (float) Math.sin((minecraft.player.tickCount + event.getPartialTick()) * 0.16D);
 
         for (MapRegion region : view.regions()) {
             boolean hovered = region.id().equals(MapToolClientState.hoveredRegionId());
             boolean selected = region.id().equals(view.selectedRegionId());
-            float fillAlpha = hovered || selected
-                    ? 0.16F + 0.16F * pulse
-                    : region.type() == MapRegion.Type.BOUNDS || region.type() == MapRegion.Type.RESET
-                    ? 0.08F + 0.04F * pulse
-                    : 0.05F;
             float lineAlpha = hovered || selected
                     ? 0.70F + 0.30F * pulse
                     : 0.35F + 0.20F * pulse;
-            drawRegion(poseStack, lines, fills, region, fillAlpha, lineAlpha);
+            drawRegion(poseStack, lines, region, lineAlpha);
         }
 
         if (brush) {
@@ -93,17 +84,15 @@ public final class MapRegionRenderer {
                         Math.max(anchor.getX(), end.getX()) + 1.01D,
                         Math.max(anchor.getY(), end.getY()) + 1.01D,
                         Math.max(anchor.getZ(), end.getZ()) + 1.01D, 1.0F, 0.85F, 0.2F, 1.0F);
-                drawBlock(poseStack, lines, fills, anchor, 1.0F, 0.85F, 0.2F, 0.2F, 1.0F);
+                drawBlock(poseStack, lines, anchor, 1.0F, 0.85F, 0.2F, 1.0F);
             }
             boolean air = MapToolClientState.brushTargetAir();
             float red = air ? 0.45F : 1.0F;
             float green = air ? 0.85F : 0.75F;
             float blue = air ? 1.0F : 0.25F;
-            drawBlock(poseStack, lines, fills, target, red, green, blue,
-                    0.30F + 0.12F * pulse, 0.85F + 0.15F * pulse);
+            drawBlock(poseStack, lines, target, red, green, blue, 0.85F + 0.15F * pulse);
         }
 
-        FILL_BUFFERS.endBatch();
         LINE_BUFFERS.endBatch();
         RenderSystem.enableDepthTest();
         poseStack.popPose();
@@ -123,74 +112,26 @@ public final class MapRegionRenderer {
                 || minecraft.player.getOffhandItem().is(ModItems.MAP_BRUSH.get());
     }
 
-    private static void drawRegion(PoseStack poseStack, VertexConsumer lines, VertexConsumer fills,
-                                   MapRegion region, float fillAlpha, float lineAlpha) {
+    private static void drawRegion(PoseStack poseStack, VertexConsumer lines,
+                                   MapRegion region, float lineAlpha) {
         MapDefinition.Region bounds = region.region();
         float red = ((region.color() >>> 16) & 0xFF) / 255.0F;
         float green = ((region.color() >>> 8) & 0xFF) / 255.0F;
         float blue = (region.color() & 0xFF) / 255.0F;
-        if (region.fill()) {
-            drawFilledBox(poseStack, fills,
-                    bounds.min().getX(), bounds.min().getY(), bounds.min().getZ(),
-                    bounds.max().getX() + 1.0D, bounds.max().getY() + 1.0D, bounds.max().getZ() + 1.0D,
-                    red, green, blue, fillAlpha);
-        }
-        if (region.outline()) {
+        // Editor outlines remain visible even when the region's match appearance hides them.
             LevelRenderer.renderLineBox(poseStack, lines,
                     bounds.min().getX() - 0.002D, bounds.min().getY() - 0.002D, bounds.min().getZ() - 0.002D,
                     bounds.max().getX() + 1.002D, bounds.max().getY() + 1.002D, bounds.max().getZ() + 1.002D,
                     red, green, blue, lineAlpha);
-        }
     }
 
-    private static void drawBlock(PoseStack poseStack, VertexConsumer lines, VertexConsumer fills,
+    private static void drawBlock(PoseStack poseStack, VertexConsumer lines,
                                   BlockPos pos, float red, float green, float blue,
-                                  float fillAlpha, float lineAlpha) {
-        drawFilledBox(poseStack, fills, pos.getX(), pos.getY(), pos.getZ(),
-                pos.getX() + 1.0D, pos.getY() + 1.0D, pos.getZ() + 1.0D,
-                red, green, blue, fillAlpha);
+                                  float lineAlpha) {
         LevelRenderer.renderLineBox(poseStack, lines,
                 pos.getX() - 0.002D, pos.getY() - 0.002D, pos.getZ() - 0.002D,
                 pos.getX() + 1.002D, pos.getY() + 1.002D, pos.getZ() + 1.002D,
                 red, green, blue, lineAlpha);
     }
 
-    private static void drawFilledBox(PoseStack poseStack, VertexConsumer consumer,
-                                      double minX, double minY, double minZ,
-                                      double maxX, double maxY, double maxZ,
-                                      float red, float green, float blue, float alpha) {
-        var matrix = poseStack.last().pose();
-        face(consumer, matrix, minX, minY, minZ, maxX, minY, minZ, maxX, minY, maxZ, minX, minY, maxZ,
-                red, green, blue, alpha);
-        face(consumer, matrix, minX, maxY, minZ, maxX, maxY, minZ, maxX, maxY, maxZ, minX, maxY, maxZ,
-                red, green, blue, alpha);
-        face(consumer, matrix, minX, minY, minZ, minX, maxY, minZ, minX, maxY, maxZ, minX, minY, maxZ,
-                red, green, blue, alpha);
-        face(consumer, matrix, maxX, minY, minZ, maxX, maxY, minZ, maxX, maxY, maxZ, maxX, minY, maxZ,
-                red, green, blue, alpha);
-        face(consumer, matrix, minX, minY, minZ, maxX, minY, minZ, maxX, maxY, minZ, minX, maxY, minZ,
-                red, green, blue, alpha);
-        face(consumer, matrix, minX, minY, maxZ, maxX, minY, maxZ, maxX, maxY, maxZ, minX, maxY, maxZ,
-                red, green, blue, alpha);
-    }
-
-    private static void face(VertexConsumer consumer, org.joml.Matrix4f matrix,
-                             double x1, double y1, double z1,
-                             double x2, double y2, double z2,
-                             double x3, double y3, double z3,
-                             double x4, double y4, double z4,
-                             float red, float green, float blue, float alpha) {
-        vertex(consumer, matrix, x1, y1, z1, red, green, blue, alpha);
-        vertex(consumer, matrix, x2, y2, z2, red, green, blue, alpha);
-        vertex(consumer, matrix, x3, y3, z3, red, green, blue, alpha);
-        vertex(consumer, matrix, x4, y4, z4, red, green, blue, alpha);
-    }
-
-    private static void vertex(VertexConsumer consumer, org.joml.Matrix4f matrix,
-                               double x, double y, double z,
-                               float red, float green, float blue, float alpha) {
-        consumer.vertex(matrix, (float) x, (float) y, (float) z)
-                .color(red, green, blue, alpha)
-                .endVertex();
-    }
 }
