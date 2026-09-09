@@ -21,6 +21,10 @@ public final class RespawnOverlay {
                 && !ClientMatchData.pending;
     }
     public static boolean active() { return TIMELINE.phase() != RespawnTimeline.Phase.HIDDEN; }
+    /** The mouse handler consumes look deltas while the death camera owns the view. */
+    public static boolean shouldLockViewInput() {
+        return ClientMatchData.awaitingRespawn && eligible();
+    }
     public static void onDeathScreen() { TIMELINE.provisionalDeath(now()); }
     public static boolean deathActive() { return TIMELINE.deathActive(); }
     public static boolean returning() { return TIMELINE.returning(); }

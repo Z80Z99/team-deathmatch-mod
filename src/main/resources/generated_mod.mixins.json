@@ -4,5 +4,6 @@
   "package": "cn.blockforge.generated.generatedmod.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": ["LevelBoundaryMixin", "CraterBoundaryMixin"],
+  "client": ["MouseHandlerMixin"],
   "injectors": { "defaultRequire": 1 }
 }
