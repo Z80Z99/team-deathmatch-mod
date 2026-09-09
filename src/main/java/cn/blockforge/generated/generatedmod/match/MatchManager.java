@@ -47,6 +47,8 @@ public final class MatchManager {
     private final cn.blockforge.generated.generatedmod.map.MapEditorManager mapEditor;
     private final MatchScoreTracker scores = new MatchScoreTracker();
     private final Map<UUID, DownedEntry> downedPlayers = new HashMap<>();
+    private final Map<UUID, PendingDeath> pendingDeaths = new HashMap<>();
+    private final java.util.Set<UUID> respawnedPlayers = new java.util.HashSet<>();
     private final Map<UUID, Long> regionReturnTicks = new HashMap<>();
 
     /** 整场开始时刻（tick），供 HUD「本局已进行时间」统计源使用。 */
@@ -445,6 +447,7 @@ public final class MatchManager {
     }
 
     public void tick() {
+        processVanillaDeaths();
         // 快照捕获和恢复必须在 Dedicated Server 主线程的 tick 中推进。
         maps.tick();
         rooms.tick();
@@ -495,41 +498,53 @@ public final class MatchManager {
         return matchActive ? 10 : 100;
     }
 
-    /**
-     * 在护甲、魔咒与吸收盾结算之后拦截致命伤害，转为阵亡状态，
-     * 保留原玩家实体和网络可见性。返回 true 表示本次伤害已被取消。
-     *
-     * <p>可复活模式按阵亡恢复时间解锁；歼灭类模式锁定到本回合结束。
-     */
+    /** Waiting players cannot take damage; active players use the real death pipeline. */
     public boolean handleFatalDamage(ServerPlayer victim, DamageSource source, float amount) {
-        if (isDowned(victim) || state != MatchState.PLAYING) {
-            return isDowned(victim);
-        }
-        Team victimTeam = teams.getTeam(victim);
-        if (!victimTeam.isPlayable() || amount < victim.getHealth()) {
-            return false;
-        }
-        if (!rulesKeepInventoryOnDeath()) victim.getInventory().dropAll();
-        boolean roundFinished = creditKill(victim, victimTeam, source);
-        if (!roundFinished) {
-            scheduleDowned(victim, victimTeam);
-        }
-        broadcastMatchState();
-        return true;
+        return isDowned(victim);
     }
 
-    /** 处理未被比赛机制拦截的原版死亡，避免绕过时留下旧的比赛状态。 */
+    /** Queue real deaths without changing the player while other death listeners run. */
     public void onPlayerKilled(ServerPlayer victim, DamageSource source) {
-        if (state != MatchState.PLAYING || isDowned(victim)) {
+        onPlayerKilled(victim, source, () -> false);
+    }
+
+    public void onPlayerKilled(ServerPlayer victim, DamageSource source,
+                               java.util.function.BooleanSupplier cancelled) {
+        if (!state.isActive()) {
             return;
         }
         Team victimTeam = teams.getTeam(victim);
         if (!victimTeam.isPlayable()) {
             return;
         }
-        creditKill(victim, victimTeam, source);
-        // 原版死亡已发生，不进入阵亡状态；复活时由 handlePlayerRespawn 送回出生点。
-        broadcastMatchState();
+        // Death events are cancellable. Confirm after the entire death call has returned.
+        pendingDeaths.putIfAbsent(victim.getUUID(), new PendingDeath(victim, source, victimTeam, cancelled));
+    }
+
+    private record PendingDeath(ServerPlayer victim, DamageSource source, Team team,
+                                java.util.function.BooleanSupplier cancelled) { }
+
+    private void processVanillaDeaths() {
+        for (PendingDeath death : new ArrayList<>(pendingDeaths.values())) {
+            pendingDeaths.remove(death.victim().getUUID());
+            if (death.cancelled().getAsBoolean() || !death.victim().isDeadOrDying()) continue;
+            if (state == MatchState.PLAYING && !isDowned(death.victim())) {
+                scheduleDowned(death.victim(), death.team());
+                creditKill(death.victim(), death.team(), death.source());
+            }
+            ServerPlayer current = server.getPlayerList().getPlayer(death.victim().getUUID());
+            if (current != null && current.isDeadOrDying()) {
+                // The vanilla command handler replaces connection.player and performs all sync.
+                // Calling PlayerList.respawn alone leaves the connection pointing at the old entity.
+                current.connection.handleClientCommand(new net.minecraft.network.protocol.game.ServerboundClientCommandPacket(
+                        net.minecraft.network.protocol.game.ServerboundClientCommandPacket.Action.PERFORM_RESPAWN));
+            }
+        }
+        for (UUID id : new ArrayList<>(respawnedPlayers)) {
+            respawnedPlayers.remove(id);
+            ServerPlayer current = server.getPlayerList().getPlayer(id);
+            if (current != null && current.isAlive()) applyRespawnState(current);
+        }
     }
 
     /** 统一处理击杀记分、公告与回合终点判定。返回 true 表示回合已结束。 */
@@ -628,19 +643,45 @@ public final class MatchManager {
     }
 
     public void handlePlayerRespawn(ServerPlayer player) {
+        // Forge fires this before the vanilla command handler finishes replacing its player.
+        respawnedPlayers.add(player.getUUID());
+    }
+
+    private void applyRespawnState(ServerPlayer player) {
+        if (player.connection.player != player) {
+            respawnedPlayers.add(player.getUUID());
+            return;
+        }
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new MatchRespawnEvent(player,
+                MatchRespawnEvent.Phase.REBUILT, server.getTickCount()));
         if (isMatchActive()) {
             teams.rememberGameMode(player);
         }
-        downedPlayers.remove(player.getUUID());
         Team team = teams.getTeam(player);
+        if (state == MatchState.PLAYING && isDowned(player)) {
+            player.setGameMode(GameType.SPECTATOR);
+            player.setInvulnerable(true);
+            spawns.teleportToSpectator(player);
+            broadcastMatchState();
+            return;
+        }
+        downedPlayers.remove(player.getUUID());
         if (state == MatchState.PLAYING && team.isPlayable() && !teams.isPending(player)
                 && rulesElimination()) {
             // 歼灭类模式：原版死亡后复活也保持“本回合阵亡”，锁定到回合结束。
             scheduleDowned(player, team);
+            player.setGameMode(GameType.SPECTATOR);
+            player.setInvulnerable(true);
             broadcastMatchState();
             return;
         }
         if (state == MatchState.MAP_RESETTING) {
+            player.setGameMode(GameType.SPECTATOR);
+            player.setInvulnerable(true);
+            spawns.teleportToSpectator(player);
+            return;
+        }
+        if (state == MatchState.ROUND_END || state == MatchState.MATCH_END) {
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
             spawns.teleportToSpectator(player);
@@ -1056,11 +1097,8 @@ public final class MatchManager {
         long releaseTick = downedReleaseTick();
         downedPlayers.put(player.getUUID(), new DownedEntry(player.getUUID(), team,
                 player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot(), releaseTick));
-        player.setGameMode(GameType.SURVIVAL);
-        player.setInvulnerable(true);
-        player.setHealth(1.0F);
-        player.setAbsorptionAmount(0.0F);
-        player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new MatchRespawnEvent(player,
+                MatchRespawnEvent.Phase.WAITING, releaseTick));
         if (releaseTick == Long.MAX_VALUE) {
             sendMessageTo(player, "你已阵亡，本回合不再复活，等待回合结束。", 0);
         } else {
@@ -1088,18 +1126,10 @@ public final class MatchManager {
                 downedPlayers.remove(entry.playerId());
                 continue;
             }
-            player.setGameMode(GameType.SURVIVAL);
+            if (!player.isAlive() || player.connection.player != player) continue;
+            player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
             player.setDeltaMovement(0.0D, 0.0D, 0.0D);
-            // 用真实传送包锁定位置与视角；仅 setPos 会被客户端移动包立刻覆盖。
-            if (Math.abs(player.getX() - entry.x()) > 0.01D
-                    || Math.abs(player.getY() - entry.y()) > 0.01D
-                    || Math.abs(player.getZ() - entry.z()) > 0.01D
-                    || player.getYRot() != entry.yaw() || player.getXRot() != entry.pitch()) {
-                player.connection.teleport(entry.x(), entry.y(), entry.z(), entry.yaw(), entry.pitch());
-            }
-            player.setHealth(Math.max(1.0F, Math.min(player.getHealth(), 1.0F)));
-            player.setAbsorptionAmount(0.0F);
             if (now < entry.releaseTick()) {
                 continue;
             }
@@ -1109,9 +1139,17 @@ public final class MatchManager {
                 continue;
             }
             downedPlayers.remove(entry.playerId());
+            player.setCamera(player);
+            player.setGameMode(GameType.SURVIVAL);
             player.setInvulnerable(false);
             player.invulnerableTime = 0;
+            player.fallDistance = 0;
+            player.setDeltaMovement(0, 0, 0);
             healAndReady(player);
+            player.onUpdateAbilities();
+            net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new MatchRespawnEvent(player,
+                    MatchRespawnEvent.Phase.READY, now));
+            sendMatchSync(player);
             player.displayClientMessage(Component.literal("状态已恢复，继续作战。"), true);
         }
     }
@@ -1142,7 +1180,7 @@ public final class MatchManager {
             int previousBoundary = boundaryCountdown.remaining(player.getUUID(), now);
             int boundaryLeft = boundaryCountdown.update(player.getUUID(), outside, now);
             if (outside && boundaryLeft == 0) {
-                handleFatalDamage(player, player.damageSources().fellOutOfWorld(), Float.MAX_VALUE);
+                player.hurt(player.damageSources().fellOutOfWorld(), Float.MAX_VALUE);
                 boundaryCountdown.update(player.getUUID(), false, now);
                 sendMatchSync(player);
                 continue;
@@ -1236,9 +1274,7 @@ public final class MatchManager {
         originalKeepInventory = rules.getBoolean(GameRules.RULE_KEEPINVENTORY);
         originalDeathMessages = rules.getBoolean(GameRules.RULE_SHOWDEATHMESSAGES);
         rulesCaptured = true;
-        if (rulesKeepInventoryOnDeath()) {
-            rules.getRule(GameRules.RULE_KEEPINVENTORY).set(true, server);
-        }
+        rules.getRule(GameRules.RULE_KEEPINVENTORY).set(rulesKeepInventoryOnDeath(), server);
         if (rulesSuppressDeathMessages()) {
             rules.getRule(GameRules.RULE_SHOWDEATHMESSAGES).set(false, server);
         }
@@ -1255,6 +1291,8 @@ public final class MatchManager {
     }
 
     private void healAndReady(ServerPlayer player) {
+        // A phase change must never resurrect the removed/dead entity by changing its health.
+        if (!player.isAlive()) return;
         player.setHealth(player.getMaxHealth());
         player.getFoodData().setFoodLevel(20);
         player.getFoodData().setSaturation(5.0F);

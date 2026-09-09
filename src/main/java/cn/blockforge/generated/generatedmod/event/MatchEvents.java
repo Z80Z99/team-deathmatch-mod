@@ -86,7 +86,7 @@ public final class MatchEvents {
         }
         MatchManager manager = MatchManager.get();
         if (manager != null) {
-            manager.onPlayerKilled(player, event.getSource());
+            manager.onPlayerKilled(player, event.getSource(), event::isCanceled);
         }
     }
 
@@ -107,7 +107,7 @@ public final class MatchEvents {
         if (manager == null) {
             return;
         }
-        // 先按护甲结算后的实际伤害计入统计，再拦截致命一击转阵亡。
+        // Preserve lethal damage so vanilla death listeners receive the real event.
         manager.recordDamage(player, event.getSource(), event.getAmount());
         if (manager.handleFatalDamage(player, event.getSource(), event.getAmount())) {
             event.setAmount(0.0F);
