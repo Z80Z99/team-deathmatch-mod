@@ -24,6 +24,8 @@ public final class SpawnManager {
     private final EnumMap<Team, MapDefinition> fixedMaps = new EnumMap<>(Team.class);
     private MapDefinition fixedSource;
     private final DynamicSpawnPool randomSpawns = new DynamicSpawnPool();
+    private MapDefinition verifiedRandomSource;
+    private SpawnPoint verifiedRandomSpawn;
 
     public SpawnManager(MinecraftServer server, MapManager maps) {
         this.server = server;
@@ -141,8 +143,24 @@ public final class SpawnManager {
     public Optional<SpawnPoint> prepareRandomSpawnForMatch() {
         MapDefinition map = maps.currentMap().orElse(null);
         ServerLevel level = map == null ? null : server.getLevel(map.world());
+        if (map == null || level == null) {
+            verifiedRandomSource = null;
+            verifiedRandomSpawn = null;
+            return Optional.empty();
+        }
+        if (verifiedRandomSource != map) {
+            verifiedRandomSource = map;
+            verifiedRandomSpawn = null;
+        }
+        if (verifiedRandomSpawn != null) {
+            BlockPos feet = BlockPos.containing(verifiedRandomSpawn.x(), verifiedRandomSpawn.y(), verifiedRandomSpawn.z());
+            level.getChunk(feet.getX() >> 4, feet.getZ() >> 4);
+            if (isUsableCurrentMapSpawn(verifiedRandomSpawn)) return Optional.of(verifiedRandomSpawn);
+        }
         Optional<SpawnPoint> current = randomSpawns.find(level, map);
-        return current.isPresent() ? current : randomSpawns.rebuildForMatchStart(level, map);
+        Optional<SpawnPoint> result = current.isPresent() ? current : randomSpawns.rebuildForMatchStart(level, map);
+        result.ifPresent(point -> verifiedRandomSpawn = point);
+        return result;
     }
 
     public void refreshRandomSpawnsAfterDeath() {
