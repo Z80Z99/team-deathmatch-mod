@@ -14,8 +14,6 @@ public final class RespawnOverlay {
     private RespawnOverlay() { }
     private static CameraType previousCamera;
     private static boolean cameraLocked;
-    private static float lockedYaw;
-    private static float lockedPitch;
     private static int requestCooldown;
     private static double now() { return System.nanoTime() / 1_000_000_000.0; }
     public static boolean eligible() {
@@ -47,8 +45,6 @@ public final class RespawnOverlay {
                         new cn.blockforge.generated.generatedmod.network.packet.RespawnRequestPacket());
                 requestCooldown = 10;
             }
-            mc.player.setYRot(lockedYaw);
-            mc.player.setXRot(lockedPitch);
             mc.player.setDeltaMovement(0, 0, 0);
         } else {
             restoreCamera(mc);
@@ -58,8 +54,6 @@ public final class RespawnOverlay {
     private static void lockCamera(Minecraft mc) {
         if (cameraLocked || mc.player == null) return;
         previousCamera = mc.options.getCameraType();
-        lockedYaw = mc.player.getYRot();
-        lockedPitch = mc.player.getXRot();
         mc.options.setCameraType(CameraType.THIRD_PERSON_BACK);
         cameraLocked = true;
     }
@@ -88,7 +82,8 @@ public final class RespawnOverlay {
         float impact = (float) Math.max(0, 1 - TIMELINE.age(time) / 1.2);
         int opacity = Math.max(0, Math.min(100, element.opacityPercent()));
         int effectRgb = element.color() & 0xFFFFFF;
-        graphics.fill(0, 0, width, height, color((int) ((35 + impact * 55) * fade * opacity / 100F), 0x080B0D));
+        // Brief desaturation-like darkening on impact, then settle into the readable respawn overlay.
+        graphics.fill(0, 0, width, height, color((int) ((42 + impact * 85) * fade * opacity / 100F), 0x080B0D));
         int edge = Math.max(8, Math.min(width, height) / 5);
         int edgeColor = color((int) ((75 + impact * 85) * fade * opacity / 100F), effectRgb);
         graphics.fillGradient(0, 0, width, edge, edgeColor, 0x006D111A);

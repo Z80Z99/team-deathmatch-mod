@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeAll;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -133,16 +134,31 @@ class VanillaRespawnTest {
         verify(f.spawns, never()).tryTeleportToTeamSpawn(any(), any(), any());
     }
 
-    @Test void movementRequestCannotBypassTenSecondDeathCamera() throws Exception {
+    @Test void movementRequestCanSkipRemainingDeathCameraAfterRespawnIsReady() throws Exception {
         Fixture f = new Fixture();
         f.waiting.put(f.id, new MatchManager.DownedEntry(f.id, Team.TEAM_A, 3, 70, 5,
                 20, 10, 0, 200, "test"));
         when(f.server.getTickCount()).thenReturn(100);
         f.match.requestReadyRespawn(f.oldPlayer);
-        assertTrue(f.requests.isEmpty());
-        when(f.server.getTickCount()).thenReturn(200);
-        f.match.requestReadyRespawn(f.oldPlayer);
         assertTrue(f.requests.contains(f.id));
+    }
+
+    @Test void respawnProtectionFadesFromConfiguredReductionToNormalDamage() throws Exception {
+        Fixture f = new Fixture();
+        Map<UUID, Long> protectionEnds = new HashMap<>();
+        protectionEnds.put(f.id, 60L);
+        set(f.match, "respawnProtectionEnds", protectionEnds);
+        doReturn(true).when(f.match).isMatchActive();
+        doReturn(3).when(f.match).rulesRespawnProtectionSeconds();
+        doReturn(80).when(f.match).rulesRespawnProtectionPercent();
+
+        when(f.server.getTickCount()).thenReturn(0);
+        assertEquals(2.0F, f.match.applyRespawnProtection(f.oldPlayer, 10.0F), 0.001F);
+        when(f.server.getTickCount()).thenReturn(30);
+        assertEquals(6.0F, f.match.applyRespawnProtection(f.oldPlayer, 10.0F), 0.001F);
+        when(f.server.getTickCount()).thenReturn(60);
+        assertEquals(10.0F, f.match.applyRespawnProtection(f.oldPlayer, 10.0F), 0.001F);
+        assertTrue(protectionEnds.isEmpty());
     }
 
     private static void set(Object target, String name, Object value) throws Exception {
@@ -173,6 +189,7 @@ class VanillaRespawnTest {
             set(match, "server", server); set(match, "teams", teams); set(match, "spawns", spawns);
             set(match, "downedPlayers", waiting); set(match, "pendingDeaths", new HashMap<>());
             set(match, "respawnedPlayers", new HashSet<>()); set(match, "readyRespawnRequests", requests);
+            set(match, "respawnProtectionEnds", new HashMap<>());
             set(match, "state", MatchState.PLAYING);
             when(server.getPlayerList()).thenReturn(list);
             when(list.getPlayer(id)).thenReturn(oldPlayer);

@@ -108,8 +108,10 @@ public final class MatchEvents {
             return;
         }
         // Preserve lethal damage so vanilla death listeners receive the real event.
-        manager.recordDamage(player, event.getSource(), event.getAmount());
-        if (manager.handleFatalDamage(player, event.getSource(), event.getAmount())) {
+        float adjusted = manager.applyRespawnProtection(player, event.getAmount());
+        event.setAmount(adjusted);
+        manager.recordDamage(player, event.getSource(), adjusted);
+        if (manager.handleFatalDamage(player, event.getSource(), adjusted)) {
             event.setAmount(0.0F);
         }
     }

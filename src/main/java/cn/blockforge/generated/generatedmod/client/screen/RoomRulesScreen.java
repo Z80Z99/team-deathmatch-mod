@@ -45,6 +45,8 @@ public final class RoomRulesScreen extends UiScreen {
     private UiEditBox winBox;
     private UiEditBox warmupBox;
     private UiEditBox respawnBox;
+    private UiEditBox respawnProtectionSecondsBox;
+    private UiEditBox respawnProtectionPercentBox;
     private UiCycleButton<Boolean> autoRespawnToggle;
     private UiEditBox switchBox;
     private UiCycleButton<Boolean> friendlyFireToggle;
@@ -161,6 +163,10 @@ public final class RoomRulesScreen extends UiScreen {
 
         respawnBox = integer(3, 0, "阵亡恢复/秒", current.respawnDelaySeconds(), 2, editable,
                 "团队竞技：阵亡后恢复作战的等待时间。");
+        respawnProtectionSecondsBox = integer(3, 1, "重生减伤时长/秒", current.respawnProtectionSeconds(), 2, editable,
+                "复活后这段时间内，减伤从设置值平滑降至 0。设为 0 可关闭。");
+        respawnProtectionPercentBox = integer(4, 0, "重生初始减伤 %", current.respawnProtectionPercent(), 2, editable,
+                "复活瞬间的伤害减免比例；随后在减伤时长内逐渐降为 0%。");
         autoRespawnToggle = bool(3, 1, "允许自动复活", current.autoRespawn(), editable);
         switchBox = integer(4, 0, "换边间隔/回合", current.switchSideEvery(), 2,
                 editable && (ownRoom() == null || ownRoom().teamCount() == 2),
@@ -279,7 +285,6 @@ public final class RoomRulesScreen extends UiScreen {
             return unavailableOpen;
         }
         if (row == 3 && !mode.respawnRules()) return false;
-        if (row == 4 && mode == GameMode.TEAM_DEATHMATCH) return false;
         return true;
     }
 
@@ -305,9 +310,11 @@ public final class RoomRulesScreen extends UiScreen {
         setRowY(winBox, 2);
         setRowY(warmupBox, 11);
         setRowY(respawnBox, 3, draft != null && draft.mode().respawnRules());
+        setRowY(respawnProtectionSecondsBox, 3, draft != null && draft.mode().respawnRules());
+        setRowY(respawnProtectionPercentBox, 4, draft != null && draft.mode().respawnRules());
         setRowY(autoRespawnToggle, 3, false);
         setRowY(switchBox, 4, draft != null && draft.mode().roundSwapping());
-        setRowY(friendlyFireToggle, draft != null && draft.mode() == GameMode.TEAM_DEATHMATCH ? 3 : 4);
+        setRowY(friendlyFireToggle, 4);
         setRowY(roundEndDelayBox, 5);
         setRowY(matchEndDelayBox, 5);
         setRowY(keepInventoryToggle, 6);
@@ -339,6 +346,8 @@ public final class RoomRulesScreen extends UiScreen {
         GameMode mode = draft == null ? GameMode.TEAM_DEATHMATCH : draft.mode();
         targetBox.visible = mode.respawnRules();
         respawnBox.visible = mode.respawnRules();
+        respawnProtectionSecondsBox.visible = mode.respawnRules();
+        respawnProtectionPercentBox.visible = mode.respawnRules();
         autoRespawnToggle.visible = mode.respawnRules();
         switchBox.visible = mode.roundSwapping();
         winBox.visible = mode == GameMode.SEARCH_DESTROY;
@@ -415,7 +424,9 @@ public final class RoomRulesScreen extends UiScreen {
                 keepInventoryToggle.getValue(), suppressDeathToggle.getValue(),
                 autoResetToggle.getValue(), requireBothToggle.getValue(),
                 teamChangeCycle.getValue(), balanceCycle.getValue(),
-                spawnCycle.getValue(), parse(imbalanceBox, draft.maxTeamImbalance()));
+                spawnCycle.getValue(), parse(imbalanceBox, draft.maxTeamImbalance()),
+                parse(respawnProtectionSecondsBox, draft.respawnProtectionSeconds()),
+                parse(respawnProtectionPercentBox, draft.respawnProtectionPercent()));
     }
 
     private static int parse(UiEditBox box, int fallback) {

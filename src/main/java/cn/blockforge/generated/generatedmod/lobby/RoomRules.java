@@ -34,7 +34,9 @@ public record RoomRules(GameMode mode,
                         TeamChangePolicy teamChangePolicy,
                         AutoBalanceMode autoBalanceMode,
                         SpawnSelectionStrategy spawnSelectionStrategy,
-                        int maxTeamImbalance) {
+                        int maxTeamImbalance,
+                        int respawnProtectionSeconds,
+                        int respawnProtectionPercent) {
 
     public RoomRules {
         mode = mode == null ? GameMode.TEAM_DEATHMATCH : mode;
@@ -44,6 +46,19 @@ public record RoomRules(GameMode mode,
                 ? AutoBalanceMode.ON_JOIN_AND_MATCH_START : autoBalanceMode;
         spawnSelectionStrategy = spawnSelectionStrategy == null
                 ? SpawnSelectionStrategy.RANDOM : spawnSelectionStrategy;
+    }
+
+    /** Compatibility constructor for existing callers and saved rules. */
+    public RoomRules(GameMode mode, int targetKills, int matchDurationSeconds, int roundWinTarget,
+                     int warmupDurationSeconds, int respawnDelaySeconds, boolean autoRespawn, boolean friendlyFire,
+                     int switchSideEvery, int minPlayersToStart, int roundEndDelaySeconds, int matchEndDelaySeconds,
+                     boolean keepInventoryOnDeath, boolean suppressDeathMessages, boolean autoReset, boolean requireBothTeams,
+                     TeamChangePolicy teamChangePolicy, AutoBalanceMode autoBalanceMode,
+                     SpawnSelectionStrategy spawnSelectionStrategy, int maxTeamImbalance) {
+        this(mode, targetKills, matchDurationSeconds, roundWinTarget, warmupDurationSeconds, respawnDelaySeconds,
+                autoRespawn, friendlyFire, switchSideEvery, minPlayersToStart, roundEndDelaySeconds, matchEndDelaySeconds,
+                keepInventoryOnDeath, suppressDeathMessages, autoReset, requireBothTeams, teamChangePolicy, autoBalanceMode,
+                spawnSelectionStrategy, maxTeamImbalance, 3, 80);
     }
 
     /** 以服务器当前配置作为默认规则快照。必须在服务端线程调用。 */
@@ -127,7 +142,9 @@ public record RoomRules(GameMode mode,
                 mode != GameMode.SEARCH_DESTROY, true, autoReset, false,
                 teamChangePolicy, autoBalanceMode, spawnSelectionStrategy == SpawnSelectionStrategy.FARTHEST_FROM_ENEMIES
                         ? SpawnSelectionStrategy.RANDOM : spawnSelectionStrategy,
-                clamp(maxTeamImbalance, 0, 8));
+                clamp(maxTeamImbalance, 0, 8),
+                mode.respawnRules() ? clamp(respawnProtectionSeconds, 0, 10) : 0,
+                mode.respawnRules() ? clamp(respawnProtectionPercent, 0, 100) : 0);
     }
 
     /** 返回错误文本；null 表示合法。 */
@@ -162,6 +179,8 @@ public record RoomRules(GameMode mode,
                     .append(targetKills <= 0 ? "不限" : Integer.toString(targetKills))
                     .append(" · 时长 ").append(formatSeconds(matchDurationSeconds))
                     .append(" · 复活 ").append(respawnDelaySeconds).append("s")
+                    .append(respawnProtectionSeconds > 0 && respawnProtectionPercent > 0
+                            ? " · 护盾 " + respawnProtectionSeconds + "s" : "")
                     .append(autoRespawn ? "" : "（关闭）");
             case SEARCH_DESTROY -> text.append(" · 回合 ").append(formatSeconds(matchDurationSeconds))
                     .append(" · 先胜 ").append(roundWinTarget).append(" 回合")
@@ -187,7 +206,7 @@ public record RoomRules(GameMode mode,
                 switchSideEvery, players, roundEndDelaySeconds, matchEndDelaySeconds,
                 keepInventoryOnDeath, suppressDeathMessages, autoReset, requireBothTeams,
                 teamChangePolicy, autoBalanceMode, spawnSelectionStrategy,
-                maxTeamImbalance).normalized();
+                maxTeamImbalance, respawnProtectionSeconds, respawnProtectionPercent).normalized();
     }
 
     public void write(FriendlyByteBuf buffer) {
@@ -211,6 +230,8 @@ public record RoomRules(GameMode mode,
         buffer.writeVarInt(autoBalanceMode.ordinal());
         buffer.writeVarInt(spawnSelectionStrategy.ordinal());
         buffer.writeVarInt(maxTeamImbalance);
+        buffer.writeVarInt(respawnProtectionSeconds);
+        buffer.writeVarInt(respawnProtectionPercent);
     }
 
     public static RoomRules read(FriendlyByteBuf buffer) {
@@ -237,7 +258,7 @@ public record RoomRules(GameMode mode,
                         AutoBalanceMode.ON_JOIN_AND_MATCH_START),
                 enumByOrdinal(buffer.readVarInt(), SpawnSelectionStrategy.values(),
                         SpawnSelectionStrategy.RANDOM),
-                buffer.readVarInt()).normalized();
+                buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt()).normalized();
     }
 
     private static <E extends Enum<E>> E enumByOrdinal(int ordinal, E[] values, E fallbackValue) {

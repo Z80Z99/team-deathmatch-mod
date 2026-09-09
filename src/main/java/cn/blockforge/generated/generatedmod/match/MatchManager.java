@@ -48,6 +48,7 @@ public final class MatchManager {
     private final MatchScoreTracker scores = new MatchScoreTracker();
     private final Map<UUID, DownedEntry> downedPlayers = new HashMap<>();
     private final java.util.Set<UUID> readyRespawnRequests = new java.util.HashSet<>();
+    private final Map<UUID, Long> respawnProtectionEnds = new HashMap<>();
     private final Map<UUID, PendingDeath> pendingDeaths = new HashMap<>();
     private final java.util.Set<UUID> respawnedPlayers = new java.util.HashSet<>();
     private final Map<UUID, Long> regionReturnTicks = new HashMap<>();
@@ -226,6 +227,14 @@ public final class MatchManager {
                 : FpsTdmConfig.COMMON.respawnDelaySeconds.get();
     }
 
+    public int rulesRespawnProtectionSeconds() {
+        return roomRules != null ? roomRules.respawnProtectionSeconds() : 3;
+    }
+
+    public int rulesRespawnProtectionPercent() {
+        return roomRules != null ? roomRules.respawnProtectionPercent() : 80;
+    }
+
     /** 爆破与歼灭模式整回合不复活；规则快照缺失时同样关闭。 */
     public boolean rulesAutoRespawn() {
         return rulesMode().respawnRules();
@@ -386,6 +395,7 @@ public final class MatchManager {
         matchStartTick = server.getTickCount();
         downedPlayers.clear();
         readyRespawnRequests.clear();
+        respawnProtectionEnds.clear();
         regionReturnTicks.clear();
         killFeedSequence = 0;
         lastKillKiller = "";
@@ -436,6 +446,7 @@ public final class MatchManager {
         matchStartTick = 0L;
         downedPlayers.clear();
         readyRespawnRequests.clear();
+        respawnProtectionEnds.clear();
         regionReturnTicks.clear();
         winner = null;
         roundWinner = null;
@@ -504,6 +515,21 @@ public final class MatchManager {
     /** Waiting players cannot take damage; active players use the real death pipeline. */
     public boolean handleFatalDamage(ServerPlayer victim, DamageSource source, float amount) {
         return isDowned(victim);
+    }
+
+    /** Damage multiplier ramps from the configured reduction back to full damage after respawn. */
+    public float applyRespawnProtection(ServerPlayer player, float amount) {
+        if (player == null || amount <= 0 || !isMatchActive()) return amount;
+        long end = respawnProtectionEnds.getOrDefault(player.getUUID(), 0L);
+        long now = server.getTickCount();
+        if (end <= now) {
+            respawnProtectionEnds.remove(player.getUUID());
+            return amount;
+        }
+        int duration = Math.max(1, rulesRespawnProtectionSeconds()) * 20;
+        double left = Math.min(duration, Math.max(0, end - now));
+        double reduction = rulesRespawnProtectionPercent() / 100.0 * left / duration;
+        return (float) (amount * (1.0 - reduction));
     }
 
     /** Queue real deaths without changing the player while other death listeners run. */
@@ -678,6 +704,7 @@ public final class MatchManager {
         }
         downedPlayers.remove(player.getUUID());
         readyRespawnRequests.remove(player.getUUID());
+        respawnProtectionEnds.remove(player.getUUID());
         if (state == MatchState.PLAYING && team.isPlayable() && !teams.isPending(player)
                 && rulesElimination()) {
             // 歼灭类模式：原版死亡后复活也保持“本回合阵亡”，锁定到回合结束。
@@ -776,6 +803,7 @@ public final class MatchManager {
         boundaryCountdown.update(player.getUUID(), false, server.getTickCount());
         downedPlayers.remove(player.getUUID());
         readyRespawnRequests.remove(player.getUUID());
+        respawnProtectionEnds.remove(player.getUUID());
         regionReturnTicks.remove(player.getUUID());
         teams.clearPlayer(player);
         rooms.onLogout(player);
@@ -924,6 +952,7 @@ public final class MatchManager {
         scores.resetRound();
         downedPlayers.clear();
         readyRespawnRequests.clear();
+        respawnProtectionEnds.clear();
         state = MatchState.WARMUP;
         roundWinner = null;
         phaseEndTick = 0L;
@@ -1154,10 +1183,7 @@ public final class MatchManager {
             player.setInvulnerable(true);
             player.setDeltaMovement(0.0D, 0.0D, 0.0D);
             player.teleportTo(entry.x(), entry.y(), entry.z());
-            player.setYRot(entry.yaw());
-            player.setXRot(entry.pitch());
-            if (now < entry.releaseTick() || now < entry.cameraUnlockTick()
-                    || !readyRespawnRequests.remove(entry.playerId())) {
+            if (now < entry.releaseTick() || !readyRespawnRequests.remove(entry.playerId())) {
                 continue;
             }
             if (!spawns.tryTeleportToTeamSpawn(player, spawnGroupFor(entry.team()), rulesSpawnStrategy())) {
@@ -1173,6 +1199,9 @@ public final class MatchManager {
             player.fallDistance = 0;
             player.setDeltaMovement(0, 0, 0);
             healAndReady(player);
+            if (rulesRespawnProtectionSeconds() > 0 && rulesRespawnProtectionPercent() > 0) {
+                respawnProtectionEnds.put(player.getUUID(), now + secondsToTicks(rulesRespawnProtectionSeconds()));
+            }
             player.onUpdateAbilities();
             net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new MatchRespawnEvent(player,
                     MatchRespawnEvent.Phase.READY, now));
@@ -1181,12 +1210,12 @@ public final class MatchManager {
         }
     }
 
-    /** Client input is only a request; countdown, camera lock and spawn safety stay authoritative here. */
+    /** Client input is only a request; countdown and spawn safety stay authoritative here. */
     public void requestReadyRespawn(ServerPlayer player) {
         DownedEntry entry = player == null ? null : downedPlayers.get(player.getUUID());
         if (entry == null || state != MatchState.PLAYING) return;
         long now = server.getTickCount();
-        if (now >= entry.releaseTick() && now >= entry.cameraUnlockTick()) {
+        if (now >= entry.releaseTick()) {
             readyRespawnRequests.add(player.getUUID());
         }
     }
@@ -1194,6 +1223,7 @@ public final class MatchManager {
     private void releaseAllDowned() {
         downedPlayers.clear();
         readyRespawnRequests.clear();
+        respawnProtectionEnds.clear();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (teams.getTeam(player).isPlayable()) {
                 player.setInvulnerable(false);
