@@ -359,7 +359,7 @@ public final class MatchManager {
         if (!maps.isReady()) {
             return StartResult.MAP_NOT_READY;
         }
-        if (rulesSpawnStrategy() == SpawnSelectionStrategy.RANDOM && spawns.findRandomSpawn().isEmpty()) {
+        if (rulesSpawnStrategy() == SpawnSelectionStrategy.RANDOM && spawns.prepareRandomSpawnForMatch().isEmpty()) {
             return StartResult.NO_SAFE_RANDOM_SPAWN;
         }
         if (rulesSpawnStrategy() != SpawnSelectionStrategy.RANDOM

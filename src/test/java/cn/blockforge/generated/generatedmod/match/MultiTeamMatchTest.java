@@ -134,9 +134,9 @@ class MultiTeamMatchTest {
         set(match, "maps", maps); set(match, "spawns", spawns); set(match, "teams", teams);
         set(match, "state", MatchState.WAITING);
         doReturn(SpawnSelectionStrategy.RANDOM).when(match).rulesSpawnStrategy();
-        when(spawns.findRandomSpawn()).thenReturn(Optional.empty());
+        when(spawns.prepareRandomSpawnForMatch()).thenReturn(Optional.empty());
         assertEquals(MatchManager.StartResult.NO_SAFE_RANDOM_SPAWN, match.startMatch());
-        when(spawns.findRandomSpawn()).thenReturn(Optional.of(mock(cn.blockforge.generated.generatedmod.spawn.SpawnPoint.class)));
+        when(spawns.prepareRandomSpawnForMatch()).thenReturn(Optional.of(mock(cn.blockforge.generated.generatedmod.spawn.SpawnPoint.class)));
         doReturn(0).when(match).rulesTargetKills();
         doReturn(0).when(match).rulesMatchDurationSeconds();
         assertEquals(MatchManager.StartResult.NO_END_CONDITION, match.startMatch());

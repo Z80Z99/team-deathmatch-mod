@@ -434,7 +434,7 @@ public final class RoomManager {
         String missingSpawns = room.teams().stream().filter(team -> matchManager.spawns().findFixedSpawn(team).isEmpty())
                 .map(Team::displayName).collect(java.util.stream.Collectors.joining("、"));
         if (room.rules().spawnSelectionStrategy() == cn.blockforge.generated.generatedmod.match.SpawnSelectionStrategy.RANDOM
-                && matchManager.spawns().findRandomSpawn().isEmpty()) {
+                && matchManager.spawns().prepareRandomSpawnForMatch().isEmpty()) {
             cancelStart(room, "地图内未找到安全随机出生位置，需要有地面支撑、足够头顶空间和周围通路。", true);
             return;
         }

@@ -104,4 +104,19 @@ class DynamicSpawnPoolTest {
             assertTrue(pool.find(world, null).isEmpty());
         }
     }
+
+    @Test void matchStartRebuildDoesNotDependOnPreviouslyLoadedChunks() {
+        var world = world();
+        var map = map(40);
+        var pool = new DynamicSpawnPool();
+        var point = new cn.blockforge.generated.generatedmod.spawn.SpawnPoint(Level.OVERWORLD,
+                12.5, 2, 12.5, 0, 0);
+        try (var finder = mockStatic(SafeSpawnFinder.class)) {
+            finder.when(() -> SafeSpawnFinder.findForMatchStart(world, map)).thenReturn(java.util.Optional.of(point));
+            finder.when(() -> SafeSpawnFinder.safe(eq(world), eq(map.bounds()), any(BlockPos.class))).thenReturn(true);
+            assertEquals(point, pool.rebuildForMatchStart(world, map).orElseThrow());
+            assertTrue(pool.find(world, map).isPresent());
+            finder.verify(() -> SafeSpawnFinder.findForMatchStart(world, map), times(1));
+        }
+    }
 }

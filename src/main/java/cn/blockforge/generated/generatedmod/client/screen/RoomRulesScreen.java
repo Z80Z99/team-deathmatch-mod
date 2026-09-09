@@ -279,6 +279,7 @@ public final class RoomRulesScreen extends UiScreen {
             return unavailableOpen;
         }
         if (row == 3 && !mode.respawnRules()) return false;
+        if (row == 4 && mode == GameMode.TEAM_DEATHMATCH) return false;
         return true;
     }
 
@@ -306,7 +307,7 @@ public final class RoomRulesScreen extends UiScreen {
         setRowY(respawnBox, 3, draft != null && draft.mode().respawnRules());
         setRowY(autoRespawnToggle, 3, false);
         setRowY(switchBox, 4, draft != null && draft.mode().roundSwapping());
-        setRowY(friendlyFireToggle, 4);
+        setRowY(friendlyFireToggle, draft != null && draft.mode() == GameMode.TEAM_DEATHMATCH ? 3 : 4);
         setRowY(roundEndDelayBox, 5);
         setRowY(matchEndDelayBox, 5);
         setRowY(keepInventoryToggle, 6);
@@ -650,13 +651,13 @@ public final class RoomRulesScreen extends UiScreen {
             if (column == 0) {
                 return mode.respawnRules() ? "阵亡恢复/秒" : null;
             }
-            return null;
+            return column == 1 && mode == GameMode.TEAM_DEATHMATCH ? "友军伤害" : null;
         }
         if (row == 4) {
             if (column == 0) {
                 return mode.roundSwapping() ? "换边间隔/回合" : null;
             }
-            return "友军伤害";
+            return mode == GameMode.TEAM_DEATHMATCH ? null : "友军伤害";
         }
         if (row == 5) {
             return column == 0 ? "回合结算间隔/秒" : "结算画面/秒";

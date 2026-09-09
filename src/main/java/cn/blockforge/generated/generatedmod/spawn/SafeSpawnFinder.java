@@ -14,6 +14,15 @@ public final class SafeSpawnFinder {
     private SafeSpawnFinder() { }
 
     public static Optional<SpawnPoint> find(ServerLevel level, MapDefinition map) {
+        return find(level, map, false);
+    }
+
+    /** Start-up probe may load a bounded number of map chunks after the previous match unloaded them. */
+    public static Optional<SpawnPoint> findForMatchStart(ServerLevel level, MapDefinition map) {
+        return find(level, map, true);
+    }
+
+    private static Optional<SpawnPoint> find(ServerLevel level, MapDefinition map, boolean loadCandidateChunks) {
         if (level == null || !map.hasBounds()) return Optional.empty();
         var bounds = map.bounds();
         int minY = Math.max(level.getMinBuildHeight() + 1, bounds.min().getY());
@@ -21,9 +30,20 @@ public final class SafeSpawnFinder {
         long width = (long) bounds.max().getX() - bounds.min().getX() - 1;
         long depth = (long) bounds.max().getZ() - bounds.min().getZ() - 1;
         if (width <= 0 || depth <= 0 || width > Integer.MAX_VALUE || depth > Integer.MAX_VALUE) return Optional.empty();
-        for (int attempt = 0; attempt < 96; attempt++) {
+        int attempts = loadCandidateChunks ? 192 : 96;
+        java.util.Set<Long> loadedChunks = loadCandidateChunks ? new java.util.HashSet<>() : java.util.Set.of();
+        for (int attempt = 0; attempt < attempts; attempt++) {
             int x = bounds.min().getX() + 1 + level.random.nextInt((int) width);
             int z = bounds.min().getZ() + 1 + level.random.nextInt((int) depth);
+            if (loadCandidateChunks) {
+                long chunkKey = net.minecraft.world.level.ChunkPos.asLong(x >> 4, z >> 4);
+                if (loadedChunks.add(chunkKey)) {
+                    if (loadedChunks.size() > 24) continue;
+                    level.getChunk(x >> 4, z >> 4);
+                } else if (!level.hasChunkAt(new BlockPos(x, minY, z))) {
+                    continue;
+                }
+            }
             for (int y = maxY; y >= minY && maxY - y < 384; y--) {
                 BlockPos feet = new BlockPos(x, y, z);
                 if (safe(level, bounds, feet)) return Optional.of(new SpawnPoint(map.world(),

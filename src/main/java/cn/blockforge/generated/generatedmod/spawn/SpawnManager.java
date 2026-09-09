@@ -137,6 +137,14 @@ public final class SpawnManager {
         return randomSpawns.find(map == null ? null : server.getLevel(map.world()), map);
     }
 
+    /** Rebuild the pool for a new match; the prior match may have unloaded map chunks. */
+    public Optional<SpawnPoint> prepareRandomSpawnForMatch() {
+        MapDefinition map = maps.currentMap().orElse(null);
+        ServerLevel level = map == null ? null : server.getLevel(map.world());
+        Optional<SpawnPoint> current = randomSpawns.find(level, map);
+        return current.isPresent() ? current : randomSpawns.rebuildForMatchStart(level, map);
+    }
+
     public void refreshRandomSpawnsAfterDeath() {
         randomSpawns.requestRefresh();
         fixedPools.values().forEach(DynamicSpawnPool::requestRefresh);

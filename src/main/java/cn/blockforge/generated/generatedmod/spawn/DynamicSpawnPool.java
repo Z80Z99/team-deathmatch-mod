@@ -90,6 +90,14 @@ public final class DynamicSpawnPool {
         return find(world, definition, pos -> 0.0D);
     }
 
+    public Optional<SpawnPoint> rebuildForMatchStart(ServerLevel world, MapDefinition definition) {
+        clear();
+        if (!bind(world, definition)) return Optional.empty();
+        Optional<SpawnPoint> fresh = SafeSpawnFinder.findForMatchStart(world, definition);
+        fresh.ifPresent(point -> remember(BlockPos.containing(point.x(), point.y(), point.z())));
+        return fresh;
+    }
+
     public Optional<SpawnPoint> find(ServerLevel world, MapDefinition definition,
                                       java.util.function.ToDoubleFunction<BlockPos> score) {
         if (!bind(world, definition)) return Optional.empty();
