@@ -17,6 +17,7 @@ class RespawnOverlayLayoutTest {
         Font font = mock(Font.class);
         var field = Minecraft.class.getDeclaredField("font");
         field.setAccessible(true); field.set(mc, font);
+        when(font.width(anyString())).thenAnswer(call -> UiRenderCapture.measure(call.getArgument(0)));
         when(font.plainSubstrByWidth(anyString(), anyInt())).thenAnswer(call ->
                 UiRenderCapture.shorten(call.getArgument(0), call.getArgument(1), false));
         var timelineField = RespawnOverlay.class.getDeclaredField("TIMELINE");
@@ -45,7 +46,7 @@ class RespawnOverlayLayoutTest {
                                 labels++;
                             }
                         }
-                        assertEquals(3, labels);
+                        assertEquals(state == 0 ? 4 : 3, labels);
                         capture.save("respawn-" + size[0] + "-" + state);
                     }
                 }

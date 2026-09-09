@@ -4,6 +4,14 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RespawnTimelineTest {
+    @Test void immediateRespawnDoesNotJumpToFullOpacity() {
+        var timeline = new RespawnTimeline();
+        timeline.update(true, true, false, 0);
+        float before = timeline.fade(0.05);
+        timeline.update(true, false, true, 0.05);
+        assertEquals(before, timeline.fade(0.05), 0.0001);
+        assertTrue(timeline.fade(0.2) < before);
+    }
     @Test void customHudStillShowsRespawningWhileSafetySearchHasNoTimeRemaining() {
         try {
             ClientMatchData.myTeam = cn.blockforge.generated.generatedmod.match.Team.TEAM_A;

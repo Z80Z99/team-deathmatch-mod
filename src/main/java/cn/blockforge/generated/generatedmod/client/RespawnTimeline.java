@@ -7,6 +7,7 @@ public final class RespawnTimeline {
     private double started;
     private double returning;
     private boolean confirmed;
+    private float returnOpacity;
 
     public void provisionalDeath(double now) {
         if (phase != Phase.WAITING) {
@@ -22,6 +23,7 @@ public final class RespawnTimeline {
             provisionalDeath(now);
             confirmed = true;
         } else if (phase == Phase.WAITING && alive && (confirmed || now - started > 1)) {
+            returnOpacity = fade(now);
             phase = Phase.RETURNING;
             returning = now;
         }
@@ -32,7 +34,7 @@ public final class RespawnTimeline {
     public double age(double now) { return Math.max(0, now - started); }
     public float fade(double now) {
         if (phase == Phase.HIDDEN) return 0;
-        if (phase == Phase.RETURNING) return 1 - smooth((now - returning) / 0.7);
+        if (phase == Phase.RETURNING) return returnOpacity * (1 - smooth((now - returning) / 0.7));
         return smooth((now - started) / 0.18);
     }
     public static float progress(int remaining, int total) {
