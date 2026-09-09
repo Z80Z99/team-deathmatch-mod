@@ -56,7 +56,9 @@ public final class MatchHudOverlay {
                 HudContext.match(ClientMatchData.mode));
         if (ClientMatchData.boundaryTicks > 0) {
             ClientHudLayout.CustomElement warning = ClientHudLayout.customElements(context).stream()
-                    .filter(element -> element.type().equals("boundary") && element.visible()).findFirst().orElse(null);
+                    .filter(element -> element.type().equals("boundary") && element.visible()
+                            && HudConditions.visible(element, ClientHudLayout.customElements(context), false))
+                    .findFirst().orElse(null);
             if (warning == null) return;
             HudGeometry.Rect rect = HudGeometry.custom(warning, width, height);
             int alpha = warning.opacityPercent()

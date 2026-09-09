@@ -9,6 +9,7 @@ import net.minecraft.server.players.PlayerList;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.level.GameType;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -18,6 +19,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class VanillaRespawnTest {
+    @BeforeAll static void bootstrap() {
+        cn.blockforge.generated.generatedmod.MinecraftTestBootstrap.initialize();
+    }
     @Test void lethalDamageIsNotReplacedWithFakeDeath() throws Exception {
         Fixture f = new Fixture();
         assertFalse(f.match.handleFatalDamage(f.oldPlayer, mock(DamageSource.class), Float.MAX_VALUE));
@@ -83,6 +87,7 @@ class VanillaRespawnTest {
     @Test void noSafeSpawnKeepsPlayerWaitingAndInvulnerable() throws Exception {
         Fixture f = new Fixture();
         f.waiting.put(f.id, new MatchManager.DownedEntry(f.id, Team.TEAM_A, 0, 64, 0, 0, 0, 0));
+        f.requests.add(f.id);
         when(f.server.getTickCount()).thenReturn(20);
         doReturn(SpawnSelectionStrategy.RANDOM).when(f.match).rulesSpawnStrategy();
         doReturn(false).when(f.match).sidesSwappedThisRound();
@@ -95,6 +100,7 @@ class VanillaRespawnTest {
     @Test void safeSpawnRestoresCombatOnlyOnCurrentPlayer() throws Exception {
         Fixture f = new Fixture();
         f.waiting.put(f.id, new MatchManager.DownedEntry(f.id, Team.TEAM_A, 0, 64, 0, 0, 0, 0));
+        f.requests.add(f.id);
         f.connection.player = f.newPlayer;
         when(f.list.getPlayer(f.id)).thenReturn(f.newPlayer);
         when(f.server.getTickCount()).thenReturn(20);
@@ -115,6 +121,28 @@ class VanillaRespawnTest {
         verify(f.newPlayer).onUpdateAbilities();
         verify(f.newPlayer).setHealth(20F);
         verify(f.oldPlayer, never()).setGameMode(any());
+    }
+
+    @Test void readyPlayerStaysAtDeathCameraUntilMovementRequest() throws Exception {
+        Fixture f = new Fixture();
+        f.waiting.put(f.id, new MatchManager.DownedEntry(f.id, Team.TEAM_A, 3, 70, 5, 20, 10, 0));
+        when(f.server.getTickCount()).thenReturn(20);
+        invoke(f.match, "processDownedPlayers");
+        assertTrue(f.match.isDowned(f.oldPlayer));
+        verify(f.oldPlayer).teleportTo(3, 70, 5);
+        verify(f.spawns, never()).tryTeleportToTeamSpawn(any(), any(), any());
+    }
+
+    @Test void movementRequestCannotBypassTenSecondDeathCamera() throws Exception {
+        Fixture f = new Fixture();
+        f.waiting.put(f.id, new MatchManager.DownedEntry(f.id, Team.TEAM_A, 3, 70, 5,
+                20, 10, 0, 200, "test"));
+        when(f.server.getTickCount()).thenReturn(100);
+        f.match.requestReadyRespawn(f.oldPlayer);
+        assertTrue(f.requests.isEmpty());
+        when(f.server.getTickCount()).thenReturn(200);
+        f.match.requestReadyRespawn(f.oldPlayer);
+        assertTrue(f.requests.contains(f.id));
     }
 
     private static void set(Object target, String name, Object value) throws Exception {
@@ -139,11 +167,13 @@ class VanillaRespawnTest {
         final ServerGamePacketListenerImpl connection = mock(ServerGamePacketListenerImpl.class);
         final UUID id = UUID.randomUUID();
         final HashMap<UUID, MatchManager.DownedEntry> waiting = new HashMap<>();
+        final HashSet<UUID> requests = new HashSet<>();
 
         Fixture() throws Exception {
             set(match, "server", server); set(match, "teams", teams); set(match, "spawns", spawns);
             set(match, "downedPlayers", waiting); set(match, "pendingDeaths", new HashMap<>());
-            set(match, "respawnedPlayers", new HashSet<>()); set(match, "state", MatchState.PLAYING);
+            set(match, "respawnedPlayers", new HashSet<>()); set(match, "readyRespawnRequests", requests);
+            set(match, "state", MatchState.PLAYING);
             when(server.getPlayerList()).thenReturn(list);
             when(list.getPlayer(id)).thenReturn(oldPlayer);
             when(oldPlayer.getUUID()).thenReturn(id); when(newPlayer.getUUID()).thenReturn(id);

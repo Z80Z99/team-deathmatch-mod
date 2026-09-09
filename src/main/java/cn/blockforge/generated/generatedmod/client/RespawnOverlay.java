@@ -2,6 +2,7 @@ package cn.blockforge.generated.generatedmod.client;
 
 import cn.blockforge.generated.generatedmod.match.MatchState;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.CameraType;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraftforge.client.gui.overlay.ForgeGui;
 
@@ -11,6 +12,11 @@ import java.util.Optional;
 public final class RespawnOverlay {
     private static final RespawnTimeline TIMELINE = new RespawnTimeline();
     private RespawnOverlay() { }
+    private static CameraType previousCamera;
+    private static boolean cameraLocked;
+    private static float lockedYaw;
+    private static float lockedPitch;
+    private static int requestCooldown;
     private static double now() { return System.nanoTime() / 1_000_000_000.0; }
     public static boolean eligible() {
         return ClientMatchData.state == MatchState.PLAYING && ClientMatchData.myTeam.isPlayable()
@@ -18,20 +24,60 @@ public final class RespawnOverlay {
     }
     public static boolean active() { return TIMELINE.phase() != RespawnTimeline.Phase.HIDDEN; }
     public static void onDeathScreen() { TIMELINE.provisionalDeath(now()); }
-    public static void clear() { TIMELINE.clear(); }
+    public static boolean deathActive() { return TIMELINE.deathActive(); }
+    public static boolean returning() { return TIMELINE.returning(); }
+    public static void clear() {
+        if (cameraLocked) restoreCamera(Minecraft.getInstance());
+        TIMELINE.clear();
+        requestCooldown = 0;
+    }
     public static void tick() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.getConnection() == null) { clear(); return; }
         TIMELINE.update(eligible(), ClientMatchData.awaitingRespawn,
                 mc.player.isAlive() && !mc.player.isSpectator(), now());
+        if (ClientMatchData.awaitingRespawn) {
+            lockCamera(mc);
+            boolean movement = mc.options.keyUp.isDown() || mc.options.keyDown.isDown()
+                    || mc.options.keyLeft.isDown() || mc.options.keyRight.isDown()
+                    || mc.options.keyJump.isDown();
+            if (requestCooldown > 0) requestCooldown--;
+            if (ClientMatchData.respawnRemainingTicks <= 0 && movement && requestCooldown == 0) {
+                cn.blockforge.generated.generatedmod.network.FpsTdmNetwork.sendToServer(
+                        new cn.blockforge.generated.generatedmod.network.packet.RespawnRequestPacket());
+                requestCooldown = 10;
+            }
+            mc.player.setYRot(lockedYaw);
+            mc.player.setXRot(lockedPitch);
+            mc.player.setDeltaMovement(0, 0, 0);
+        } else {
+            restoreCamera(mc);
+        }
+    }
+
+    private static void lockCamera(Minecraft mc) {
+        if (cameraLocked || mc.player == null) return;
+        previousCamera = mc.options.getCameraType();
+        lockedYaw = mc.player.getYRot();
+        lockedPitch = mc.player.getXRot();
+        mc.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+        cameraLocked = true;
+    }
+
+    private static void restoreCamera(Minecraft mc) {
+        if (!cameraLocked) return;
+        if (mc != null && mc.options != null && previousCamera != null) mc.options.setCameraType(previousCamera);
+        previousCamera = null;
+        cameraLocked = false;
     }
 
     public static void render(ForgeGui gui, GuiGraphics graphics, float partial, int width, int height) {
         Minecraft mc = Minecraft.getInstance();
         if (!active() || mc.screen != null || width < 80 || height < 80) return;
-        Optional<ClientHudLayout.CustomElement> configured = ClientHudLayout.customElements(
-                HudContext.match(ClientMatchData.mode)).stream()
-                .filter(element -> element.type().equals("respawn") && element.visible()).findFirst();
+        var sceneElements = ClientHudLayout.customElements(HudContext.match(ClientMatchData.mode));
+        Optional<ClientHudLayout.CustomElement> configured = sceneElements.stream()
+                .filter(element -> element.type().equals("respawn") && element.visible()
+                        && HudConditions.visible(element, sceneElements, false)).findFirst();
         if (configured.isEmpty()) return;
         ClientHudLayout.CustomElement element = configured.get();
         HudGeometry.Rect rect = HudGeometry.custom(element, width, height);
@@ -73,7 +119,7 @@ public final class RespawnOverlay {
         boolean elimination = !ClientMatchData.mode.respawnRules();
         String status = returning ? "部署完成" : elimination ? "本回合已阵亡 · 等待下一回合"
                 : remaining > 0 ? "重新部署"
-                : "正在寻找安全复活位置";
+                : "复活已就绪 · 按移动键或跳跃键回归";
         graphics.drawString(mc.font, mc.font.plainSubstrByWidth(status, panelWidth), left, top + 48, white, false);
         if (!returning && !elimination && remaining > 0) {
             String seconds = Integer.toString(remaining / 20 + (remaining % 20 == 0 ? 0 : 1));

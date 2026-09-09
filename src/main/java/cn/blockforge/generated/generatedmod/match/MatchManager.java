@@ -47,6 +47,7 @@ public final class MatchManager {
     private final cn.blockforge.generated.generatedmod.map.MapEditorManager mapEditor;
     private final MatchScoreTracker scores = new MatchScoreTracker();
     private final Map<UUID, DownedEntry> downedPlayers = new HashMap<>();
+    private final java.util.Set<UUID> readyRespawnRequests = new java.util.HashSet<>();
     private final Map<UUID, PendingDeath> pendingDeaths = new HashMap<>();
     private final java.util.Set<UUID> respawnedPlayers = new java.util.HashSet<>();
     private final Map<UUID, Long> regionReturnTicks = new HashMap<>();
@@ -384,6 +385,7 @@ public final class MatchManager {
         scores.resetMatch();
         matchStartTick = server.getTickCount();
         downedPlayers.clear();
+        readyRespawnRequests.clear();
         regionReturnTicks.clear();
         killFeedSequence = 0;
         lastKillKiller = "";
@@ -433,6 +435,7 @@ public final class MatchManager {
         scores.resetMatch();
         matchStartTick = 0L;
         downedPlayers.clear();
+        readyRespawnRequests.clear();
         regionReturnTicks.clear();
         winner = null;
         roundWinner = null;
@@ -662,13 +665,19 @@ public final class MatchManager {
         }
         Team team = teams.getTeam(player);
         if (state == MatchState.PLAYING && isDowned(player)) {
+            DownedEntry entry = downedPlayers.get(player.getUUID());
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
-            spawns.teleportToSpectator(player);
+            if (entry != null) {
+                player.teleportTo(entry.x(), entry.y(), entry.z());
+                player.setYRot(entry.yaw());
+                player.setXRot(entry.pitch());
+            }
             broadcastMatchState();
             return;
         }
         downedPlayers.remove(player.getUUID());
+        readyRespawnRequests.remove(player.getUUID());
         if (state == MatchState.PLAYING && team.isPlayable() && !teams.isPending(player)
                 && rulesElimination()) {
             // 歼灭类模式：原版死亡后复活也保持“本回合阵亡”，锁定到回合结束。
@@ -766,6 +775,7 @@ public final class MatchManager {
     public void onPlayerLogout(ServerPlayer player) {
         boundaryCountdown.update(player.getUUID(), false, server.getTickCount());
         downedPlayers.remove(player.getUUID());
+        readyRespawnRequests.remove(player.getUUID());
         regionReturnTicks.remove(player.getUUID());
         teams.clearPlayer(player);
         rooms.onLogout(player);
@@ -913,6 +923,7 @@ public final class MatchManager {
         }
         scores.resetRound();
         downedPlayers.clear();
+        readyRespawnRequests.clear();
         state = MatchState.WARMUP;
         roundWinner = null;
         phaseEndTick = 0L;
@@ -1105,7 +1116,9 @@ public final class MatchManager {
     private void scheduleDowned(ServerPlayer player, Team team, String deathLabel) {
         long releaseTick = downedReleaseTick();
         downedPlayers.put(player.getUUID(), new DownedEntry(player.getUUID(), team,
-                player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot(), releaseTick, deathLabel));
+                player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot(), releaseTick,
+                server.getTickCount() + 200L, deathLabel));
+        readyRespawnRequests.remove(player.getUUID());
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new MatchRespawnEvent(player,
                 MatchRespawnEvent.Phase.WAITING, releaseTick));
         if (releaseTick == Long.MAX_VALUE) {
@@ -1133,17 +1146,22 @@ public final class MatchManager {
             if (player == null || state != MatchState.PLAYING
                     || teams.getTeam(player) != entry.team() || !entry.team().isPlayable()) {
                 downedPlayers.remove(entry.playerId());
+                readyRespawnRequests.remove(entry.playerId());
                 continue;
             }
             if (!player.isAlive() || player.connection.player != player) continue;
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
             player.setDeltaMovement(0.0D, 0.0D, 0.0D);
-            if (now < entry.releaseTick()) {
+            player.teleportTo(entry.x(), entry.y(), entry.z());
+            player.setYRot(entry.yaw());
+            player.setXRot(entry.pitch());
+            if (now < entry.releaseTick() || now < entry.cameraUnlockTick()
+                    || !readyRespawnRequests.remove(entry.playerId())) {
                 continue;
             }
-            if (now % 20 != 0) continue;
             if (!spawns.tryTeleportToTeamSpawn(player, spawnGroupFor(entry.team()), rulesSpawnStrategy())) {
+                readyRespawnRequests.add(entry.playerId());
                 if (now % 100 == 0) player.displayClientMessage(Component.literal("等待安全复活位置…"), true);
                 continue;
             }
@@ -1163,8 +1181,19 @@ public final class MatchManager {
         }
     }
 
+    /** Client input is only a request; countdown, camera lock and spawn safety stay authoritative here. */
+    public void requestReadyRespawn(ServerPlayer player) {
+        DownedEntry entry = player == null ? null : downedPlayers.get(player.getUUID());
+        if (entry == null || state != MatchState.PLAYING) return;
+        long now = server.getTickCount();
+        if (now >= entry.releaseTick() && now >= entry.cameraUnlockTick()) {
+            readyRespawnRequests.add(player.getUUID());
+        }
+    }
+
     private void releaseAllDowned() {
         downedPlayers.clear();
+        readyRespawnRequests.clear();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (teams.getTeam(player).isPlayable()) {
                 player.setInvulnerable(false);
@@ -1346,10 +1375,10 @@ public final class MatchManager {
     }
 
     public record DownedEntry(UUID playerId, Team team, double x, double y, double z,
-                               float yaw, float pitch, long releaseTick, String deathLabel) {
+                               float yaw, float pitch, long releaseTick, long cameraUnlockTick, String deathLabel) {
         public DownedEntry(UUID playerId, Team team, double x, double y, double z,
                            float yaw, float pitch, long releaseTick) {
-            this(playerId, team, x, y, z, yaw, pitch, releaseTick, "");
+            this(playerId, team, x, y, z, yaw, pitch, releaseTick, releaseTick, "");
         }
     }
 

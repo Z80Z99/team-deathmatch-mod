@@ -31,6 +31,8 @@ public final class RespawnTimeline {
     }
 
     public Phase phase() { return phase; }
+    public boolean deathActive() { return phase != Phase.HIDDEN; }
+    public boolean returning() { return phase == Phase.RETURNING; }
     public double age(double now) { return Math.max(0, now - started); }
     public float fade(double now) {
         if (phase == Phase.HIDDEN) return 0;

@@ -154,6 +154,10 @@ class HudElementsTest {
         assertFalse(HudParameters.visible("team_c", false));
         assertFalse(HudParameters.visible("team_d", false));
         assertTrue(HudParameters.visible("", false));
+        RespawnOverlay.onDeathScreen();
+        assertTrue(HudParameters.visible("death", false));
+        assertFalse(HudParameters.visible("respawn_ready", false));
+        RespawnOverlay.clear();
     }
 
     @Test void deletedBuiltInsAreNotDrawnByLiveOverlays() throws Exception {

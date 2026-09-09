@@ -29,6 +29,7 @@ class RespawnOverlayLayoutTest {
         try (var minecraft = mockStatic(Minecraft.class)) {
             minecraft.when(Minecraft::getInstance).thenReturn(mc);
             ClientMatchData.deathLabel = "击杀者  VeryLongPlayerName_ForLayoutValidation";
+            ClientMatchData.awaitingRespawn = true;
             ClientMatchData.respawnTotalTicks = 100;
             for (int[] size : new int[][] {{160, 90}, {320, 180}, {640, 360}}) {
                 for (int state = 0; state < 3; state++) {

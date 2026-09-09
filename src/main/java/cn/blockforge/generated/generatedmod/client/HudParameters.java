@@ -58,6 +58,10 @@ public final class HudParameters {
         if (condition.startsWith("api:")) return false;
         return switch (condition) {
             case "respawning" -> ClientMatchData.awaitingRespawn;
+            case "death" -> RespawnOverlay.deathActive();
+            case "respawn_waiting" -> ClientMatchData.awaitingRespawn && ClientMatchData.respawnRemainingTicks > 0;
+            case "respawn_ready" -> ClientMatchData.awaitingRespawn && ClientMatchData.respawnRemainingTicks <= 0;
+            case "returned" -> RespawnOverlay.returning();
             case "alive" -> !ClientMatchData.awaitingRespawn && ClientMatchData.myTeam.isPlayable()
                     && !ClientMatchData.pending;
             case "playing" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.PLAYING;
