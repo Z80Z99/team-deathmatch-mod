@@ -16,6 +16,15 @@ import java.util.function.Supplier;
  * 供 HUD 统计接口与自定义模块绑定。
  */
 public final class MatchSyncPacket {
+    private int boundaryTicks;
+    private int respawnTotalTicks;
+    public int boundaryTicks() { return boundaryTicks; }
+    public int respawnTotalTicks() { return respawnTotalTicks; }
+    public MatchSyncPacket withTimers(int boundary, int respawnTotal) {
+        boundaryTicks = Math.max(0, boundary);
+        respawnTotalTicks = Math.max(0, respawnTotal);
+        return this;
+    }
     private java.util.List<cn.blockforge.generated.generatedmod.match.TeamMatchStats> teamStats = java.util.List.of();
     public java.util.List<cn.blockforge.generated.generatedmod.match.TeamMatchStats> teamStats() { return teamStats; }
     public MatchSyncPacket withTeamStats(java.util.List<cn.blockforge.generated.generatedmod.match.TeamMatchStats> stats) {
@@ -124,6 +133,8 @@ public final class MatchSyncPacket {
         teamAMatchKills = buffer.readVarInt();
         teamBMatchKills = buffer.readVarInt();
         matchElapsedTicks = buffer.readVarInt();
+        boundaryTicks = buffer.readVarInt();
+        respawnTotalTicks = buffer.readVarInt();
         int count = buffer.readVarInt();
         if (count < 0 || count > 4) throw new IllegalArgumentException("Invalid team count");
         var stats = new java.util.ArrayList<cn.blockforge.generated.generatedmod.match.TeamMatchStats>();
@@ -163,6 +174,8 @@ public final class MatchSyncPacket {
         buffer.writeVarInt(teamAMatchKills);
         buffer.writeVarInt(teamBMatchKills);
         buffer.writeVarInt(matchElapsedTicks);
+        buffer.writeVarInt(boundaryTicks);
+        buffer.writeVarInt(respawnTotalTicks);
         buffer.writeVarInt(teamStats.size());
         for (var team : teamStats) {
             buffer.writeEnum(team.team()); buffer.writeVarInt(team.score()); buffer.writeVarInt(team.wins());

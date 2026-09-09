@@ -36,6 +36,7 @@ import java.util.UUID;
  * TDM 比赛流程管理器。地图定义、出生点和地图恢复分别由独立管理器负责。
  */
 public final class MatchManager {
+    private final BoundaryCountdown boundaryCountdown = new BoundaryCountdown();
     private static MatchManager instance;
 
     private final MinecraftServer server;
@@ -530,6 +531,7 @@ public final class MatchManager {
 
     /** 统一处理击杀记分、公告与回合终点判定。返回 true 表示回合已结束。 */
     private boolean creditKill(ServerPlayer victim, Team victimTeam, DamageSource source) {
+        boundaryCountdown.update(victim.getUUID(), false, server.getTickCount());
         if (rulesSpawnStrategy() == SpawnSelectionStrategy.RANDOM) spawns.refreshRandomSpawnsAfterDeath();
         ServerPlayer killer = resolveKiller(source);
         Team killerTeam = killer == null ? Team.SPECTATOR : teams.getTeam(killer);
@@ -715,6 +717,7 @@ public final class MatchManager {
     }
 
     public void onPlayerLogout(ServerPlayer player) {
+        boundaryCountdown.update(player.getUUID(), false, server.getTickCount());
         downedPlayers.remove(player.getUUID());
         regionReturnTicks.remove(player.getUUID());
         teams.clearPlayer(player);
@@ -763,10 +766,16 @@ public final class MatchManager {
 
     /** 仅在 MAP_RESETTING 阶段保护当前地图 resetRegion 内的方块。 */
     public boolean shouldProtectBlock(LevelAccessor level, BlockPos pos) {
-        if (state != MatchState.MAP_RESETTING || !(level instanceof ServerLevel serverLevel)) {
+        if (!(level instanceof ServerLevel serverLevel)) {
             return false;
         }
-        return maps.isInResetRegion(serverLevel, pos);
+        return shouldProtectOutside(serverLevel, pos)
+                || (state == MatchState.MAP_RESETTING && maps.isInResetRegion(serverLevel, pos));
+    }
+
+    public boolean shouldProtectOutside(ServerLevel level, BlockPos pos) {
+        return isMatchActive() && maps.currentMap().filter(map -> map.hasBounds()
+                && map.world().equals(level.dimension()) && !map.bounds().contains(pos)).isPresent();
     }
 
     public boolean shouldCancelBlockAction(ServerPlayer player) {
@@ -775,12 +784,12 @@ public final class MatchManager {
 
     /** 重置阶段过滤当前地图区域内的爆炸方块，保留其他区域的服务器行为。 */
     public void removeResetRegionExplosionBlocks(ExplosionEvent.Detonate event) {
-        if (state != MatchState.MAP_RESETTING || !(event.getLevel() instanceof ServerLevel level)
+        if (!isMatchActive() || !(event.getLevel() instanceof ServerLevel level)
                 || maps.currentMap().isEmpty()
                 || !maps.currentMap().get().world().equals(level.dimension())) {
             return;
         }
-        event.getAffectedBlocks().removeIf(pos -> maps.isInResetRegion(level, pos));
+        event.getAffectedBlocks().removeIf(pos -> shouldProtectBlock(level, pos));
     }
 
     public void sendMatchSync(ServerPlayer player) {
@@ -822,7 +831,9 @@ public final class MatchManager {
                 scores.getTeamDamage(Team.TEAM_B),
                 scores.getTeamMatchKills(Team.TEAM_A),
                 scores.getTeamMatchKills(Team.TEAM_B),
-                matchElapsedTicks()).withTeamStats(stats), player);
+                matchElapsedTicks()).withTeamStats(stats)
+                .withTimers(boundaryCountdown.remaining(player.getUUID(), server.getTickCount()),
+                        (int) secondsToTicks(rulesRespawnDelaySeconds())), player);
     }
 
     public void broadcastMatchState() {
@@ -1107,11 +1118,26 @@ public final class MatchManager {
     private void enforceArenaRules() {
         if (!isMatchActive()) {
             regionReturnTicks.clear();
+            boundaryCountdown.clear();
             return;
         }
         long now = server.getTickCount();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             Team team = teams.getTeam(player);
+
+            boolean boundaryEligible = state == MatchState.PLAYING && team.isPlayable()
+                    && !teams.isPending(player) && !isDowned(player) && player.isAlive()
+                    && !player.isSpectator() && FpsTdmConfig.COMMON.enforceRegion.get();
+            boolean outside = boundaryEligible && !spawns.isInsideMap(player);
+            int previousBoundary = boundaryCountdown.remaining(player.getUUID(), now);
+            int boundaryLeft = boundaryCountdown.update(player.getUUID(), outside, now);
+            if (outside && boundaryLeft == 0) {
+                handleFatalDamage(player, player.damageSources().fellOutOfWorld(), Float.MAX_VALUE);
+                boundaryCountdown.update(player.getUUID(), false, now);
+                sendMatchSync(player);
+                continue;
+            }
+            if ((previousBoundary == 0 && boundaryLeft > 0) || (previousBoundary > 0 && !outside)) sendMatchSync(player);
 
             if (state == MatchState.MAP_RESETTING) {
                 player.setGameMode(GameType.SPECTATOR);
@@ -1147,6 +1173,7 @@ public final class MatchManager {
             }
 
             if (FpsTdmConfig.COMMON.enforceRegion.get() && state != MatchState.MATCH_END
+                    && state != MatchState.PLAYING
                     && !spawns.isInsideMap(player) && canReturnNow(player, now)) {
                 if (state == MatchState.PLAYING || state == MatchState.WARMUP) {
                     // 越界的参赛玩家回本队出生点并保持生存模式；带冷却的强制传送

@@ -216,6 +216,7 @@ public final class MapManager {
         if (updated == null) {
             return false;
         }
+        if (updated.regions().stream().mapToInt(region -> region.region().boxes().size()).sum() > 8192) return false;
         if (updated.hasResetRegion() && updated.resetRegion().volume() >
                 cn.blockforge.generated.generatedmod.config.FpsTdmConfig.COMMON.maxSnapshotBlocks.get()) return false;
         if (!registry.save(updated)) {

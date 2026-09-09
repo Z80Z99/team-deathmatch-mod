@@ -46,8 +46,20 @@ public final class HudCustomRenderer {
                 continue;
             }
             HudGeometry.Rect rect = HudGeometry.custom(element, screenWidth, screenHeight);
-            if (element.visible()) {
-                draw(graphics, font, element, rect, editor);
+            boolean visible = HudConditions.visible(element, elements, editor);
+            double amount = editor ? (visible ? 1 : 0) : HudAnimation.frame(
+                    HudAnimation.key(element.id()), visible, element.placement());
+            if (amount > 0) {
+                graphics.pose().pushPose();
+                if (element.placement().animation().equals("slide")) graphics.pose().translate(0, (1 - amount) * 16, 0);
+                if (element.placement().animation().equals("zoom")) {
+                    float scale = (float) (.85 + .15 * amount);
+                    graphics.pose().translate(rect.centerX(), rect.centerY(), 0);
+                    graphics.pose().scale(scale, scale, 1);
+                    graphics.pose().translate(-rect.centerX(), -rect.centerY(), 0);
+                }
+                drawContent(graphics, font, element, rect, editor, amount);
+                graphics.pose().popPose();
             } else if (showHidden) {
                 drawGhost(graphics, font, element, rect);
             }
@@ -73,12 +85,17 @@ public final class HudCustomRenderer {
     public static void draw(GuiGraphics graphics, Font font, CustomElement element,
                             HudGeometry.Rect rect, boolean editor) {
         if (!HudParameters.visible(element.placement().condition(), editor)) return;
+        drawContent(graphics, font, element, rect, editor, 1);
+    }
+
+    private static void drawContent(GuiGraphics graphics, Font font, CustomElement element,
+                                    HudGeometry.Rect rect, boolean editor, double amount) {
         ElementRenderer external = EXTERNAL_RENDERERS.get(element.type());
         if (external != null) {
             external.render(graphics, font, element, rect, editor);
             return;
         }
-        int alpha = Math.max(0, Math.min(100, element.opacityPercent()));
+        int alpha = (int) Math.round(Math.max(0, Math.min(100, element.opacityPercent())) * amount);
         if (!editor && element.placement().condition().equals("feed")) {
             alpha = alpha * Math.min(20, Math.max(0, ClientMatchData.killFeedTicksLeft())) / 20;
         }
@@ -123,12 +140,12 @@ public final class HudCustomRenderer {
         HudStats.Source source = element.boundSource();
         if (source != null) {
             ratio = source.ratio(editor);
-            if (source.kind() == HudStats.Kind.PROGRESS || source.maximum(editor) > 0) {
-                label = HudStats.percentLabel(element.text(), ratio);
-            } else {
-                label = HudStats.applyTemplate(element.text(), source.display(editor),
-                        Long.toString(Math.round(source.number(editor))), Integer.toString(source.maximum(editor)));
-            }
+            if (element.placement().progressMaximum() > 0) ratio = Math.max(0, Math.min(1,
+                    source.number(editor) / (element.placement().progressMaximum() * (source.kind() == HudStats.Kind.TIME ? 20D : 1D))));
+            int maximum = element.placement().progressMaximum() > 0 ? element.placement().progressMaximum()
+                    * (source.kind() == HudStats.Kind.TIME ? 20 : 1) : source.maximum(editor);
+            label = HudStats.applyTemplate(element.text(), Math.round(ratio * 100) + "%",
+                    Long.toString(Math.round(source.number(editor))), Integer.toString(maximum));
         } else if (!element.source().isBlank()) {
             label = element.text() + "（源缺失）";
         }

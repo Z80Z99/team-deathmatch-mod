@@ -38,7 +38,6 @@ public final class MapBrushClickPacket {
                     && !sender.getOffhandItem().is(cn.blockforge.generated.generatedmod.item.ModItems.MAP_BRUSH.get())) return;
             if (sender.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(position)) > 130 * 130
                     || !sender.serverLevel().hasChunkAt(position)) return;
-            if (leftClick && sender.serverLevel().isEmptyBlock(position)) return;
             if (leftClick) {
                 manager.mapEditor().brushLeft(sender, position);
             } else {

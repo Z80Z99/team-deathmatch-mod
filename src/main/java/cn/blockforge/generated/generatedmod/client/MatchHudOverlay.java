@@ -54,6 +54,14 @@ public final class MatchHudOverlay {
         }
         renderCustom(graphics, forgeGui.getMinecraft().font, width, height,
                 HudContext.match(ClientMatchData.mode));
+        if (ClientMatchData.boundaryTicks > 0) {
+            int alpha = 35 + (200 - Math.min(200, ClientMatchData.boundaryTicks)) * 105 / 200;
+            graphics.fill(0, 0, width, height, (alpha << 24) | 0x650008);
+            Font font = forgeGui.getMinecraft().font;
+            graphics.drawCenteredString(font, "返回作战区域", width / 2, height / 3, 0xFFFFD6D6);
+            graphics.drawCenteredString(font, Integer.toString((ClientMatchData.boundaryTicks + 19) / 20),
+                    width / 2, height / 3 + 20, 0xFFFFFFFF);
+        }
     }
 
     private static boolean renderOverride(GuiGraphics graphics, Font font, HudContext context,

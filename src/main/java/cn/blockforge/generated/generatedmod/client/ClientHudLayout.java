@@ -855,7 +855,14 @@ public final class ClientHudLayout {
 
     /** Each atom owns its anchor and offset; no parent element is required for positioning. */
     public record Placement(int offsetX, int offsetY, int referenceWidth, int referenceHeight,
-                            String example, String condition) {
+                            String example, String condition, String animation, int animationMillis, int progressMaximum) {
+        public Placement(int offsetX, int offsetY, int referenceWidth, int referenceHeight,
+                         String example, String condition, String animation, int animationMillis) {
+            this(offsetX, offsetY, referenceWidth, referenceHeight, example, condition, animation, animationMillis, 0);
+        }
+        public Placement(int offsetX, int offsetY, int referenceWidth, int referenceHeight, String example, String condition) {
+            this(offsetX, offsetY, referenceWidth, referenceHeight, example, condition, "none", 250);
+        }
         public static final Placement NONE = new Placement(0, 0, 0, 0, "", "");
         public Placement {
             offsetX = Math.max(-2000, Math.min(2000, offsetX));
@@ -864,6 +871,15 @@ public final class ClientHudLayout {
             referenceHeight = Math.max(0, Math.min(2000, referenceHeight));
             example = example == null ? "" : example;
             condition = condition == null ? "" : condition;
+            animation = animation == null ? "none" : animation;
+            animationMillis = Math.max(50, Math.min(2000, animationMillis));
+            progressMaximum = Math.max(0, Math.min(1000000, progressMaximum));
+        }
+        public Placement withAnimation(String style, int millis) {
+            return new Placement(offsetX, offsetY, referenceWidth, referenceHeight, example, condition, style, millis, progressMaximum);
+        }
+        public Placement withMaximum(int maximum) {
+            return new Placement(offsetX, offsetY, referenceWidth, referenceHeight, example, condition, animation, animationMillis, maximum);
         }
         public float fit(int width, int height) {
             return referenceWidth == 0 || referenceHeight == 0 ? 1F

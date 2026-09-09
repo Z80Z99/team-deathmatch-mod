@@ -53,7 +53,7 @@ public final class MapRegionPacket {
     public MapRegion region() { return region; }
     public MapRegionAction action() { return action; }
 
-    private static void writeRegion(FriendlyByteBuf buffer, MapRegion region) {
+    public static void writeRegion(FriendlyByteBuf buffer, MapRegion region) {
         buffer.writeUtf(region.id(), MAX_TEXT);
         buffer.writeUtf(region.displayName(), MAX_TEXT);
         buffer.writeUtf(region.type().id(), MAX_TEXT);
@@ -63,6 +63,11 @@ public final class MapRegionPacket {
         buffer.writeInt(region.region().max().getX());
         buffer.writeInt(region.region().max().getY());
         buffer.writeInt(region.region().max().getZ());
+        buffer.writeVarInt(region.region().parts().size());
+        for (var part : region.region().parts()) {
+            buffer.writeBlockPos(part.min());
+            buffer.writeBlockPos(part.max());
+        }
         buffer.writeBoolean(region.visibleInMatch());
         buffer.writeVarInt(region.displayRange());
         buffer.writeUtf(region.appearance().id(), MAX_TEXT);
@@ -75,13 +80,18 @@ public final class MapRegionPacket {
         buffer.writeUtf(region.notes(), MAX_TEXT);
     }
 
-    private static MapRegion readRegion(FriendlyByteBuf buffer) {
+    public static MapRegion readRegion(FriendlyByteBuf buffer) {
         String id = buffer.readUtf(MAX_TEXT);
         String displayName = buffer.readUtf(MAX_TEXT);
         MapRegion.Type type = MapRegion.Type.parse(buffer.readUtf(MAX_TEXT));
         BlockPos min = new BlockPos(buffer.readInt(), buffer.readInt(), buffer.readInt());
         BlockPos max = new BlockPos(buffer.readInt(), buffer.readInt(), buffer.readInt());
-        return new MapRegion(id, displayName, type, new MapDefinition.Region(min, max),
+        int count = buffer.readVarInt();
+        if (count < 0 || count > 1024) throw new IllegalArgumentException("Invalid region part count");
+        var parts = new java.util.ArrayList<MapDefinition.Region>();
+        for (int i = 0; i < count; i++) parts.add(new MapDefinition.Region(buffer.readBlockPos(), buffer.readBlockPos()));
+        var shape = parts.isEmpty() ? new MapDefinition.Region(min, max) : MapDefinition.Region.composite(parts);
+        return new MapRegion(id, displayName, type, shape,
                 buffer.readBoolean(), buffer.readVarInt(),
                 MapRegion.Appearance.parse(buffer.readUtf(MAX_TEXT)),
                 MapRegion.Activation.parse(buffer.readUtf(MAX_TEXT)),

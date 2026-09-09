@@ -47,7 +47,7 @@ public final class MapRegionRenderer {
         List<MapRegion> hits = planner ? MapRegionPicker.pick(minecraft, view, 128.0D) : List.of();
         MapToolClientState.setHoveredRegion(planner && !hits.isEmpty() ? hits.get(0).id() : "");
         if (brush) {
-            BlockPos target = MapRegionPicker.brushTarget(minecraft, view.brushRange());
+            BlockPos target = MapRegionPicker.editTarget(minecraft, view, true);
             MapToolClientState.setBrushTarget(target,
                     minecraft.level.getBlockState(target).isAir());
         }
@@ -94,6 +94,7 @@ public final class MapRegionRenderer {
         }
 
         LINE_BUFFERS.endBatch();
+        BrushTransitions.render(poseStack);
         RenderSystem.enableDepthTest();
         poseStack.popPose();
     }
@@ -114,15 +115,16 @@ public final class MapRegionRenderer {
 
     private static void drawRegion(PoseStack poseStack, VertexConsumer lines,
                                    MapRegion region, float lineAlpha) {
-        MapDefinition.Region bounds = region.region();
         float red = ((region.color() >>> 16) & 0xFF) / 255.0F;
         float green = ((region.color() >>> 8) & 0xFF) / 255.0F;
         float blue = (region.color() & 0xFF) / 255.0F;
         // Editor outlines remain visible even when the region's match appearance hides them.
+        for (MapDefinition.Region bounds : region.region().boxes()) {
             LevelRenderer.renderLineBox(poseStack, lines,
                     bounds.min().getX() - 0.002D, bounds.min().getY() - 0.002D, bounds.min().getZ() - 0.002D,
                     bounds.max().getX() + 1.002D, bounds.max().getY() + 1.002D, bounds.max().getZ() + 1.002D,
                     red, green, blue, lineAlpha);
+        }
     }
 
     private static void drawBlock(PoseStack poseStack, VertexConsumer lines,

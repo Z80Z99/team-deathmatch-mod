@@ -27,7 +27,7 @@ class MapEditorSyncTest {
 
     private void verify(int c, int d, int range, BlockPos first, BlockPos second) {
         var bounds = new MapDefinition.Region(new BlockPos(-10, 0, -10), new BlockPos(20, 80, 20));
-        var region = MapRegion.custom("zone", "zone", MapRegion.Type.CUSTOM, bounds);
+        var region = MapRegion.custom("zone", "zone", MapRegion.Type.CUSTOM, bounds.withBlock(new BlockPos(1, 2, 3), false));
         var data = new MapEditorView.RegionData(true, -10, 0, -10, 20, 80, 20);
         var view = new MapEditorView(true, "map", "example", "minecraft:overworld",
                 data, data, data, data, 1, 2, 1, "ready", true, true, false, false,

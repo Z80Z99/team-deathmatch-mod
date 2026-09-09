@@ -52,7 +52,17 @@ public final class HudParameters {
     }
 
     public static boolean visible(String condition, boolean editor) {
+        if (editor) return true;
+        Boolean external = HudConditions.external(condition);
+        if (external != null) return external;
+        if (condition.startsWith("api:")) return false;
         return switch (condition) {
+            case "respawning" -> ClientMatchData.respawnRemainingTicks > 0;
+            case "alive" -> ClientMatchData.respawnRemainingTicks <= 0 && ClientMatchData.myTeam.isPlayable();
+            case "playing" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.PLAYING;
+            case "warmup" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.WARMUP;
+            case "outside" -> ClientMatchData.boundaryTicks > 0;
+            case "spectator" -> !ClientMatchData.myTeam.isPlayable();
             case "feed" -> editor || ClientMatchData.killFeedActive();
             case "team_c" -> teamCount(editor) >= 3;
             case "team_d" -> teamCount(editor) >= 4;

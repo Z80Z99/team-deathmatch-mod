@@ -11,6 +11,42 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class HudElementsTest {
+    @Test void sceneSourcesAndRespawnProgressAreConsistent() {
+        assertTrue(HudStats.sourcesFor(HudContext.TEAM_DEATHMATCH).stream().noneMatch(s -> s.group() == HudStats.Group.ROOM || s.group() == HudStats.Group.MATCHING));
+        assertTrue(HudStats.sourcesFor(HudContext.ROOM).stream().noneMatch(s -> s.group() == HudStats.Group.SCORE));
+        ClientMatchData.state = cn.blockforge.generated.generatedmod.match.MatchState.PLAYING;
+        ClientMatchData.respawnTotalTicks = 200;
+        ClientMatchData.respawnRemainingTicks = 80;
+        assertEquals(.4, HudStats.byId("respawn_left").ratio(false), .0001);
+        assertTrue(HudParameters.visible("team_d", true));
+    }
+
+    private ClientHudLayout.CustomElement conditional(String id, String condition) {
+        return new ClientHudLayout.CustomElement(id, "text", "test", 50, 50, 100, 20, 100, -1, true,
+                "", 100, false, false, false, new ClientHudLayout.Placement(0, 0, 0, 0, "", condition));
+    }
+
+    @Test void dependenciesRejectCyclesAndAllowEditorInspection() {
+        var a = conditional("a", "hidden:b"); var b = conditional("b", "hidden:a");
+        var both = java.util.List.of(a, b);
+        assertFalse(HudConditions.visible(a, both, false));
+        assertFalse(HudConditions.visible(b, both, false));
+        assertTrue(HudConditions.visible(a, both, true));
+        assertTrue(HudConditions.visible(a, java.util.List.of(a), false));
+        HudApi.registerCondition("api:test", () -> false);
+        try { assertFalse(HudConditions.visible(conditional("c", "api:test"), java.util.List.of(), false)); }
+        finally { HudApi.unregisterCondition("api:test"); }
+    }
+
+    @Test void animationReversesAndSettingsRoundTrip() {
+        assertEquals(.5, HudAnimation.advance(0, true, 125, 250), .0001);
+        assertEquals(.25, HudAnimation.advance(.5, false, 62.5, 250), .0001);
+        var placement = new ClientHudLayout.Placement(1, 2, 640, 360, "", "team_d")
+                .withAnimation("slide", 450).withMaximum(60);
+        var element = new ClientHudLayout.CustomElement("animated", "progress", "%s", 50, 50, 100, 20, 80,
+                -1, true, "respawn_left", 100, true, false, false, placement);
+        assertEquals(element, ClientHudLayout.CustomElement.read(element.toJson()));
+    }
     private MockedStatic<Minecraft> access;
 
     @BeforeEach void setup() throws Exception {

@@ -16,12 +16,18 @@ import java.util.Locale;
 public final class HudParameterHelpScreen extends UiScreen {
     private record Entry(int y, String title, String detail) { }
     private final Screen parent;
+    private final cn.blockforge.generated.generatedmod.client.HudContext context;
     private final List<Entry> entries = new ArrayList<>();
     private String query = "";
 
     public HudParameterHelpScreen(Screen parent) {
-        super(Component.literal("参数配置 · 说明书"));
+        this(parent, cn.blockforge.generated.generatedmod.client.HudContext.TEAM_DEATHMATCH);
+    }
+
+    public HudParameterHelpScreen(Screen parent, cn.blockforge.generated.generatedmod.client.HudContext context) {
+        super(Component.literal("参数帮助"));
         this.parent = parent;
+        this.context = context;
     }
 
     @Override
@@ -42,20 +48,16 @@ public final class HudParameterHelpScreen extends UiScreen {
         flowWidget(search, searchY);
         setInitialFocus(search);
         if (query.isBlank()) {
-            add("只替换值，不自动加标签", "回合 {round} → 回合 1；{round} → 1");
-            add("固定文字", "输入 A队 114 → A队 114，不再追加分数。");
-            add("单位写在参数外", "目标 {target}；延迟 {ping} ms；已等待 {wait}");
-            add("绑定数据源（可选）", "%s 格式化值，%v 原始数，%m 上限。");
-            add("进度条", "%s 为百分比；空模板只画进度条，不显示标签。");
-            add("示例与实战", "说明书中的值仅作示例；实战使用当前同步数据。");
-            add("独立示例元素", "文字、数值、底板可分别删除；模板在组件页。");
+            add("直接写文字", "输入：A队     显示：A队");
+            add("文字里插入参数", "输入：回合 {round}     显示：回合 1");
+            add("已经选择数据来源？", "文字填 %s 显示该数据；进度条填 %s 显示百分比。留空则不显示文字。");
+            add("当前场景：" + context.tabLabel(), "下面是可用参数。示例数字仅用于说明。%v 是原始值，%m 是上限。");
         }
-        for (var entry : HudParameters.values(true).entrySet()) {
-            String key = entry.getKey();
-            HudStats.Source source = HudStats.byId(key);
-            String meaning = source == null ? HudParameters.description(key) : source.name();
+        for (var source : HudStats.sourcesFor(context)) {
+            String key = source.id();
+            String meaning = source.name();
             if (!(key + " " + meaning).toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT))) continue;
-            add("{" + key + "}  " + meaning, "示例值：" + entry.getValue());
+            add(meaning, "输入：{" + key + "}     显示：" + source.display(true));
         }
         if (entries.isEmpty()) add("无匹配参数", "可搜索 round、比分、房间、血量等。");
         footerButton("返回编辑", 0, 1, 0, this::onClose, "返回 HUD 编辑器，保留未保存改动。", UiButton.Kind.PRIMARY);
@@ -68,7 +70,7 @@ public final class HudParameterHelpScreen extends UiScreen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderShell(graphics, "名称、含义与示例");
+        renderShell(graphics, "文字照写，变量放在 { } 中");
         for (Entry entry : entries) {
             paintBand(graphics, entry.y(), 34, () -> {
                 graphics.drawString(font, fit(entry.title(), innerWidth), innerLeft, entry.y() + 3, UiTheme.TEXT, false);

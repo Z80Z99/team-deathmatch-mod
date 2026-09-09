@@ -391,6 +391,18 @@ public final class MapDefinition {
             return null;
         }
         JsonObject object = element.getAsJsonObject();
+        if (object.has("parts")) {
+            var children = object.getAsJsonArray("parts");
+            if (children.isEmpty() || children.size() > 1024) throw new IllegalArgumentException("Invalid region parts");
+            List<Region> parts = new ArrayList<>();
+            for (var child : children) {
+                if (!child.isJsonObject() || child.getAsJsonObject().has("parts")) throw new IllegalArgumentException("Nested region parts");
+                Region part = region(child);
+                if (part == null) throw new IllegalArgumentException("Invalid region part");
+                parts.add(part);
+            }
+            return Region.composite(parts);
+        }
         if (hasAll(object, "minX", "minY", "minZ", "maxX", "maxY", "maxZ")) {
             return new Region(
                     new BlockPos(object.get("minX").getAsInt(), object.get("minY").getAsInt(),
@@ -427,8 +439,10 @@ public final class MapDefinition {
                 ? object.get(name).getAsString() : fallback;
     }
 
-    public record Region(BlockPos min, BlockPos max) {
+    public record Region(BlockPos min, BlockPos max, List<Region> parts) {
+        public Region(BlockPos min, BlockPos max) { this(min, max, List.of()); }
         public Region {
+            parts = parts == null ? List.of() : List.copyOf(parts);
             int minX = Math.min(min.getX(), max.getX());
             int minY = Math.min(min.getY(), max.getY());
             int minZ = Math.min(min.getZ(), max.getZ());
@@ -452,12 +466,14 @@ public final class MapDefinition {
         }
 
         public boolean contains(double x, double y, double z) {
+            if (!parts.isEmpty()) return parts.stream().anyMatch(part -> part.contains(x, y, z));
             return x >= min.getX() && x < (double) max.getX() + 1.0D
                     && y >= min.getY() && y < (double) max.getY() + 1.0D
                     && z >= min.getZ() && z < (double) max.getZ() + 1.0D;
         }
 
         public boolean contains(BlockPos pos) {
+            if (!parts.isEmpty()) return parts.stream().anyMatch(part -> part.contains(pos));
             return pos.getX() >= min.getX() && pos.getX() <= max.getX()
                     && pos.getY() >= min.getY() && pos.getY() <= max.getY()
                     && pos.getZ() >= min.getZ() && pos.getZ() <= max.getZ();
@@ -465,6 +481,11 @@ public final class MapDefinition {
 
         public JsonObject toJson() {
             JsonObject object = new JsonObject();
+            if (!parts.isEmpty()) {
+                JsonArray array = new JsonArray();
+                parts.forEach(part -> array.add(part.toJson()));
+                object.add("parts", array);
+            }
             object.addProperty("minX", min.getX());
             object.addProperty("minY", min.getY());
             object.addProperty("minZ", min.getZ());
@@ -474,10 +495,44 @@ public final class MapDefinition {
             return object;
         }
 
+        public List<Region> boxes() { return parts.isEmpty() ? List.of(this) : parts; }
+
+        public static Region composite(List<Region> boxes) {
+            if (boxes.isEmpty()) return null;
+            if (boxes.size() == 1) return boxes.get(0);
+            return new Region(new BlockPos(boxes.stream().mapToInt(b -> b.min().getX()).min().orElseThrow(),
+                    boxes.stream().mapToInt(b -> b.min().getY()).min().orElseThrow(), boxes.stream().mapToInt(b -> b.min().getZ()).min().orElseThrow()),
+                    new BlockPos(boxes.stream().mapToInt(b -> b.max().getX()).max().orElseThrow(),
+                            boxes.stream().mapToInt(b -> b.max().getY()).max().orElseThrow(), boxes.stream().mapToInt(b -> b.max().getZ()).max().orElseThrow()), boxes);
+        }
+
+        /** Split only the touched box; never materialize every voxel of a large map. */
+        public Region withBlock(BlockPos pos, boolean include) {
+            if (contains(pos) == include) return this;
+            List<Region> boxes = new ArrayList<>();
+            for (Region box : boxes()) {
+                if (include || !box.contains(pos)) { boxes.add(box); continue; }
+                int x = pos.getX(), y = pos.getY(), z = pos.getZ();
+                addBox(boxes, box.min().getX(), box.min().getY(), box.min().getZ(), x - 1, box.max().getY(), box.max().getZ());
+                addBox(boxes, x + 1, box.min().getY(), box.min().getZ(), box.max().getX(), box.max().getY(), box.max().getZ());
+                addBox(boxes, x, box.min().getY(), box.min().getZ(), x, y - 1, box.max().getZ());
+                addBox(boxes, x, y + 1, box.min().getZ(), x, box.max().getY(), box.max().getZ());
+                addBox(boxes, x, y, box.min().getZ(), x, y, z - 1);
+                addBox(boxes, x, y, z + 1, x, y, box.max().getZ());
+            }
+            if (include) boxes.add(new Region(pos, pos));
+            if (boxes.size() > 1024) throw new IllegalArgumentException("区域过于复杂，请拆分为多个区域。");
+            return composite(boxes);
+        }
+        private static void addBox(List<Region> boxes, int x, int y, int z, int xx, int yy, int zz) {
+            if (x <= xx && y <= yy && z <= zz) boxes.add(new Region(new BlockPos(x, y, z), new BlockPos(xx, yy, zz)));
+        }
+
         @Override
         public String toString() {
             return "[" + min.getX() + ", " + min.getY() + ", " + min.getZ() + "] 到 ["
-                    + max.getX() + ", " + max.getY() + ", " + max.getZ() + "]";
+                    + max.getX() + ", " + max.getY() + ", " + max.getZ() + "]"
+                    + (parts.isEmpty() ? "" : "（不规则区域，" + parts.size() + " 片段）");
         }
     }
 }

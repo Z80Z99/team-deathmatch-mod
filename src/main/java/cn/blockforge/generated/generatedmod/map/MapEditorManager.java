@@ -376,8 +376,8 @@ public final class MapEditorManager {
             setMessage(player, "请先设置边界和重置区域的四个角点。", true);
             return;
         }
-        MapDefinition.Region bounds = new MapDefinition.Region(draft.boundsMin, draft.boundsMax);
-        MapDefinition.Region reset = new MapDefinition.Region(draft.resetMin, draft.resetMax);
+        MapDefinition.Region bounds = draft.regionBounds();
+        MapDefinition.Region reset = draft.regionReset();
         if (reset.volume() > cn.blockforge.generated.generatedmod.config.FpsTdmConfig.COMMON
                 .maxSnapshotBlocks.get()) {
             setMessage(player, "重置区域超过最大快照方块数限制。", true);
@@ -934,106 +934,39 @@ public final class MapEditorManager {
 
     private void adjustRegion(ServerPlayer player, MapDefinition target, MapTool tool,
                               BlockPos position, boolean include) {
-        if (tool == MapTool.CUSTOM) {
-            MapRegion selected = selectedRegion(player, target);
-            if (selected == null || selected.type() == MapRegion.Type.BOUNDS
-                    || selected.type() == MapRegion.Type.RESET) {
-                feedback(player, "请先在规划器中创建或选择自定义区域。", true);
-                return;
-            }
-            MapDefinition.Region next = adjustBounds(selected.region(), position, include);
-            if (next != null) saveCustomRegionBounds(player, target, next);
+        MapRegion selected = selectedRegion(player, target);
+        if (selected == null) {
+            feedback(player, "请先在规划器中选中区域。", true);
             return;
         }
-        Draft draft = draftFor(player.getUUID(), target);
-        BlockPos min = tool == MapTool.BOUNDS ? draft.boundsMin : draft.resetMin;
-        BlockPos max = tool == MapTool.BOUNDS ? draft.boundsMax : draft.resetMax;
-        if (min == null || max == null) {
-            feedback(player, "请先用区域模式设置初始区域。", true);
-            return;
-        }
-        BlockPos newMin = min;
-        BlockPos newMax = max;
-        if (include) {
-            newMin = new BlockPos(Math.min(min.getX(), position.getX()),
-                    Math.min(min.getY(), position.getY()), Math.min(min.getZ(), position.getZ()));
-            newMax = new BlockPos(Math.max(max.getX(), position.getX()),
-                    Math.max(max.getY(), position.getY()), Math.max(max.getZ(), position.getZ()));
-        } else {
-            if (!contains(min, max, position)) {
-                feedback(player, "该方块已经在区域外。", true);
+        try {
+            if (include && selected.type() != MapRegion.Type.BOUNDS && selected.type() != MapRegion.Type.RESET
+                    && target.hasBounds() && !target.bounds().contains(position)) {
+                feedback(player, "自定义区域不能添加到地图边界外。", true);
                 return;
             }
-            long[] distances = {
-                    position.getX() - min.getX(), max.getX() - position.getX(),
-                    position.getY() - min.getY(), max.getY() - position.getY(),
-                    position.getZ() - min.getZ(), max.getZ() - position.getZ()};
-            int nearest = 0;
-            for (int i = 1; i < distances.length; i++) {
-                if (distances[i] < distances[nearest]) {
-                    nearest = i;
-                }
-            }
-            switch (nearest) {
-                case 0 -> newMin = new BlockPos(position.getX() + 1, min.getY(), min.getZ());
-                case 1 -> newMax = new BlockPos(position.getX() - 1, max.getY(), max.getZ());
-                case 2 -> newMin = new BlockPos(min.getX(), position.getY() + 1, min.getZ());
-                case 3 -> newMax = new BlockPos(max.getX(), position.getY() - 1, max.getZ());
-                case 4 -> newMin = new BlockPos(min.getX(), min.getY(), position.getZ() + 1);
-                case 5 -> newMax = new BlockPos(max.getX(), max.getY(), position.getZ() - 1);
-                default -> { }
-            }
-            if (newMin.getX() > newMax.getX() || newMin.getY() > newMax.getY()
-                    || newMin.getZ() > newMax.getZ()) {
-                feedback(player, "区域至少要保留一个方块。", true);
+            MapDefinition.Region next = selected.region().withBlock(position, include);
+            if (next == selected.region()) return;
+            if (next == null) {
+                if (maps.saveDefinition(target.withoutRegion(selected.id()))) {
+                    maps.registry().deleteSnapshot(target.id());
+                    drafts.remove(player.getUUID());
+                    clearToolSelection(player.getUUID());
+                    feedback(player, "最后一格已移除，区域已删除；请在规划器选择新目标。", false);
+                } else feedback(player, "删除区域失败。", true);
                 return;
             }
+            MapRegion updated = new MapRegion(selected.id(), selected.displayName(), selected.type(), next,
+                    selected.visibleInMatch(), selected.displayRange(), selected.appearance(), selected.activation(),
+                    selected.activationValue(), selected.color(), selected.outline(), selected.fill(), selected.priority(), selected.notes());
+            if (maps.saveDefinition(target.withRegion(updated))) {
+                maps.registry().deleteSnapshot(target.id());
+                drafts.remove(player.getUUID());
+                feedback(player, include ? "已添加一格区域。" : "已移除一格区域。", false);
+            } else feedback(player, "保存失败，区域可能超过重置范围上限。", true);
+        } catch (IllegalArgumentException error) {
+            feedback(player, error.getMessage(), true);
         }
-        if (tool == MapTool.BOUNDS) {
-            draft.boundsMin = newMin;
-            draft.boundsMax = newMax;
-        } else {
-            draft.resetMin = newMin;
-            draft.resetMax = newMax;
-        }
-        draft.dirty = true;
-        applyRegions(player, target, draft);
-    }
-
-    private MapDefinition.Region adjustBounds(MapDefinition.Region region, BlockPos position, boolean include) {
-        BlockPos min = region.min();
-        BlockPos max = region.max();
-        BlockPos newMin = min;
-        BlockPos newMax = max;
-        if (include) {
-            newMin = new BlockPos(Math.min(min.getX(), position.getX()), Math.min(min.getY(), position.getY()),
-                    Math.min(min.getZ(), position.getZ()));
-            newMax = new BlockPos(Math.max(max.getX(), position.getX()), Math.max(max.getY(), position.getY()),
-                    Math.max(max.getZ(), position.getZ()));
-        } else {
-            if (!contains(min, max, position)) return null;
-            long[] distances = {
-                    position.getX() - min.getX(), max.getX() - position.getX(),
-                    position.getY() - min.getY(), max.getY() - position.getY(),
-                    position.getZ() - min.getZ(), max.getZ() - position.getZ()};
-            int nearest = 0;
-            for (int index = 1; index < distances.length; index++) {
-                if (distances[index] < distances[nearest]) nearest = index;
-            }
-            switch (nearest) {
-                case 0 -> newMin = new BlockPos(position.getX() + 1, min.getY(), min.getZ());
-                case 1 -> newMax = new BlockPos(position.getX() - 1, max.getY(), max.getZ());
-                case 2 -> newMin = new BlockPos(min.getX(), position.getY() + 1, min.getZ());
-                case 3 -> newMax = new BlockPos(max.getX(), max.getY() - 1, max.getZ());
-                case 4 -> newMin = new BlockPos(min.getX(), min.getY(), position.getZ() + 1);
-                case 5 -> newMax = new BlockPos(max.getX(), max.getY(), position.getZ() - 1);
-                default -> { }
-            }
-        }
-        if (newMin.getX() > newMax.getX() || newMin.getY() > newMax.getY() || newMin.getZ() > newMax.getZ()) {
-            return null;
-        }
-        return new MapDefinition.Region(newMin, newMax);
     }
 
     private void saveCustomRegionBounds(ServerPlayer player, MapDefinition target,
@@ -1289,10 +1222,14 @@ public final class MapEditorManager {
         }
 
         private MapDefinition.Region regionBounds() {
+            if (sourceDefinition != null && sourceDefinition.hasBounds()
+                    && sourceDefinition.bounds().min().equals(boundsMin) && sourceDefinition.bounds().max().equals(boundsMax)) return sourceDefinition.bounds();
             return boundsMin == null || boundsMax == null ? null : new MapDefinition.Region(boundsMin, boundsMax);
         }
 
         private MapDefinition.Region regionReset() {
+            if (sourceDefinition != null && sourceDefinition.hasResetRegion()
+                    && sourceDefinition.resetRegion().min().equals(resetMin) && sourceDefinition.resetRegion().max().equals(resetMax)) return sourceDefinition.resetRegion();
             return resetMin == null || resetMax == null ? null : new MapDefinition.Region(resetMin, resetMax);
         }
     }

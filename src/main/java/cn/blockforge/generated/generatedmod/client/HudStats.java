@@ -76,14 +76,14 @@ public final class HudStats {
 
         /** 进度上限；无上限（普通数值）返回 0。 */
         public int maximum(boolean editor) {
-            if (kind != Kind.PROGRESS) {
+            if (kind != Kind.PROGRESS && kind != Kind.TIME) {
                 return 0;
             }
             if (editor && !isLive()) {
-                return Math.max(1, demoMaximum);
+                return Math.max(kind == Kind.TIME ? 0 : 1, demoMaximum);
             }
             try {
-                return Math.max(1, maximum.getAsInt());
+                return Math.max(kind == Kind.TIME ? 0 : 1, maximum.getAsInt());
             } catch (Exception error) {
                 return Math.max(1, demoMaximum);
             }
@@ -91,11 +91,11 @@ public final class HudStats {
 
         /** 0..1 的进度比例；普通数值按“百分数”解释。 */
         public double ratio(boolean editor) {
-            if (kind == Kind.TEXT || kind == Kind.TIME) {
+            if (kind == Kind.TEXT) {
                 return 0;
             }
-            if (kind == Kind.PROGRESS) {
-                return clamp01(number(editor) / maximum(editor));
+            if (kind == Kind.PROGRESS || kind == Kind.TIME) {
+                return maximum(editor) <= 0 ? 0 : clamp01(number(editor) / maximum(editor));
             }
             return clamp01(number(editor) / 100.0);
         }
@@ -159,6 +159,16 @@ public final class HudStats {
         all.addAll(EXTERNAL_SOURCES.values());
         all.addAll(dynamicSources());
         return all;
+    }
+
+    public static List<Source> sourcesFor(HudContext context) {
+        return sourcesWithDynamic().stream().filter(source -> switch (source.group()) {
+            case SYSTEM, DYNAMIC, STATUS -> true;
+            case ROOM -> context == HudContext.ROOM;
+            case MATCHING -> context == HudContext.MATCHING;
+            default -> context.isMatch() && (!source.id().equals("respawn_left")
+                    || context == HudContext.TEAM_DEATHMATCH);
+        }).toList();
     }
 
     /** 第三方玩法注册的实时数据源；重复 id 会替换旧定义。 */
@@ -560,8 +570,9 @@ public final class HudStats {
 
     private static void time(String id, String name, Group group, IntSupplier ticks,
                              BooleanSupplier live, int demoTicks) {
-        SOURCES.add(new Source(id, name, group, Kind.TIME, () -> ticks.getAsInt(), () -> 0,
-                () -> "", live, demoTicks, 0, ""));
+        SOURCES.add(new Source(id, name, group, Kind.TIME, () -> ticks.getAsInt(),
+                () -> id.equals("respawn_left") ? Math.max(1, ClientMatchData.respawnTotalTicks) : 0,
+                () -> "", live, demoTicks, id.equals("respawn_left") ? Math.max(1, demoTicks) : 0, ""));
     }
 
     private static void text(String id, String name, Group group, Supplier<String> text,

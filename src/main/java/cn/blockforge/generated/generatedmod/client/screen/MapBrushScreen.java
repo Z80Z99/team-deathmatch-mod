@@ -49,12 +49,12 @@ public final class MapBrushScreen extends UiScreen {
         int modeY = flowRow(BUTTON_HEIGHT);
         modeControl = flowWidget(new UiCycleButton<>(innerLeft, modeY, controlWidth, BUTTON_HEIGHT,
                 List.of(MapBrushMode.REGION, MapBrushMode.BLOCK), ClientMapEditorData.view().brushMode(),
-                mode -> mode == MapBrushMode.REGION ? "操作：两角框选" : "操作：调整边缘", this::setMode,
+                mode -> mode == MapBrushMode.REGION ? "操作：两角框选" : "操作：逐格增删", this::setMode,
                 "切换区域模式和方块模式。", UiButton.Kind.SECONDARY), modeY);
         flowWidget(helpButton(helpX, modeY,
                 "两角框选：左键选择一个角，右键选择对角。",
-                "调整边缘：右键扩展区域，左键收缩边缘。",
-                "区域始终为长方体，不能单独挖掉内部方块。",
+                "逐格增删：左键移除一格区域，右键在相邻位置添加一格。",
+                "支持内部挖空；只修改区域，不挖掘真实地形。",
                 "切换模式会清空尚未配对的端点。"), modeY);
 
         int rangeY = flowRow(BUTTON_HEIGHT + 12) + 12;
@@ -67,9 +67,9 @@ public final class MapBrushScreen extends UiScreen {
         flowWidget(uiButton("+", innerLeft + controlWidth - 22, rangeY, 22,
                 () -> setRange(rangeValue + 1), "距离增加 1 格", UiButton.Kind.SECONDARY), rangeY);
         flowWidget(helpButton(helpX, rangeY,
-                "右键可在空气位置取点，默认距离前方 2 格。",
+                "左右键都能在空气位置取点，默认距离前方 2 格。",
                 "如果中间有方块，会优先停在方块位置。",
-                "左键只作用于实际方块；空气不会触发左键操作。"), rangeY);
+                "逐格模式优先选择区域表面；红色为移除过渡，青色为添加过渡。"), rangeY);
 
         footerButton("地图工作台", 0, 2, 0, this::openWorkbench,
                 "打开地图工作台。", UiButton.Kind.SECONDARY);

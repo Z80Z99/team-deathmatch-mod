@@ -49,6 +49,7 @@ public final class MapSnapshot {
         root.putString("World", definition.world().location().toString());
         root.put("Min", NbtUtils.writeBlockPos(definition.resetRegion().min()));
         root.put("Max", NbtUtils.writeBlockPos(definition.resetRegion().max()));
+        root.putString("RegionShapeHash", regionShapeHash(definition));
 
         ListTag paletteTag = new ListTag();
         for (BlockState state : palette) {
@@ -68,6 +69,13 @@ public final class MapSnapshot {
         return root;
     }
 
+    private static String regionShapeHash(MapDefinition definition) {
+        try {
+            byte[] shape = definition.resetRegion().toJson().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(shape));
+        } catch (java.security.NoSuchAlgorithmException error) { throw new IllegalStateException(error); }
+    }
+
     public static MapSnapshot fromNbt(CompoundTag root, MapDefinition definition,
                                       HolderGetter<Block> blockLookup) {
         if (root.getInt("Format") != FORMAT_VERSION) {
@@ -80,6 +88,8 @@ public final class MapSnapshot {
             throw new IllegalArgumentException("快照维度不匹配");
         }
         BlockPos min = NbtUtils.readBlockPos(root.getCompound("Min"));
+        if (root.contains("RegionShapeHash") ? !root.getString("RegionShapeHash").equals(regionShapeHash(definition))
+                : !definition.resetRegion().parts().isEmpty()) throw new IllegalArgumentException("快照区域形状已变更");
         BlockPos max = NbtUtils.readBlockPos(root.getCompound("Max"));
         if (!definition.resetRegion().min().equals(min) || !definition.resetRegion().max().equals(max)) {
             throw new IllegalArgumentException("快照 resetRegion 不匹配");

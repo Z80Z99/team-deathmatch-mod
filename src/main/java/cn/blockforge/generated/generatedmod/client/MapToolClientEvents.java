@@ -70,8 +70,9 @@ public final class MapToolClientEvents {
             minecraft.setScreen(new MapBrushScreen());
         } else {
             MapEditorView view = ClientMapEditorData.view();
-            FpsTdmNetwork.sendToServer(new MapBrushClickPacket(
-                    MapRegionPicker.brushTarget(minecraft, view.brushRange()), false));
+            BlockPos target = MapRegionPicker.editTarget(minecraft, view, false);
+            BrushTransitions.request(view, target, true);
+            FpsTdmNetwork.sendToServer(new MapBrushClickPacket(target, false));
         }
         if (event.isCancelable()) event.setCanceled(true);
     }
@@ -98,9 +99,9 @@ public final class MapToolClientEvents {
                 return;
             }
             MapEditorView view = ClientMapEditorData.view();
-            BlockPos target = event instanceof PlayerInteractEvent.LeftClickBlock
-                    ? event.getPos() : MapRegionPicker.brushTarget(minecraft, 6, false);
+            BlockPos target = MapRegionPicker.editTarget(minecraft, view, true);
             if (target != null) {
+                BrushTransitions.request(view, target, false);
                 FpsTdmNetwork.sendToServer(new MapBrushClickPacket(target, true));
             }
             if (event.isCancelable()) event.setCanceled(true);

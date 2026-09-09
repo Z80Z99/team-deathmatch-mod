@@ -9,7 +9,10 @@ public final class HudAssemblies {
     private HudAssemblies() { }
 
     public static void splitAll(Draft draft, HudContext context) {
-        for (BuiltIn component : BuiltIn.values()) split(draft, context, component);
+        for (BuiltIn component : BuiltIn.values()) {
+            if (component != BuiltIn.TEXT) split(draft, context, component);
+        }
+        draft.of(context).setBuiltInEnabled(BuiltIn.TEXT, false);
     }
 
     public static void split(Draft draft, HudContext context, BuiltIn component) {

@@ -45,6 +45,25 @@ public final class MapRegionPicker {
         return brushTarget(minecraft, range, true);
     }
 
+    public static BlockPos editTarget(Minecraft minecraft, MapEditorView view, boolean remove) {
+        if (view.brushMode() != cn.blockforge.generated.generatedmod.map.MapBrushMode.BLOCK
+                || view.selectedTool().kind() != cn.blockforge.generated.generatedmod.map.MapTool.Kind.REGION)
+            return brushTarget(minecraft, view.brushRange());
+        var region = view.regions().stream().filter(r -> r.id().equals(view.selectedRegionId())).findFirst();
+        if (region.isEmpty() || minecraft.player == null) return brushTarget(minecraft, view.brushRange());
+        Vec3 start = minecraft.player.getEyePosition(1);
+        Vec3 direction = minecraft.player.getLookAngle();
+        BlockPos previous = BlockPos.containing(start);
+        boolean startedInside = region.get().region().contains(previous);
+        for (double distance = .1; distance <= view.brushRange(); distance += .1) {
+            BlockPos pos = BlockPos.containing(start.add(direction.scale(distance)));
+            boolean inside = region.get().region().contains(pos);
+            if (inside != startedInside) return remove ? (inside ? pos : previous) : (inside ? previous : pos);
+            previous = pos;
+        }
+        return previous;
+    }
+
     public static BlockPos brushTarget(Minecraft minecraft, int range, boolean allowAir) {
         if (minecraft.player == null) return allowAir ? BlockPos.ZERO : null;
         Vec3 start = minecraft.player.getEyePosition(1.0F);
@@ -65,6 +84,9 @@ public final class MapRegionPicker {
 
     private static double intersectionDistance(Vec3 start, Vec3 direction,
                                                MapDefinition.Region region, double maxDistance) {
+        if (!region.parts().isEmpty()) return region.parts().stream()
+                .mapToDouble(part -> intersectionDistance(start, direction, part, maxDistance))
+                .filter(value -> value >= 0).min().orElse(-1);
         double minX = region.min().getX();
         double minY = region.min().getY();
         double minZ = region.min().getZ();

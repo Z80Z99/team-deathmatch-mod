@@ -115,6 +115,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     private boolean propertyTab;
     private boolean dockHidden;
     private String selected = "score";
+    private boolean examplesExpanded;
     private boolean paletteOpen;
     private String paletteTarget = "";
     private boolean exitPromptOpen;
@@ -311,7 +312,6 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                     ignored -> {
                         commitHistoryEdit();
                         selected = "custom:" + id;
-                        propertyTab = true;
                         paletteOpen = false;
                         rebuildWidgets();
                     }, selected.equals("custom:" + id) ? UiButton.Kind.PRIMARY : UiButton.Kind.SECONDARY);
@@ -348,7 +348,6 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                 ignored -> {
                     commitHistoryEdit();
                     selected = key;
-                    propertyTab = true;
                     paletteOpen = false;
                     rebuildWidgets();
                 }, selected.equals(key) ? UiButton.Kind.PRIMARY : UiButton.Kind.SECONDARY);
@@ -404,6 +403,9 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
 
     /** 参考模组的预设入口：一键整理当前位置，随后仍可逐项微调。 */
     private void addLayoutPresets() {
+        register(new UiButton(0, 0, 10, CONTROL, Component.literal((examplesExpanded ? "v " : "> ") + "HUD 示例"),
+                ignored -> { examplesExpanded = !examplesExpanded; rebuildWidgets(); }, UiButton.Kind.SECONDARY), CONTROL);
+        if (!examplesExpanded) return;
         rows.add(Row.header("内置 HUD 模板"));
         for (cn.blockforge.generated.generatedmod.client.HudPreset preset
                 : cn.blockforge.generated.generatedmod.client.HudPreset.values()) {
@@ -419,6 +421,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         }
         rows.add(Row.header("添加组件示例"));
         for (HudContext.BuiltIn component : HudContext.BuiltIn.values()) {
+            if (component == HudContext.BuiltIn.TEXT) continue;
             if (activeContext.isMatch() == (component == HudContext.BuiltIn.BANNER)) continue;
             UiButton sample = new UiButton(0, 0, 10, CONTROL, Component.literal("+ " + component.displayName()), ignored -> {
                 editDiscrete(() -> {
@@ -607,23 +610,45 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         addSlider("不透明度 %", 0, 100,
                 () -> intOf(id, ClientHudLayout.CustomElement::opacityPercent, 85),
                 value -> replaceById(id, e -> e.opacityPercent = value));
+        List<String> conditions = new ArrayList<>(List.of("", "feed", "team_c", "team_d", "forming", "queued",
+                "respawning", "alive", "playing", "warmup", "outside", "spectator"));
+        for (var other : draft.customElements(activeContext)) if (!other.id().equals(id)) conditions.add("hidden:" + other.id());
+        conditions.addAll(cn.blockforge.generated.generatedmod.client.HudConditions.ids());
+        if (!conditions.contains(chosen.placement().condition())) conditions.add(chosen.placement().condition());
         UiCycleButton<String> condition = new UiCycleButton<>(0, 0, 10, CONTROL,
-                List.of("", "feed", "team_c", "team_d", "forming", "queued"), chosen.placement().condition(),
+                conditions, chosen.placement().condition(),
                 value -> "显示条件：" + switch (value) {
                     case "feed" -> "击杀播报有效期"; case "team_c" -> "至少三队";
                     case "team_d" -> "至少四队"; case "forming" -> "已成局倒计时";
-                    case "queued" -> "等待成局"; default -> "始终";
+                    case "queued" -> "等待成局"; case "respawning" -> "复活倒计时中";
+                    case "alive" -> "可作战"; case "playing" -> "比赛进行中"; case "warmup" -> "热身中";
+                    case "outside" -> "越界警告中"; case "spectator" -> "观战中";
+                    default -> value.startsWith("hidden:") ? value.substring(7) + " 隐藏后" : value.isBlank() ? "始终" : value;
                 }, value -> replaceByIdDiscrete(id, e -> e.placement = new ClientHudLayout.Placement(
                         e.placement.offsetX(), e.placement.offsetY(), e.placement.referenceWidth(),
                         e.placement.referenceHeight(), e.placement.example(), value)),
                 "条件不满足时不绘制此元素；选择始终可取消条件。", UiButton.Kind.SECONDARY);
         register(condition, CONTROL);
+        rows.add(Row.header("出现 / 消失动画"));
+        register(new UiCycleButton<>(0, 0, 10, CONTROL, List.of("none", "fade", "slide", "zoom"),
+                chosen.placement().animation(), value -> switch (value) {
+                    case "fade" -> "淡入淡出"; case "slide" -> "滑入滑出"; case "zoom" -> "缩放渐变"; default -> "无动画";
+                }, value -> replaceByIdDiscrete(id, e -> e.placement = e.placement.withAnimation(value, e.placement.animationMillis())),
+                "显示条件切换时播放动画。", UiButton.Kind.SECONDARY), CONTROL);
+        addSlider("动画时长 ms", 50, 2000, () -> intOf(id, e -> e.placement().animationMillis(), 250),
+                value -> replaceById(id, e -> e.placement = e.placement.withAnimation(e.placement.animation(), value)));
+        if (chosen.type().equals("progress")) {
+            addSlider(chosen.boundSource() != null && chosen.boundSource().kind() == HudStats.Kind.TIME
+                    ? "进度上限 秒（0=来源）" : "进度上限（0=来源）", 0, 10000,
+                    () -> intOf(id, e -> e.placement().progressMaximum(), 0),
+                    value -> replaceById(id, e -> e.placement = e.placement.withMaximum(value)));
+        }
     }
 
     private void addParameterHelp() {
         UiButton help = new UiButton(0, 0, 10, CONTROL, Component.literal("参数配置 · 帮助"), ignored -> {
             commitHistoryEdit();
-            minecraft.setScreen(new HudParameterHelpScreen(this));
+            minecraft.setScreen(new HudParameterHelpScreen(this, activeContext));
         }, UiButton.Kind.SECONDARY) {
             @Override
             protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
@@ -668,7 +693,8 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
 
     /** 数据源选择：固定内容或 HudStats 里的任一统计接口（含自定义通道）。 */
     private void addSourcePicker(ClientHudLayout.CustomElement chosen) {
-        List<HudStats.Source> sources = HudStats.sourcesWithDynamic();
+        rows.add(Row.header("数据来源"));
+        List<HudStats.Source> sources = HudStats.sourcesFor(activeContext);
         List<String> options = new ArrayList<>();
         Map<String, String> labelsByOption = new LinkedHashMap<>();
         options.add(FIXED_SOURCE);
@@ -693,10 +719,10 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         String id = chosen.id();
         String selectedOption = wanted.isBlank() ? FIXED_SOURCE : wanted;
         UiCycleButton<String> cycle = new UiCycleButton<>(0, 0, 10, CONTROL, options, selectedOption,
-                value -> "数据来源：" + labelsByOption.getOrDefault(value, value),
+                value -> labelsByOption.getOrDefault(value, value),
                 value -> replaceByIdDiscrete(id,
                         e -> e.source = FIXED_SOURCE.equals(value) ? "" : value),
-                "点击切换：进度条的进度来源、文字模块的计数来源都可任选，包括「正在匹配 / 房间中」HUD 的全部字段。",
+                "选择当前场景的数据；固定内容不绑定统计值。",
                 UiButton.Kind.SECONDARY);
         register(cycle, CONTROL);
     }
@@ -1061,6 +1087,15 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         }
         CustomDraft mirror = new CustomDraft(old);
         edit.apply(mirror);
+        boolean placementChanged = mirror.placement.offsetX() != old.placement().offsetX()
+                || mirror.placement.offsetY() != old.placement().offsetY()
+                || !mirror.placement.condition().equals(old.placement().condition());
+        if (placementChanged) mirror.placement = mirror.placement.withMaximum(old.placement().progressMaximum());
+        if (mirror.placement.animation().equals("none") && !old.placement().animation().equals("none")
+                && (mirror.placement.offsetX() != old.placement().offsetX() || mirror.placement.offsetY() != old.placement().offsetY()
+                || !mirror.placement.condition().equals(old.placement().condition()))) {
+            mirror.placement = mirror.placement.withAnimation(old.placement().animation(), old.placement().animationMillis());
+        }
         draft.replaceCustomElement(activeContext, new ClientHudLayout.CustomElement(old.id(),
                 old.type(), mirror.text, mirror.xPercent, mirror.yPercent, mirror.width,
                 mirror.height, mirror.opacityPercent, mirror.color, mirror.visible,

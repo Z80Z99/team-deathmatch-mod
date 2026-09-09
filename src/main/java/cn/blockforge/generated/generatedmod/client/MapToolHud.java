@@ -49,10 +49,10 @@ public final class MapToolHud {
                     .map(MapRegion::displayName).findFirst().orElse(view.selectedTool().displayName()));
             boolean point = view.selectedTool().kind() == cn.blockforge.generated.generatedmod.map.MapTool.Kind.POINT;
             boolean corners = view.brushMode() == cn.blockforge.generated.generatedmod.map.MapBrushMode.REGION;
-            left.add(point ? "左键：移除出生点" : corners ? "左键：选择第一个角（实际方块）" : "左键：收缩区域边缘");
-            left.add(point ? "右键：添加出生点" : corners ? "右键：选择对角，自动保存" : "右键：扩展区域到目标位置");
+            left.add(point ? "左键：移除出生点" : corners ? "左键：选择第一角（支持空气）" : "左键：移除准星处一格区域");
+            left.add(point ? "右键：添加出生点" : corners ? "右键：选择对角，自动保存" : "右键：相邻位置添加一格区域");
             left.add("蹲+右键：画笔菜单");
-            left.add("右键距离：" + view.brushRange() + "格");
+            left.add("取点距离：" + view.brushRange() + "格");
             if (ClientMapEditorData.firstPoint() != null) left.add("第一角：" + ClientMapEditorData.firstPoint().toShortString());
             if (ClientMapEditorData.secondPoint() != null) left.add("第二角：" + ClientMapEditorData.secondPoint().toShortString());
             if (!view.message().isBlank()) left.add(view.message());
@@ -71,7 +71,7 @@ public final class MapToolHud {
             BlockPos target = MapToolClientState.brushTarget();
             right.add("目标：" + target.getX() + ", " + target.getY() + ", " + target.getZ());
             right.add("状态：" + (MapToolClientState.brushTargetAir()
-                    ? "空气（右键可选）" : "方块（左右键可用）"));
+                    ? "空气（左右键可选）" : "方块（左右键可用）"));
         }
         if (!right.isEmpty()) {
             int width = Math.max(170, right.stream().mapToInt(font::width).max().orElse(160) + 24);

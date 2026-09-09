@@ -28,6 +28,8 @@ public final class ClientMatchData {
     public static int targetKills;
     public static int phaseRemainingTicks;
     public static int respawnRemainingTicks;
+    public static int boundaryTicks;
+    public static int respawnTotalTicks;
     public static Team myTeam = Team.SPECTATOR;
     public static int teamASize;
     public static int teamBSize;
@@ -104,6 +106,8 @@ public final class ClientMatchData {
         targetKills = packet.targetKills();
         phaseRemainingTicks = Math.max(0, packet.phaseRemainingTicks());
         respawnRemainingTicks = Math.max(0, packet.respawnRemainingTicks());
+        boundaryTicks = Math.max(0, packet.boundaryTicks());
+        respawnTotalTicks = Math.max(0, packet.respawnTotalTicks());
         myTeam = packet.myTeam();
         teamASize = packet.teamASize();
         teamBSize = packet.teamBSize();
@@ -140,6 +144,7 @@ public final class ClientMatchData {
     /** 客户端只推进显示用倒计时，不参与服务器比赛判定。 */
     public static void tick() {
         clientTick++;
+        if (boundaryTicks > 1) boundaryTicks--;
         if (phaseRemainingTicks > 0) {
             phaseRemainingTicks--;
         }
@@ -182,6 +187,8 @@ public final class ClientMatchData {
         elapsedSnapshotTick = 0L;
         phaseRemainingTicks = 0;
         respawnRemainingTicks = 0;
+        boundaryTicks = 0;
+        respawnTotalTicks = 0;
         myTeam = Team.SPECTATOR;
         teamASize = 0;
         teamBSize = 0;

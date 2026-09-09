@@ -39,6 +39,9 @@ public final class HudApi {
         return HudStats.sourcesWithDynamic();
     }
 
+    public static void registerCondition(String id, BooleanSupplier condition) { HudConditions.register(id, condition); }
+    public static boolean unregisterCondition(String id) { return HudConditions.unregister(id); }
+
     public static void registerSource(HudStats.Source source) {
         HudStats.register(source);
     }

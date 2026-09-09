@@ -98,10 +98,12 @@ public final class MapResetManager {
             restoreComplete = false;
             return false;
         }
-        BoundingBox resetBox = resetBox();
-        level.clearBlockEvents(resetBox);
-        level.getBlockTicks().clearArea(resetBox);
-        level.getFluidTicks().clearArea(resetBox);
+        for (var part : definition.resetRegion().boxes()) {
+            BoundingBox resetBox = resetBox(part);
+            level.clearBlockEvents(resetBox);
+            level.getBlockTicks().clearArea(resetBox);
+            level.getFluidTicks().clearArea(resetBox);
+        }
         restoreIndex = 0;
         processedBlocks = 0L;
         errorCount = 0;
@@ -262,10 +264,11 @@ public final class MapResetManager {
         if (restorePhase == RestorePhase.BLOCKS) {
             for (; budget > 0 && restoreIndex < snapshot.size(); budget--, restoreIndex++) {
                 BlockPos pos = positionForIndex(restoreIndex);
+                if (!definition.resetRegion().contains(pos)) { processedBlocks++; continue; }
                 try {
                     level.removeBlockEntity(pos);
                     BlockState expected = snapshot.stateAt(restoreIndex);
-                    boolean changed = level.setBlock(pos, expected, Block.UPDATE_ALL);
+                    boolean changed = ResetWriteAccess.run(() -> level.setBlock(pos, expected, Block.UPDATE_ALL));
                     if (!blockStateWasRestored(changed, level.getBlockState(pos).equals(expected))) {
                         throw new IllegalStateException("Block state was not restored");
                     }
@@ -284,6 +287,7 @@ public final class MapResetManager {
             for (; budget > 0 && restoreIndex < blockEntities.size(); budget--, restoreIndex++) {
                 MapSnapshot.BlockEntitySnapshot entry = blockEntities.get(restoreIndex);
                 BlockPos pos = positionForIndex(entry.index());
+                if (!definition.resetRegion().contains(pos)) continue;
                 try {
                     BlockState state = snapshot.stateAt(entry.index());
                     BlockEntity restored = BlockEntity.loadStatic(pos, state, entry.nbt().copy());
@@ -417,8 +421,7 @@ public final class MapResetManager {
         LOGGER.error("地图 {} 初始快照不可用：{}", definition.id(), message);
     }
 
-    private BoundingBox resetBox() {
-        MapDefinition.Region region = definition.resetRegion();
+    private static BoundingBox resetBox(MapDefinition.Region region) {
         return new BoundingBox(
                 region.min().getX(), region.min().getY(), region.min().getZ(),
                 region.max().getX(), region.max().getY(), region.max().getZ());

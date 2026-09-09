@@ -16,6 +16,7 @@ public final class ClientMapEditorData {
     }
 
     public static void apply(MapEditorSyncPacket packet) {
+        BrushTransitions.acknowledge(view, packet.view());
         view = packet.view();
         firstPoint = packet.firstPoint();
         secondPoint = packet.secondPoint();
@@ -23,6 +24,7 @@ public final class ClientMapEditorData {
     }
 
     public static void clear() {
+        BrushTransitions.clear();
         view = empty();
         firstPoint = null;
         secondPoint = null;

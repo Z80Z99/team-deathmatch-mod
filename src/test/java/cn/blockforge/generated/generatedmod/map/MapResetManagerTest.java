@@ -6,6 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MapResetManagerTest {
+    @Test void resetWritePermissionIsScopedEvenWhenRestorationFails() {
+        assertFalse(ResetWriteAccess.active());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> ResetWriteAccess.run(() -> {
+            assertTrue(ResetWriteAccess.active());
+            throw new IllegalStateException("test");
+        }));
+        assertFalse(ResetWriteAccess.active());
+    }
     @Test void rejectedWriteWithWrongStateFailsTheRestore() {
         assertFalse(MapResetManager.blockStateWasRestored(false, false));
     }

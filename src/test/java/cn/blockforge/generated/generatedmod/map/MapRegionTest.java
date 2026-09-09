@@ -12,6 +12,28 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MapRegionTest {
+    @Test void singleBlockEditsPreserveHolesAndDoNotFillGaps() {
+        var cube = new MapDefinition.Region(BlockPos.ZERO, new BlockPos(2, 2, 2));
+        var center = new BlockPos(1, 1, 1);
+        var cut = cube.withBlock(center, false);
+        assertTrue(!cut.contains(center));
+        assertEquals(26, cut.boxes().stream().mapToLong(MapDefinition.Region::volume).sum());
+        assertTrue(cut.contains(new BlockPos(1, 1, 2)));
+        var far = new BlockPos(5, 1, 1);
+        var extended = cut.withBlock(far, true);
+        assertTrue(!extended.contains(new BlockPos(4, 1, 1)));
+        var saved = MapDefinition.regionFromJson(extended.toJson());
+        assertEquals(extended, saved);
+        assertTrue(saved.withBlock(center, true).contains(center));
+        var region = MapRegion.custom("custom", "custom", MapRegion.Type.CUSTOM, saved);
+        var buffer = new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        try {
+            cn.blockforge.generated.generatedmod.network.packet.MapRegionPacket.writeRegion(buffer, region);
+            assertEquals(region, cn.blockforge.generated.generatedmod.network.packet.MapRegionPacket.readRegion(buffer));
+            assertEquals(0, buffer.readableBytes());
+        } finally { buffer.release(); }
+        org.junit.jupiter.api.Assertions.assertNull(new MapDefinition.Region(center, center).withBlock(center, false));
+    }
     @Test void sharedResetFollowsBoundaryThroughEditsCopiesAndJson() {
         var point = new MapDefinition.Region(BlockPos.ZERO, BlockPos.ZERO);
         var map = MapDefinition.incomplete("shared", "shared", Level.OVERWORLD, point)

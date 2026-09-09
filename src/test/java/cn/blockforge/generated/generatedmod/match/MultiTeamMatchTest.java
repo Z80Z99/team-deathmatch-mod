@@ -142,11 +142,12 @@ class MultiTeamMatchTest {
         var stats = Team.playing(4).stream().map(team -> new TeamMatchStats(team, 9, 2, 3, 12, 100)).toList();
         MatchSyncPacket packet = new MatchSyncPacket(MatchState.ROUND_END, 9, 9, 2, 2, 3, 25, 100, 0,
                 Team.TEAM_D, 3, 3, 0, false, Team.TEAM_D, 1, "killer", "victim", 0, 3,
-                1, 2, 3, 4, 100, 100, 12, 12, 200).withTeamStats(stats);
+                1, 2, 3, 4, 100, 100, 12, 12, 200).withTeamStats(stats).withTimers(160, 100);
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
             packet.encode(buffer);
             var decoded = new MatchSyncPacket(buffer);
+            assertEquals(160, decoded.boundaryTicks()); assertEquals(100, decoded.respawnTotalTicks());
             assertEquals(stats, decoded.teamStats()); assertEquals(Team.TEAM_D, decoded.winner());
             cn.blockforge.generated.generatedmod.client.ClientMatchData.apply(decoded);
             assertEquals(Team.TEAM_D, cn.blockforge.generated.generatedmod.client.ClientMatchData.myTeam);
