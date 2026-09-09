@@ -154,9 +154,12 @@ public final class MapManager {
         if (resetManager != null && resetManager.isResetting()) {
             return registry.definitions().size();
         }
+        MapDefinition previousDefinition = current;
         String previous = current == null ? null : current.id();
         int count = registry.reload();
-        current = previous == null ? null : sanitizeSpawns(registry.get(previous).orElse(null));
+        MapDefinition reloaded = previous == null ? null : sanitizeSpawns(registry.get(previous).orElse(null));
+        current = previousDefinition != null && previousDefinition.sameConfiguration(reloaded)
+                ? previousDefinition : reloaded;
         if (current == null) {
             if (resetManager != null) {
                 resetManager.close();

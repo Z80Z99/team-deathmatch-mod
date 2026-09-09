@@ -63,4 +63,42 @@ class SpawnManagerRestartTest {
             verify(level, atLeastOnce()).getChunk(0, 0);
         }
     }
+
+    @Test void equivalentDefinitionReloadKeepsVerifiedSpawnButRealEditInvalidatesIt() throws Exception {
+        var server = mock(MinecraftServer.class);
+        var level = mock(ServerLevel.class);
+        var maps = mock(MapManager.class);
+        var bounds = new MapDefinition.Region(BlockPos.ZERO, new BlockPos(32, 8, 32));
+        var original = new MapDefinition("arena", "arena", Level.OVERWORLD, bounds, bounds,
+                List.of(), List.of(), List.of());
+        var equivalent = new MapDefinition("arena", "arena", Level.OVERWORLD, bounds, bounds,
+                List.of(), List.of(), List.of());
+        var changedBounds = new MapDefinition.Region(BlockPos.ZERO, new BlockPos(48, 8, 48));
+        var changed = new MapDefinition("arena", "arena", Level.OVERWORLD, changedBounds, changedBounds,
+                List.of(), List.of(), List.of());
+        var point = new SpawnPoint(Level.OVERWORLD, 8.5, 2, 8.5, 0, 0);
+        var selected = new java.util.concurrent.atomic.AtomicReference<>(original);
+        when(maps.currentMap()).thenAnswer(call -> Optional.of(selected.get()));
+        when(server.getLevel(Level.OVERWORLD)).thenReturn(level);
+        when(level.getMinBuildHeight()).thenReturn(0);
+        when(level.getMaxBuildHeight()).thenReturn(320);
+        when(level.hasChunkAt(any(BlockPos.class))).thenReturn(true);
+        var restored = new java.util.concurrent.atomic.AtomicBoolean(false);
+        SpawnManager manager = new SpawnManager(server, maps);
+        try (var finder = mockStatic(SafeSpawnFinder.class)) {
+            finder.when(() -> SafeSpawnFinder.safe(any(ServerLevel.class),
+                    any(MapDefinition.Region.class), any(BlockPos.class))).thenAnswer(call -> restored.get());
+            finder.when(() -> SafeSpawnFinder.find(level, original)).thenReturn(Optional.empty());
+            finder.when(() -> SafeSpawnFinder.findForMatchStart(level, original)).thenReturn(Optional.of(point));
+            finder.when(() -> SafeSpawnFinder.find(level, changed)).thenReturn(Optional.empty());
+            finder.when(() -> SafeSpawnFinder.findForMatchStart(level, changed)).thenReturn(Optional.empty());
+            assertEquals(point, manager.prepareRandomSpawnForMatch().orElseThrow());
+            restored.set(true);
+            selected.set(equivalent);
+            assertEquals(point, manager.prepareRandomSpawnForMatch().orElseThrow());
+            restored.set(false);
+            selected.set(changed);
+            org.junit.jupiter.api.Assertions.assertTrue(manager.prepareRandomSpawnForMatch().isEmpty());
+        }
+    }
 }

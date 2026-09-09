@@ -502,6 +502,11 @@ public final class RoomManager {
             room.state(RoomState.OPEN);
             return false;
         }
+        // Read the map JSON again at the start boundary. Identical content keeps the
+        // current verified spawn; external edits enter the normal snapshot validation path.
+        if (room.state() == RoomState.OPEN) {
+            matchManager.maps().reloadMaps();
+        }
         MapDefinition selected = matchManager.maps().registry().get(room.mapId()).orElse(null);
         if (selected != null && !selected.isComplete()) {
             String missing = !selected.hasBounds() && !selected.hasResetRegion() ? "地图边界、重置区域"

@@ -148,9 +148,13 @@ public final class SpawnManager {
             verifiedRandomSpawn = null;
             return Optional.empty();
         }
-        if (verifiedRandomSource != map) {
+        if (verifiedRandomSource != map && (verifiedRandomSource == null
+                || !verifiedRandomSource.sameConfiguration(map))) {
             verifiedRandomSource = map;
             verifiedRandomSpawn = null;
+        } else if (verifiedRandomSource != map) {
+            // A disk reload produced an equivalent object; retain the verified point.
+            verifiedRandomSource = map;
         }
         if (verifiedRandomSpawn != null) {
             BlockPos feet = BlockPos.containing(verifiedRandomSpawn.x(), verifiedRandomSpawn.y(), verifiedRandomSpawn.z());
