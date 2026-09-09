@@ -6,6 +6,7 @@ import net.minecraft.client.CameraType;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraftforge.client.gui.overlay.ForgeGui;
 
+import java.lang.reflect.Method;
 import java.util.Optional;
 
 /** Lightweight death treatment over the live world, without camera or shader mutation. */
@@ -14,6 +15,8 @@ public final class RespawnOverlay {
     private RespawnOverlay() { }
     private static CameraType previousCamera;
     private static boolean cameraLocked;
+    private static boolean ragdollSpawned;
+    private static Boolean visibilityBeforeRagdoll;
     private static int requestCooldown;
     private static double now() { return System.nanoTime() / 1_000_000_000.0; }
     public static boolean eligible() {
@@ -25,13 +28,18 @@ public final class RespawnOverlay {
     public static boolean shouldLockViewInput() {
         return ClientMatchData.awaitingRespawn && eligible();
     }
-    public static void onDeathScreen() { TIMELINE.provisionalDeath(now()); }
+    public static void onDeathScreen() {
+        TIMELINE.provisionalDeath(now());
+        spawnPhysicsRagdoll();
+    }
     public static boolean deathActive() { return TIMELINE.deathActive(); }
     public static boolean returning() { return TIMELINE.returning(); }
     public static void clear() {
         if (cameraLocked) restoreCamera(Minecraft.getInstance());
+        restorePlayerVisibility();
         TIMELINE.clear();
         requestCooldown = 0;
+        ragdollSpawned = false;
     }
     public static void tick() {
         Minecraft mc = Minecraft.getInstance();
@@ -52,6 +60,8 @@ public final class RespawnOverlay {
             mc.player.setDeltaMovement(0, 0, 0);
         } else {
             restoreCamera(mc);
+            restorePlayerVisibility();
+            ragdollSpawned = false;
         }
     }
 
@@ -67,6 +77,34 @@ public final class RespawnOverlay {
         if (mc != null && mc.options != null && previousCamera != null) mc.options.setCameraType(previousCamera);
         previousCamera = null;
         cameraLocked = false;
+    }
+
+    /**
+     * Physics Mod creates its ragdoll from the client-side death call. The local player normally
+     * becomes a spectator immediately in this mode, so invoke its public renderer hook once and
+     * hide only the standing local model while the fixed death camera is active.
+     */
+    private static void spawnPhysicsRagdoll() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (ragdollSpawned || minecraft.player == null || minecraft.level == null) return;
+        try {
+            Class<?> physics = Class.forName("net.diebuddies.physics.PhysicsMod");
+            Method blockify = physics.getMethod("blockifyEntity", net.minecraft.world.level.Level.class,
+                    net.minecraft.world.entity.LivingEntity.class);
+            blockify.invoke(null, minecraft.level, minecraft.player);
+            visibilityBeforeRagdoll = minecraft.player.isInvisible();
+            minecraft.player.setInvisible(true);
+            ragdollSpawned = true;
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            // Physics Mod is optional. Vanilla death handling stays unchanged when it is absent.
+        }
+    }
+
+    private static void restorePlayerVisibility() {
+        if (visibilityBeforeRagdoll == null) return;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player != null) minecraft.player.setInvisible(visibilityBeforeRagdoll);
+        visibilityBeforeRagdoll = null;
     }
 
     public static void render(ForgeGui gui, GuiGraphics graphics, float partial, int width, int height) {
