@@ -26,7 +26,7 @@ public final class RespawnOverlay {
     public static boolean active() { return TIMELINE.phase() != RespawnTimeline.Phase.HIDDEN; }
     /** The mouse handler consumes look deltas while the death camera owns the view. */
     public static boolean shouldLockViewInput() {
-        return ClientMatchData.awaitingRespawn && eligible();
+        return eligible() && (ClientMatchData.awaitingRespawn || (active() && !returning()));
     }
     public static void onDeathScreen() {
         TIMELINE.provisionalDeath(now());
@@ -46,13 +46,16 @@ public final class RespawnOverlay {
         if (mc.player == null || mc.getConnection() == null) { clear(); return; }
         TIMELINE.update(eligible(), ClientMatchData.awaitingRespawn,
                 mc.player.isAlive() && !mc.player.isSpectator(), now());
-        if (ClientMatchData.awaitingRespawn) {
+        boolean observingDeath = ClientMatchData.awaitingRespawn || (active() && !returning());
+        if (observingDeath) {
             lockCamera(mc);
+            if (ragdollSpawned) mc.player.setInvisible(true);
             boolean movement = mc.options.keyUp.isDown() || mc.options.keyDown.isDown()
                     || mc.options.keyLeft.isDown() || mc.options.keyRight.isDown()
                     || mc.options.keyJump.isDown();
             if (requestCooldown > 0) requestCooldown--;
-            if (ClientMatchData.respawnRemainingTicks <= 0 && movement && requestCooldown == 0) {
+            if (ClientMatchData.awaitingRespawn && ClientMatchData.respawnRemainingTicks <= 0
+                    && movement && requestCooldown == 0) {
                 cn.blockforge.generated.generatedmod.network.FpsTdmNetwork.sendToServer(
                         new cn.blockforge.generated.generatedmod.network.packet.RespawnRequestPacket());
                 requestCooldown = 10;

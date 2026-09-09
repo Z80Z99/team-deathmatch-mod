@@ -6,7 +6,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.phys.Vec3;
@@ -15,7 +14,7 @@ import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/** A short, pulsing red outline appears only where the player is close to the playable boundary. */
+/** A translucent red plane appears only where the player is close to the playable boundary. */
 @Mod.EventBusSubscriber(modid = GeneratedMod.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class BoundaryEdgeRenderer {
     private static final double RANGE = 3.0D;
@@ -36,27 +35,60 @@ public final class BoundaryEdgeRenderer {
         PoseStack pose = event.getPoseStack();
         pose.pushPose();
         pose.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
-        VertexConsumer lines = BUFFERS.getBuffer(RenderType.lines());
+        VertexConsumer planes = BUFFERS.getBuffer(RenderType.debugQuads());
         RenderSystem.disableDepthTest();
-        float pulse = 0.72F + 0.28F * (float) Math.sin((minecraft.player.tickCount + event.getPartialTick()) * 0.35D);
         double minX = ClientMatchData.boundaryMinX, minY = ClientMatchData.boundaryMinY, minZ = ClientMatchData.boundaryMinZ;
         double maxX = ClientMatchData.boundaryMaxX + 1.0D, maxY = ClientMatchData.boundaryMaxY + 2.0D, maxZ = ClientMatchData.boundaryMaxZ + 1.0D;
         double y0 = Math.max(minY, y - RANGE), y1 = Math.min(maxY, y + RANGE);
         double x0 = Math.max(minX, x - RANGE), x1 = Math.min(maxX, x + RANGE);
         double z0 = Math.max(minZ, z - RANGE), z1 = Math.min(maxZ, z + RANGE);
-        if (Math.abs(x - minX) <= RANGE) box(pose, lines, minX, y0, z0, minX + .04D, y1, z1, pulse);
-        if (Math.abs(x - maxX) <= RANGE) box(pose, lines, maxX - .04D, y0, z0, maxX, y1, z1, pulse);
-        if (Math.abs(z - minZ) <= RANGE) box(pose, lines, x0, y0, minZ, x1, y1, minZ + .04D, pulse);
-        if (Math.abs(z - maxZ) <= RANGE) box(pose, lines, x0, y0, maxZ - .04D, x1, y1, maxZ, pulse);
-        if (Math.abs(y - minY) <= RANGE) box(pose, lines, x0, minY, z0, x1, minY + .04D, z1, pulse);
-        if (Math.abs(y - maxY) <= RANGE) box(pose, lines, x0, maxY - .04D, z0, x1, maxY, z1, pulse);
+        planeX(pose, planes, minX, y0, y1, z0, z1, proximity(x, minX));
+        planeX(pose, planes, maxX, y0, y1, z0, z1, proximity(x, maxX));
+        planeZ(pose, planes, minZ, x0, x1, y0, y1, proximity(z, minZ));
+        planeZ(pose, planes, maxZ, x0, x1, y0, y1, proximity(z, maxZ));
+        planeY(pose, planes, minY, x0, x1, z0, z1, proximity(y, minY));
+        planeY(pose, planes, maxY, x0, x1, z0, z1, proximity(y, maxY));
         BUFFERS.endBatch();
         RenderSystem.enableDepthTest();
         pose.popPose();
     }
 
-    private static void box(PoseStack pose, VertexConsumer lines, double minX, double minY, double minZ,
-                            double maxX, double maxY, double maxZ, float alpha) {
-        LevelRenderer.renderLineBox(pose, lines, minX, minY, minZ, maxX, maxY, maxZ, 1.0F, 0.08F, 0.10F, alpha);
+    private static float proximity(double coordinate, double plane) {
+        double distance = Math.abs(coordinate - plane);
+        if (distance > RANGE) return 0.0F;
+        float near = (float) (1.0D - distance / RANGE);
+        return 0.08F + 0.52F * near * near;
+    }
+
+    private static void planeX(PoseStack pose, VertexConsumer out, double x, double y0, double y1,
+                               double z0, double z1, float alpha) {
+        if (alpha <= 0 || y1 <= y0 || z1 <= z0) return;
+        vertex(pose, out, x, y0, z0, alpha); vertex(pose, out, x, y1, z0, alpha);
+        vertex(pose, out, x, y1, z1, alpha); vertex(pose, out, x, y0, z1, alpha);
+        vertex(pose, out, x, y0, z1, alpha); vertex(pose, out, x, y1, z1, alpha);
+        vertex(pose, out, x, y1, z0, alpha); vertex(pose, out, x, y0, z0, alpha);
+    }
+
+    private static void planeY(PoseStack pose, VertexConsumer out, double y, double x0, double x1,
+                               double z0, double z1, float alpha) {
+        if (alpha <= 0 || x1 <= x0 || z1 <= z0) return;
+        vertex(pose, out, x0, y, z0, alpha); vertex(pose, out, x1, y, z0, alpha);
+        vertex(pose, out, x1, y, z1, alpha); vertex(pose, out, x0, y, z1, alpha);
+        vertex(pose, out, x0, y, z1, alpha); vertex(pose, out, x1, y, z1, alpha);
+        vertex(pose, out, x1, y, z0, alpha); vertex(pose, out, x0, y, z0, alpha);
+    }
+
+    private static void planeZ(PoseStack pose, VertexConsumer out, double z, double x0, double x1,
+                               double y0, double y1, float alpha) {
+        if (alpha <= 0 || x1 <= x0 || y1 <= y0) return;
+        vertex(pose, out, x0, y0, z, alpha); vertex(pose, out, x1, y0, z, alpha);
+        vertex(pose, out, x1, y1, z, alpha); vertex(pose, out, x0, y1, z, alpha);
+        vertex(pose, out, x0, y1, z, alpha); vertex(pose, out, x1, y1, z, alpha);
+        vertex(pose, out, x1, y0, z, alpha); vertex(pose, out, x0, y0, z, alpha);
+    }
+
+    private static void vertex(PoseStack pose, VertexConsumer out, double x, double y, double z, float alpha) {
+        out.vertex(pose.last().pose(), (float) x, (float) y, (float) z)
+                .color(1.0F, 0.02F, 0.04F, alpha).endVertex();
     }
 }
