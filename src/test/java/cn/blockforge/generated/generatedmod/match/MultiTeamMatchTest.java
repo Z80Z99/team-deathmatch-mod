@@ -84,8 +84,8 @@ class MultiTeamMatchTest {
         when(definition.isComplete()).thenReturn(true);
         when(maps.currentMap()).thenReturn(Optional.of(definition));
         when(maps.isReady()).thenReturn(true);
-        for (Team team : Team.playing(3)) when(spawns.getSpawns(team))
-                .thenReturn(List.of(mock(cn.blockforge.generated.generatedmod.spawn.SpawnPoint.class)));
+        for (Team team : Team.playing(3)) when(spawns.findFixedSpawn(team))
+                .thenReturn(Optional.of(mock(cn.blockforge.generated.generatedmod.spawn.SpawnPoint.class)));
         set(match, "maps", maps); set(match, "spawns", spawns); set(match, "teams", teams);
         set(match, "state", MatchState.WAITING); match.configureRoomTeams(4);
         assertEquals(MatchManager.StartResult.NO_TEAM_SPAWNS, match.startMatch(List.of(UUID.randomUUID())));
@@ -101,6 +101,7 @@ class MultiTeamMatchTest {
         MatchManager match = mock(MatchManager.class);
         when(match.activeTeams()).thenReturn(Team.playing(4));
         when(match.hasRoomTeamSelection()).thenReturn(true);
+        when(match.rulesAutoBalanceMode()).thenReturn(AutoBalanceMode.OFF);
         List<ServerPlayer> players = new ArrayList<>();
         for (int i = 0; i < 6; i++) {
             ServerPlayer player = mock(ServerPlayer.class); UUID id = UUID.randomUUID();
@@ -114,6 +115,11 @@ class MultiTeamMatchTest {
         teams.prepareRoster(players.stream().map(ServerPlayer::getUUID).toList());
         for (int i = 0; i < players.size(); i++) assertEquals(Team.playing(4).get(Math.min(i, 3)), teams.getTeam(players.get(i)));
         assertEquals(6, teams.totalParticipants());
+        when(match.rulesAutoBalanceMode()).thenReturn(AutoBalanceMode.ON_MATCH_START);
+        teams.prepareForMatch();
+        var sizes = Team.playing(4).stream().mapToInt(teams::teamSize).summaryStatistics();
+        assertTrue(sizes.getMax() - sizes.getMin() <= 1);
+        assertEquals(6, sizes.getSum());
     }
 
     @Test void randomSpawningChecksSafetyInsteadOfConfiguredTeamPoints() throws Exception {

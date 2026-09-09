@@ -189,11 +189,11 @@ public final class TeamManager {
             Team preferred = preferences.getOrDefault(playerId, suggestTeam());
             setTeamInternal(player, matchManager.activeTeams().contains(preferred) ? preferred : suggestTeam());
         }
-        if (!matchManager.hasRoomTeamSelection()) balanceTeamsAtMatchStart();
+        if (matchManager.rulesAutoBalanceMode().balancesOnMatchStart()) balanceTeamsAtMatchStart();
     }
 
     public void prepareForMatch() {
-        if (!matchManager.hasRoomTeamSelection() && matchManager.rulesAutoBalanceMode().balancesOnMatchStart()) {
+        if (matchManager.rulesAutoBalanceMode().balancesOnMatchStart()) {
             balanceTeamsAtMatchStart();
         }
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -205,44 +205,18 @@ public final class TeamManager {
     }
 
     public void balanceTeamsAtMatchStart() {
-        if (matchManager.hasRoomTeamSelection()) return;
-        List<ServerPlayer> participants = new ArrayList<>();
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            if (getTeam(player).isPlayable()) {
-                if (!matchManager.activeTeams().contains(getTeam(player))) setTeamInternal(player, suggestTeam());
-                participants.add(player);
-            }
-        }
-        participants.sort(Comparator.comparing(player -> player.getUUID().toString()));
-        if (participants.isEmpty()) {
-            return;
-        }
-        int a = teamSize(Team.TEAM_A);
-        int b = teamSize(Team.TEAM_B);
-        if (a == 0 || b == 0) {
-            for (int i = 0; i < participants.size(); i++) {
-                setTeamInternal(participants.get(i), i % 2 == 0 ? Team.TEAM_A : Team.TEAM_B);
-            }
-            return;
-        }
-        int maximumDifference = effectiveImbalance(a + b, matchManager.rulesMaxTeamImbalance());
-        while (Math.abs(a - b) > maximumDifference) {
-            Team from = a > b ? Team.TEAM_A : Team.TEAM_B;
-            Team to = from == Team.TEAM_A ? Team.TEAM_B : Team.TEAM_A;
-            ServerPlayer candidate = participants.stream()
-                    .filter(player -> getTeam(player) == from)
-                    .findFirst().orElse(null);
-            if (candidate == null) {
-                break;
-            }
-            setTeamInternal(candidate, to);
-            if (from == Team.TEAM_A) {
-                a--;
-                b++;
-            } else {
-                b--;
-                a++;
-            }
+        List<Team> enabled = matchManager.activeTeams();
+        int maximumDifference = Math.max(1, matchManager.rulesMaxTeamImbalance());
+        while (true) {
+            Team smallest = enabled.stream().min(Comparator.comparingInt(this::teamSize)).orElseThrow();
+            Team largest = enabled.stream().max(Comparator.comparingInt(this::teamSize)).orElseThrow();
+            if (teamSize(largest) - teamSize(smallest) <= maximumDifference
+                    && (teamSize(smallest) > 0 || teamSize(largest) <= 1)) return;
+            ServerPlayer candidate = server.getPlayerList().getPlayers().stream()
+                    .filter(player -> getTeam(player) == largest && !isPending(player))
+                    .min(Comparator.comparing(player -> player.getUUID().toString())).orElse(null);
+            if (candidate == null) return;
+            setTeamInternal(candidate, smallest);
         }
     }
 
@@ -308,6 +282,8 @@ public final class TeamManager {
     }
 
     private Team selectJoinTeam(Team desired) {
+        if (matchManager.rulesAutoBalanceMode().balancesOnJoin()) return suggestTeam();
+        if (matchManager.activeTeams().contains(desired)) return desired;
         if (!matchManager.activeTeams().contains(desired)) {
             desired = suggestTeam();
         }

@@ -211,12 +211,11 @@ public final class MatchManager {
     }
 
     public int rulesRoundWinTarget() {
-        return roomRules != null ? roomRules.roundWinTarget() : FpsTdmConfig.COMMON.roundWinTarget.get();
+        return rulesMode() == GameMode.SEARCH_DESTROY && roomRules != null ? roomRules.roundWinTarget() : 1;
     }
 
     public int rulesWarmupSeconds() {
-        return roomRules != null ? roomRules.warmupDurationSeconds()
-                : FpsTdmConfig.COMMON.warmupDurationSeconds.get();
+        return 10;
     }
 
     public int rulesRespawnDelaySeconds() {
@@ -226,10 +225,7 @@ public final class MatchManager {
 
     /** 爆破与歼灭模式整回合不复活；规则快照缺失时同样关闭。 */
     public boolean rulesAutoRespawn() {
-        if (roomRules == null) {
-            return FpsTdmConfig.COMMON.autoRespawnEnabled.get();
-        }
-        return roomRules.mode().respawnRules() && roomRules.autoRespawn();
+        return rulesMode().respawnRules();
     }
 
     /** 歼灭类模式：阵亡会被拦截成“锁定在本回合”，而不是原版死亡。 */
@@ -268,13 +264,11 @@ public final class MatchManager {
     }
 
     public boolean rulesKeepInventoryOnDeath() {
-        return roomRules != null ? roomRules.keepInventoryOnDeath()
-                : FpsTdmConfig.COMMON.keepInventoryOnDeath.get();
+        return rulesMode() != GameMode.SEARCH_DESTROY;
     }
 
     public boolean rulesSuppressDeathMessages() {
-        return roomRules != null ? roomRules.suppressDeathMessages()
-                : FpsTdmConfig.COMMON.suppressDeathMessages.get();
+        return true;
     }
 
     public boolean rulesAutoReset() {
@@ -282,8 +276,7 @@ public final class MatchManager {
     }
 
     public boolean rulesRequireBothTeams() {
-        return roomRules != null ? roomRules.requireBothTeams()
-                : FpsTdmConfig.COMMON.requireBothTeams.get();
+        return false;
     }
 
     /** 比赛中途加入开关属于服务器大厅流程配置，房间不单独覆盖。 */
@@ -311,8 +304,9 @@ public final class MatchManager {
     }
 
     public SpawnSelectionStrategy rulesSpawnStrategy() {
-        return roomRules != null ? roomRules.spawnSelectionStrategy()
+        SpawnSelectionStrategy strategy = roomRules != null ? roomRules.spawnSelectionStrategy()
                 : FpsTdmConfig.COMMON.spawnSelectionStrategy.get();
+        return strategy == SpawnSelectionStrategy.FARTHEST_FROM_ENEMIES ? SpawnSelectionStrategy.RANDOM : strategy;
     }
 
     public int rulesMaxTeamImbalance() {
@@ -367,7 +361,7 @@ public final class MatchManager {
             return StartResult.NO_SAFE_RANDOM_SPAWN;
         }
         if (rulesSpawnStrategy() != SpawnSelectionStrategy.RANDOM
-                && activeTeams().stream().anyMatch(team -> spawns.getSpawns(team).isEmpty())) {
+                && activeTeams().stream().anyMatch(team -> spawns.findFixedSpawn(team).isEmpty())) {
             return StartResult.NO_TEAM_SPAWNS;
         }
         if (rulesTargetKills() <= 0 && rulesMatchDurationSeconds() <= 0) {
@@ -376,13 +370,7 @@ public final class MatchManager {
 
         if (roster != null) {
             teams.prepareRoster(roster);
-        } else {
-            teams.balanceTeamsAtMatchStart();
-        }
-        if (activeTeams().stream().anyMatch(team -> teams.teamSize(team) == 0)) {
-            if (roomTeamSelection || rulesRequireBothTeams()) {
-                return StartResult.NEED_BOTH_TEAMS;
-            }
+        } else if (rulesAutoBalanceMode().balancesOnMatchStart()) {
             teams.balanceTeamsAtMatchStart();
         }
         if (teams.totalParticipants() == 0) {
@@ -407,7 +395,7 @@ public final class MatchManager {
         extraWins.clear();
         resetFailureNotified = false;
         beginWarmup(true);
-        broadcastSystemMessage("比赛已创建，第 1 回合即将开始。", false);
+        broadcastSystemMessage("比赛已创建，正在等待玩家进入热身。", false);
         return StartResult.STARTED;
     }
 
@@ -462,6 +450,16 @@ public final class MatchManager {
         rooms.tick();
         mapEditor.tick();
 
+        if (state == MatchState.WARMUP) {
+            int minimum = roomRules == null ? 2 : Math.max(2, roomRules.minPlayersToStart());
+            long previous = phaseEndTick;
+            phaseEndTick = warmupDeadline(previous, teams.totalParticipants(), minimum, server.getTickCount());
+            if (phaseEndTick != previous) {
+                broadcastSystemMessage(phaseEndTick == 0L ? "人数不足，继续热身等待。"
+                        : "人数已满足，比赛将在 10 秒后开始。", false);
+                broadcastMatchState();
+            }
+        }
         if (state == MatchState.WARMUP && phaseEndTick > 0L && server.getTickCount() >= phaseEndTick) {
             beginPlaying();
         } else if (state == MatchState.PLAYING && phaseEndTick > 0L
@@ -480,13 +478,17 @@ public final class MatchManager {
             resetToWaiting();
         }
 
-        spawns.tickRandomSpawns((state == MatchState.PLAYING || state == MatchState.WARMUP)
-                && rulesSpawnStrategy() == SpawnSelectionStrategy.RANDOM);
+        spawns.tickRandomSpawns(state == MatchState.PLAYING || state == MatchState.WARMUP, rulesSpawnStrategy());
         processDownedPlayers();
         enforceArenaRules();
         if (server.getTickCount() % stateBroadcastInterval(isMatchActive()) == 0) {
             broadcastMatchState();
         }
+    }
+
+    static long warmupDeadline(long deadline, int players, int minimum, long now) {
+        if (players < Math.max(2, minimum)) return 0L;
+        return deadline == 0L ? now + 200L : deadline;
     }
 
     static int stateBroadcastInterval(boolean matchActive) {
@@ -507,6 +509,7 @@ public final class MatchManager {
         if (!victimTeam.isPlayable() || amount < victim.getHealth()) {
             return false;
         }
+        if (!rulesKeepInventoryOnDeath()) victim.getInventory().dropAll();
         boolean roundFinished = creditKill(victim, victimTeam, source);
         if (!roundFinished) {
             scheduleDowned(victim, victimTeam);
@@ -532,7 +535,7 @@ public final class MatchManager {
     /** 统一处理击杀记分、公告与回合终点判定。返回 true 表示回合已结束。 */
     private boolean creditKill(ServerPlayer victim, Team victimTeam, DamageSource source) {
         boundaryCountdown.update(victim.getUUID(), false, server.getTickCount());
-        if (rulesSpawnStrategy() == SpawnSelectionStrategy.RANDOM) spawns.refreshRandomSpawnsAfterDeath();
+        spawns.refreshRandomSpawnsAfterDeath();
         ServerPlayer killer = resolveKiller(source);
         Team killerTeam = killer == null ? Team.SPECTATOR : teams.getTeam(killer);
         if (killer != null && killer != victim && killerTeam.isPlayable() && killerTeam != victimTeam) {
@@ -689,7 +692,7 @@ public final class MatchManager {
             spawns.teleportToSpectator(player);
             return;
         }
-        player.setInvulnerable(false);
+        player.setInvulnerable(state == MatchState.WARMUP);
         healAndReady(player);
         spawns.teleportToTeamSpawn(player, spawnGroupFor(team), rulesSpawnStrategy());
         broadcastSystemMessage(player.getGameProfile().getName() + " 中途加入了比赛（"
@@ -866,7 +869,7 @@ public final class MatchManager {
         downedPlayers.clear();
         state = MatchState.WARMUP;
         roundWinner = null;
-        phaseEndTick = server.getTickCount() + secondsToTicks(rulesWarmupSeconds());
+        phaseEndTick = 0L;
         SpawnSelectionStrategy strategy = rulesSpawnStrategy();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             Team team = teams.getTeam(player);
@@ -882,12 +885,14 @@ public final class MatchManager {
                 spawns.teleportToSpectator(player);
             }
         }
-        broadcastSystemMessage("热身阶段开始，请准备第 " + roundNumber + " 回合。"
+        broadcastSystemMessage("热身阶段开始，等待足够玩家加入。"
                 + (sidesSwappedThisRound() ? "（本回合双方换边）" : ""), false);
         broadcastMatchState();
     }
 
     private void beginPlaying() {
+        if (rulesAutoBalanceMode().balancesOnMatchStart()) teams.balanceTeamsAtMatchStart();
+        scores.resetRound();
         state = MatchState.PLAYING;
         phaseEndTick = rulesMatchDurationSeconds() <= 0
                 ? 0L
@@ -898,9 +903,10 @@ public final class MatchManager {
                 player.setGameMode(GameType.SURVIVAL);
                 player.setInvulnerable(false);
                 healAndReady(player);
+                spawns.teleportToTeamSpawn(player, spawnGroupFor(team), rulesSpawnStrategy());
             }
         }
-        broadcastSystemMessage("比赛开始，回合 " + roundNumber + "！", false);
+        broadcastSystemMessage(rulesMode() == GameMode.TEAM_DEATHMATCH ? "团队竞技开始！" : "比赛开始，回合 " + roundNumber + "！", false);
         playPhaseSound();
         broadcastMatchState();
     }
@@ -1020,7 +1026,7 @@ public final class MatchManager {
             return;
         }
         broadcastSystemMessage("地图恢复完成。", false);
-        if (pendingMatchWinner != null) {
+        if (pendingMatchWinner != null || rulesMode() != GameMode.SEARCH_DESTROY) {
             enterMatchEnd(pendingMatchWinner);
             return;
         }
@@ -1097,11 +1103,15 @@ public final class MatchManager {
             if (now < entry.releaseTick()) {
                 continue;
             }
+            if (now % 20 != 0) continue;
+            if (!spawns.tryTeleportToTeamSpawn(player, spawnGroupFor(entry.team()), rulesSpawnStrategy())) {
+                if (now % 100 == 0) player.displayClientMessage(Component.literal("等待安全复活位置…"), true);
+                continue;
+            }
             downedPlayers.remove(entry.playerId());
             player.setInvulnerable(false);
             player.invulnerableTime = 0;
             healAndReady(player);
-            spawns.teleportToTeamSpawn(player, spawnGroupFor(entry.team()), rulesSpawnStrategy());
             player.displayClientMessage(Component.literal("状态已恢复，继续作战。"), true);
         }
     }

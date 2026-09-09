@@ -100,9 +100,6 @@ public final class RoomScreen extends UiScreen {
         if (!ClientLobbyData.ownOwner()) return "等待房主开始比赛";
         if (ClientLobbyData.matchActive()) return "等待服务器当前比赛结束";
         if (room.mapId() == null || room.mapId().isBlank() || "未选择".equals(room.mapId())) return "尚未选择比赛地图";
-        int missing = room.rules().minPlayersToStart() - room.memberCount();
-        if (missing > 0) return "还需 " + missing + " 名玩家";
-        if (teams().stream().anyMatch(team -> !room.memberTeams().containsValue(team))) return "每支队伍至少需要一人";
         return "可以开始比赛";
     }
     private void updateButtons() {

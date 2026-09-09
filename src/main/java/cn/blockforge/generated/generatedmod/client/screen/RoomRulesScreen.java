@@ -25,7 +25,7 @@ import net.minecraft.network.chat.Component;
 import java.util.List;
 
 /**
- * 房间规则设置：原“团队死斗配置”与“房间参数”的比赛项已合并到这里，
+ * 房间规则设置：原“团队竞技配置”与“房间参数”的比赛项已合并到这里，
  * 每间房间独立一份、随房间解散销毁。顶部先选游戏模式，
  * 表单只展示当前模式适用的设置项（不适用的行整行隐藏）；
  * 只有房主可以修改，其他成员打开时全表单只读。
@@ -152,10 +152,10 @@ public final class RoomRulesScreen extends UiScreen {
                     setStatus("已切换为「" + value.displayName() + "」，设置项已按模式重置。", UiTheme.INFO);
                 }, "切换后本模式的设置项会重置为推荐模板，共享项保持不变。", editable);
         minPlayersBox = integer(0, 1, "最少开赛人数", current.minPlayersToStart(), 2, editable,
-                "房间达到该人数才允许开赛（1～32，每间房独立）。");
+                "可单人进入热身；达到该人数后开始 10 秒倒计时（2～32）。");
 
         targetBox = integer(1, 0, "击杀目标（0=不限）", current.targetKills(), 4, editable,
-                "团队死斗：单回合率先累计到的击杀数。");
+                "团队竞技：单回合率先累计到的击杀数。");
         durationBox = integer(1, 1, durationLabel(current.mode()), current.matchDurationSeconds(), 5,
                 editable, durationTooltip(current.mode()));
         winBox = integer(2, 0, winLabel(current.mode()), current.roundWinTarget(), 2, editable,
@@ -164,7 +164,7 @@ public final class RoomRulesScreen extends UiScreen {
                 "开赛前双方自由活动的热身时间（0～300）。");
 
         respawnBox = integer(3, 0, "阵亡恢复/秒", current.respawnDelaySeconds(), 2, editable,
-                "团队死斗：阵亡后恢复作战的等待时间。");
+                "团队竞技：阵亡后恢复作战的等待时间。");
         autoRespawnToggle = bool(3, 1, "允许自动复活", current.autoRespawn(), editable);
         switchBox = integer(4, 0, "换边间隔/回合", current.switchSideEvery(), 2,
                 editable && (ownRoom() == null || ownRoom().teamCount() == 2),
@@ -184,8 +184,8 @@ public final class RoomRulesScreen extends UiScreen {
                 current.teamChangePolicy(), RoomRulesScreen::teamChangeName, null, null, editable);
         balanceCycle = cycle(8, 1, "自动平衡", List.of(AutoBalanceMode.values()),
                 current.autoBalanceMode(), RoomRulesScreen::balanceName, null,
-                "房间开赛保留手动选队，不会自动改队；此项保留为服务器默认规则。", false);
-        spawnCycle = cycle(9, 0, "出生点策略", List.of(SpawnSelectionStrategy.values()),
+                "按所选时机平衡所有队伍的人数。", editable);
+        spawnCycle = cycle(9, 0, "复活策略", List.of(SpawnSelectionStrategy.SEQUENTIAL, SpawnSelectionStrategy.RANDOM),
                 current.spawnSelectionStrategy(), RoomRulesScreen::spawnName, null, null, editable);
         imbalanceBox = integer(9, 1, "队伍最大人数差", current.maxTeamImbalance(), 1, editable,
                 "比赛中换队或补位时的最大队伍人数差；房间内手动选队不受此值限制。");
@@ -211,7 +211,7 @@ public final class RoomRulesScreen extends UiScreen {
 
     private String durationLabel(GameMode mode) {
         return switch (mode) {
-            case TEAM_DEATHMATCH -> "回合时长/秒（0=不限）";
+            case TEAM_DEATHMATCH -> "比赛时长/秒（0=不限）";
             case SEARCH_DESTROY -> "回合时长/秒";
             case LAST_STANDING -> "总时长/秒";
         };
@@ -219,7 +219,7 @@ public final class RoomRulesScreen extends UiScreen {
 
     private String durationTooltip(GameMode mode) {
         return switch (mode) {
-            case TEAM_DEATHMATCH -> "单回合最长时间，击杀目标先到即回合结束。";
+            case TEAM_DEATHMATCH -> "比赛最长时间，击杀目标先到即结束比赛。";
             case SEARCH_DESTROY -> "每回合限时；时间到按存活人数判定该回合胜者。";
             case LAST_STANDING -> "整局限时；时间到按存活人数判定胜者。";
         };
@@ -249,7 +249,10 @@ public final class RoomRulesScreen extends UiScreen {
     }
 
     private boolean rowVisible(GameMode mode, int row) {
-        if (row == 0) return true;
+        if (row == 0) return category == 0;
+        if (row == 6) return false;
+        if (row == 2 && mode != GameMode.SEARCH_DESTROY) return false;
+        if (row == 5 && mode == GameMode.TEAM_DEATHMATCH) return false;
         if (row == 3 && !mode.respawnRules()) return false;
         return switch (category) {
             case 0 -> row == 1 || row == 2 || row == 5;
@@ -266,11 +269,10 @@ public final class RoomRulesScreen extends UiScreen {
         setRowY(minPlayersBox, 0);
         setRowY(targetBox, 1, draft != null && draft.mode().respawnRules());
         setRowY(durationBox, 1);
-        setRowY(winBox, 2, draft != null && (draft.mode() == GameMode.SEARCH_DESTROY
-                || draft.mode() == GameMode.TEAM_DEATHMATCH));
-        setRowY(warmupBox, 2);
+        setRowY(winBox, 2, draft != null && (draft.mode() == GameMode.SEARCH_DESTROY));
+        setRowY(warmupBox, 2, false);
         setRowY(respawnBox, 3, draft != null && draft.mode().respawnRules());
-        setRowY(autoRespawnToggle, 3, draft != null && draft.mode().respawnRules());
+        setRowY(autoRespawnToggle, 3, false);
         setRowY(switchBox, 4, draft != null && draft.mode().roundSwapping());
         setRowY(friendlyFireToggle, 4);
         setRowY(roundEndDelayBox, 5);
@@ -278,7 +280,7 @@ public final class RoomRulesScreen extends UiScreen {
         setRowY(keepInventoryToggle, 6);
         setRowY(suppressDeathToggle, 6);
         setRowY(autoResetToggle, 7);
-        setRowY(requireBothToggle, 7);
+        setRowY(requireBothToggle, 7, false);
         setRowY(teamChangeCycle, 8);
         setRowY(balanceCycle, 8);
         setRowY(spawnCycle, 9);
@@ -304,7 +306,7 @@ public final class RoomRulesScreen extends UiScreen {
         respawnBox.visible = mode.respawnRules();
         autoRespawnToggle.visible = mode.respawnRules();
         switchBox.visible = mode.roundSwapping();
-        winBox.visible = mode == GameMode.SEARCH_DESTROY || mode == GameMode.TEAM_DEATHMATCH;
+        winBox.visible = mode == GameMode.SEARCH_DESTROY;
         durationBox.setMessage(Component.literal(durationLabel(mode)));
         if (modeCycle != null) modeCycle.setValue(mode);
         applyRuleScroll();
@@ -531,16 +533,16 @@ public final class RoomRulesScreen extends UiScreen {
         }
         if (row == 2) {
             if (column == 0) {
-                return mode == GameMode.SEARCH_DESTROY || mode == GameMode.TEAM_DEATHMATCH
+                return mode == GameMode.SEARCH_DESTROY
                         ? winLabel(mode) : null;
             }
-            return "热身时长/秒";
+            return null;
         }
         if (row == 3) {
             if (column == 0) {
                 return mode.respawnRules() ? "阵亡恢复/秒" : null;
             }
-            return mode.respawnRules() ? "自动复活" : null;
+            return null;
         }
         if (row == 4) {
             if (column == 0) {
@@ -555,12 +557,12 @@ public final class RoomRulesScreen extends UiScreen {
             return column == 0 ? "死亡保留背包" : "隐藏死亡消息";
         }
         if (row == 7) {
-            return column == 0 ? "赛后自动复位" : "要求两队达标";
+            return column == 0 ? "赛后自动复位" : null;
         }
         if (row == 8) {
             return column == 0 ? "换队政策" : "自动平衡";
         }
-        return column == 0 ? "出生点策略" : "两队最大人数差";
+        return column == 0 ? "复活策略" : "队伍最大人数差";
     }
 
     private static String teamChangeName(TeamChangePolicy value) {
@@ -582,9 +584,9 @@ public final class RoomRulesScreen extends UiScreen {
 
     private static String spawnName(SpawnSelectionStrategy value) {
         return switch (value) {
-            case SEQUENTIAL -> "顺序";
-            case RANDOM -> "地图内安全随机";
-            case FARTHEST_FROM_ENEMIES -> "远离敌人";
+            case SEQUENTIAL -> "固定区域";
+            case RANDOM -> "随机位置";
+            case FARTHEST_FROM_ENEMIES -> "随机位置";
         };
     }
 

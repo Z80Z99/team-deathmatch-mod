@@ -4,10 +4,10 @@ import cn.blockforge.generated.generatedmod.match.GameMode;
 
 /**
  * HUD 配置场景：配置窗按场景分开调整，互不影响。
- * 比赛按游戏模式各一份（团队死斗 / 爆破 / 歼灭），另有“正在匹配”“房间中”两个大厅场景。
+ * 比赛按游戏模式各一份（团队竞技 / 爆破 / 歼灭），另有“正在匹配”“房间中”两个大厅场景。
  */
 public enum HudContext {
-    TEAM_DEATHMATCH("比赛 · 团队死斗", "match:TEAM_DEATHMATCH"),
+    TEAM_DEATHMATCH("比赛 · 团队竞技", "match:TEAM_DEATHMATCH"),
     SEARCH_DESTROY("比赛 · 爆破模式", "match:SEARCH_DESTROY"),
     LAST_STANDING("比赛 · 歼灭竞技", "match:LAST_STANDING"),
     MATCHING("正在匹配", "scene:MATCHING"),

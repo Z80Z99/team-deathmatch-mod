@@ -113,7 +113,11 @@ public record MapRegion(
         CAPTURE("capture", "占领区", 0xFF5599FF),
         HOTSPOT("hotspot", "热点区", 0xFFFFC857),
         OBJECTIVE("objective", "目标区", 0xFF9CE5AF),
-        OTHER("other", "其他区域", 0xFFB8BCC2);
+        OTHER("other", "其他区域", 0xFFB8BCC2),
+        SPAWN_A("spawn_a", "A队复活区域", 0xFFFF7070),
+        SPAWN_B("spawn_b", "B队复活区域", 0xFF5599FF),
+        SPAWN_C("spawn_c", "C队复活区域", 0xFF63D39A),
+        SPAWN_D("spawn_d", "D队复活区域", 0xFFFFC857);
 
         private final String id;
         private final String displayName;

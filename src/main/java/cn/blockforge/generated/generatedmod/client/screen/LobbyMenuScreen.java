@@ -24,7 +24,7 @@ public final class LobbyMenuScreen extends UiScreen {
     private int ticks;
 
     public LobbyMenuScreen(Screen parent) {
-        super(Component.literal("团队死斗"));
+        super(Component.literal("团队竞技"));
         this.parent = parent;
     }
 

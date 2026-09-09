@@ -75,6 +75,22 @@ class DynamicSpawnPoolTest {
         }
     }
 
+    @Test void scoredSelectionPrefersDistanceButNeverUsesDestroyedCandidates() {
+        var world = world();
+        var map = map(4);
+        var pool = new DynamicSpawnPool();
+        var near = new BlockPos(1, 1, 1);
+        var far = new BlockPos(3, 1, 3);
+        Set<BlockPos> safe = new HashSet<>(Set.of(near, far));
+        try (var finder = mockStatic(SafeSpawnFinder.class)) {
+            finder.when(() -> SafeSpawnFinder.safe(eq(world), eq(map.bounds()), any(BlockPos.class)))
+                    .thenAnswer(call -> safe.contains(call.getArgument(2)));
+            assertEquals(3.5, pool.find(world, map, pos -> pos.distSqr(BlockPos.ZERO)).orElseThrow().x());
+            safe.remove(far);
+            assertEquals(1.5, pool.find(world, map, pos -> pos.distSqr(BlockPos.ZERO)).orElseThrow().x());
+        }
+    }
+
     @Test void changingWorldOrRemovingMapCannotReuseOldCandidates() {
         var world = world();
         var other = world();

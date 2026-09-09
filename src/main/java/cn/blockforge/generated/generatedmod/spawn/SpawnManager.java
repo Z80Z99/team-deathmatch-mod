@@ -20,7 +20,9 @@ import java.util.Optional;
 public final class SpawnManager {
     private final MinecraftServer server;
     private final MapManager maps;
-    private final EnumMap<Team, Integer> sequentialIndexes = new EnumMap<>(Team.class);
+    private final EnumMap<Team, DynamicSpawnPool> fixedPools = new EnumMap<>(Team.class);
+    private final EnumMap<Team, MapDefinition> fixedMaps = new EnumMap<>(Team.class);
+    private MapDefinition fixedSource;
     private final DynamicSpawnPool randomSpawns = new DynamicSpawnPool();
 
     public SpawnManager(MinecraftServer server, MapManager maps) {
@@ -67,22 +69,67 @@ public final class SpawnManager {
     }
 
     public boolean teleportToTeamSpawn(ServerPlayer player, Team team, SpawnSelectionStrategy strategy) {
-        if (strategy == SpawnSelectionStrategy.RANDOM) {
-            Optional<SpawnPoint> random = findRandomSpawn();
-            if (random.isPresent()) return teleport(player, random.get());
-            player.displayClientMessage(net.minecraft.network.chat.Component.literal(
-                    "地图内未找到安全的随机出生位置，暂时转为观战。"), false);
-            teleportToSpectator(player);
-            return false;
+        if (tryTeleportToTeamSpawn(player, team, strategy)) return true;
+        player.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                "复活范围内暂时没有安全位置，转为观战。"), false);
+        teleportToSpectator(player);
+        return false;
+    }
+
+    public boolean tryTeleportToTeamSpawn(ServerPlayer player, Team team, SpawnSelectionStrategy strategy) {
+        MapDefinition map = maps.currentMap().orElse(null);
+        Optional<SpawnPoint> point = strategy == SpawnSelectionStrategy.SEQUENTIAL
+                ? findFixedSpawn(team) : randomSpawns.find(map == null ? null : server.getLevel(map.world()),
+                        map, pos -> enemyDistance(player, pos));
+        return point.isPresent() && teleport(player, point.get());
+    }
+
+    private double enemyDistance(ServerPlayer player, BlockPos pos) {
+        double distance = Double.POSITIVE_INFINITY;
+        Team own = teamOf(player);
+        for (ServerPlayer other : server.getPlayerList().getPlayers()) {
+            if (other == player || !other.isAlive() || other.isSpectator() || other.isInvulnerable()
+                    || !teamOf(other).isPlayable() || teamOf(other) == own
+                    || other.level() != player.level()) continue;
+            distance = Math.min(distance, other.distanceToSqr(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5));
         }
-        List<SpawnPoint> points = getSpawns(team).stream()
-                .filter(this::isUsableCurrentMapSpawn)
-                .toList();
-        if (points.isEmpty()) {
-            return teleportToSpectator(player);
+        return distance;
+    }
+
+    private MapDefinition fixedMap(Team team) {
+        MapDefinition map = maps.currentMap().orElse(null);
+        if (fixedSource != map) {
+            fixedSource = map;
+            fixedPools.clear();
+            fixedMaps.clear();
         }
-        SpawnPoint selected = selectSpawn(player, team, points, strategy);
-        return teleport(player, selected);
+        if (map == null || !team.isPlayable()) return null;
+        if (fixedMaps.containsKey(team)) return fixedMaps.get(team);
+        String type = switch (team) {
+            case TEAM_A -> "spawn_a"; case TEAM_B -> "spawn_b";
+            case TEAM_C -> "spawn_c"; case TEAM_D -> "spawn_d";
+            default -> "";
+        };
+        var parts = map.customRegions().stream().filter(region -> region.type().id().equals(type))
+                .flatMap(region -> region.region().boxes().stream()).toList();
+        if (parts.isEmpty()) return null;
+        var region = MapDefinition.Region.composite(parts);
+        MapDefinition scoped = new MapDefinition(map.id(), map.displayName(), map.world(), region, region,
+                List.of(), List.of(), List.of());
+        fixedMaps.put(team, scoped);
+        return scoped;
+    }
+
+    public Optional<SpawnPoint> findFixedSpawn(Team team) {
+        MapDefinition scoped = fixedMap(team);
+        if (scoped != null) {
+            return fixedPools.computeIfAbsent(team, ignored -> new DynamicSpawnPool())
+                    .find(server.getLevel(scoped.world()), scoped).filter(this::isUsableCurrentMapSpawn);
+        }
+        // Existing maps may still contain authored point markers instead of regions.
+        List<SpawnPoint> points = getSpawns(team).stream().filter(this::isUsableCurrentMapSpawn).toList();
+        return points.isEmpty() ? Optional.empty()
+                : Optional.of(points.get(server.overworld().getRandom().nextInt(points.size())));
     }
 
     public Optional<SpawnPoint> findRandomSpawn() {
@@ -92,15 +139,27 @@ public final class SpawnManager {
 
     public void refreshRandomSpawnsAfterDeath() {
         randomSpawns.requestRefresh();
+        fixedPools.values().forEach(DynamicSpawnPool::requestRefresh);
     }
 
-    public void tickRandomSpawns(boolean enabled) {
+    public void tickRandomSpawns(boolean enabled, SpawnSelectionStrategy strategy) {
         if (!enabled) {
             randomSpawns.clear();
+            fixedPools.clear();
+            fixedMaps.clear();
+            fixedSource = null;
             return;
         }
         MapDefinition map = maps.currentMap().orElse(null);
-        randomSpawns.tick(map == null ? null : server.getLevel(map.world()), map, server.getTickCount());
+        if (strategy == SpawnSelectionStrategy.RANDOM) {
+            randomSpawns.tick(map == null ? null : server.getLevel(map.world()), map, server.getTickCount());
+            return;
+        }
+        for (Team team : List.of(Team.TEAM_A, Team.TEAM_B, Team.TEAM_C, Team.TEAM_D)) {
+            MapDefinition scoped = fixedMap(team);
+            if (scoped != null) fixedPools.computeIfAbsent(team, ignored -> new DynamicSpawnPool())
+                    .tick(server.getLevel(scoped.world()), scoped, server.getTickCount(), 64);
+        }
     }
 
     public boolean teleportToSpectator(ServerPlayer player) {
@@ -151,38 +210,7 @@ public final class SpawnManager {
             return false;
         }
         BlockPos feet = BlockPos.containing(point.x(), point.y(), point.z());
-        return level.getWorldBorder().isWithinBounds(feet)
-                && level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
-                && level.getBlockState(feet.above()).getCollisionShape(level, feet.above()).isEmpty()
-                && !level.getBlockState(feet.below()).getCollisionShape(level, feet.below()).isEmpty();
-    }
-
-    private SpawnPoint selectSpawn(ServerPlayer player, Team team, List<SpawnPoint> points,
-                                   SpawnSelectionStrategy strategy) {
-        if (strategy == SpawnSelectionStrategy.SEQUENTIAL) {
-            int index = sequentialIndexes.merge(team, 1, Integer::sum) - 1;
-            return points.get(Math.floorMod(index, points.size()));
-        }
-        if (strategy == SpawnSelectionStrategy.FARTHEST_FROM_ENEMIES) {
-            SpawnPoint best = points.get(0);
-            double bestDistance = Double.NEGATIVE_INFINITY;
-            for (SpawnPoint point : points) {
-                double nearestEnemy = Double.POSITIVE_INFINITY;
-                for (ServerPlayer other : server.getPlayerList().getPlayers()) {
-                    if (other == player || !other.isAlive() || !teamOf(other).isPlayable() || teamOf(other) == team
-                            || !other.level().dimension().equals(point.dimension())) {
-                        continue;
-                    }
-                    nearestEnemy = Math.min(nearestEnemy, other.distanceToSqr(point.x(), point.y(), point.z()));
-                }
-                if (nearestEnemy > bestDistance) {
-                    bestDistance = nearestEnemy;
-                    best = point;
-                }
-            }
-            return best;
-        }
-        return points.get(server.overworld().getRandom().nextInt(points.size()));
+        return SafeSpawnFinder.safe(level, map.bounds(), feet);
     }
 
     private boolean teleport(ServerPlayer player, SpawnPoint point) {

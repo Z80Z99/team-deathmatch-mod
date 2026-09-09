@@ -88,7 +88,8 @@ public final class MapRegionEditScreen extends UiScreen {
         int typeY = flowRow(BUTTON_HEIGHT);
         type = flowWidget(new UiCycleButton<>(innerLeft, typeY, controlWidth, BUTTON_HEIGHT,
                 List.of(MapRegion.Type.CUSTOM, MapRegion.Type.BOMB, MapRegion.Type.CAPTURE,
-                        MapRegion.Type.HOTSPOT, MapRegion.Type.OBJECTIVE, MapRegion.Type.OTHER),
+                        MapRegion.Type.HOTSPOT, MapRegion.Type.OBJECTIVE, MapRegion.Type.OTHER,
+                        MapRegion.Type.SPAWN_A, MapRegion.Type.SPAWN_B, MapRegion.Type.SPAWN_C, MapRegion.Type.SPAWN_D),
                 region.type(), MapRegion.Type::displayName, ignored -> { },
                 "区域在玩法中的用途。", UiButton.Kind.SECONDARY), typeY);
         flowWidget(helpButton(helpX, typeY,

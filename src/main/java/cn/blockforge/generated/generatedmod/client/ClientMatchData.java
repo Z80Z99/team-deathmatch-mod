@@ -67,7 +67,7 @@ public final class ClientMatchData {
     private static String phaseTimerText = "00:00";
     private static String respawnTimerText = "00:00";
     private static String phaseText = "等待中";
-    private static String modeText = "团队死斗";
+    private static String modeText = "团队竞技";
     private static String targetText = "按时间判定";
     private static String roundText = "回合 0    胜场 0:0";
     private static String teamSizesText = "A队 0人  ·  B队 0人";
@@ -206,7 +206,7 @@ public final class ClientMatchData {
         phaseTimerText = "00:00";
         respawnTimerText = "00:00";
         phaseText = "等待中";
-        modeText = "团队死斗";
+        modeText = "团队竞技";
         targetText = "按时间判定";
         roundText = "回合 0    胜场 0:0";
         teamSizesText = "A队 0人  ·  B队 0人";
@@ -293,11 +293,11 @@ public final class ClientMatchData {
     private static void refreshCachedText() {
         cachedPhaseSecond = Math.max(0, phaseRemainingTicks) / 20;
         cachedRespawnSecond = Math.max(0, respawnRemainingTicks) / 20;
-        phaseTimerText = formatTicks(phaseRemainingTicks);
+        phaseTimerText = state == MatchState.WARMUP && phaseRemainingTicks == 0 ? "等待玩家" : formatTicks(phaseRemainingTicks);
         respawnTimerText = formatTicks(respawnRemainingTicks);
         phaseText = switch (state) {
             case WAITING -> "等待中";
-            case WARMUP -> "热身";
+            case WARMUP -> phaseRemainingTicks == 0 ? "热身 · 等待玩家" : "即将开始";
             case PLAYING -> "进行中";
             case ROUND_END -> "回合结束";
             case MAP_RESETTING -> "地图恢复";

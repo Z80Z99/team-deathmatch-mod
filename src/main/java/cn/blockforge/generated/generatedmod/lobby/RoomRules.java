@@ -8,7 +8,7 @@ import cn.blockforge.generated.generatedmod.match.TeamChangePolicy;
 import net.minecraft.network.FriendlyByteBuf;
 
 /**
- * 房间级比赛规则：原“团队死斗配置”与“房间参数”里的比赛项已全部合并到这里。
+ * 房间级比赛规则：原“团队竞技配置”与“房间参数”里的比赛项已全部合并到这里。
  * 每间房间在创建时取服务器默认值作为快照，房主在“房间规则设置”里随时调整，
  * 开赛时整体生效，随房间解散（含匹配房赛终自动解散）一起销毁。
  *
@@ -82,7 +82,7 @@ public record RoomRules(GameMode mode,
     public static RoomRules fallback() {
         return new RoomRules(GameMode.TEAM_DEATHMATCH, 25, 600, 1, 15, 5, true, false, 1, 2,
                 5, 15, true, true, true, true, TeamChangePolicy.ONLY_BEFORE_MATCH,
-                AutoBalanceMode.ON_JOIN_AND_MATCH_START, SpawnSelectionStrategy.RANDOM, 1);
+                AutoBalanceMode.ON_JOIN_AND_MATCH_START, SpawnSelectionStrategy.RANDOM, 1).normalized();
     }
 
     /** 切换模式时的推荐模板（共享项沿用当前值，模式专属项按典型值重置）。 */
@@ -106,8 +106,8 @@ public record RoomRules(GameMode mode,
                 safe.minPlayersToStart,
                 safe.roundEndDelaySeconds, safe.matchEndDelaySeconds,
                 safe.keepInventoryOnDeath, safe.suppressDeathMessages, safe.autoReset,
-                true, safe.teamChangePolicy, safe.autoBalanceMode,
-                safe.spawnSelectionStrategy, safe.maxTeamImbalance);
+                false, safe.teamChangePolicy, safe.autoBalanceMode,
+                safe.spawnSelectionStrategy, safe.maxTeamImbalance).normalized();
     }
 
     /** 按模式把越界或不适用值收敛，保证任何来源的规则都能安全应用。 */
@@ -116,33 +116,34 @@ public record RoomRules(GameMode mode,
                 mode.respawnRules() ? clamp(targetKills, 0, 1000) : 0,
                 clamp(matchDurationSeconds, 0, 7200),
                 mode == GameMode.SEARCH_DESTROY ? clamp(roundWinTarget, 1, 10) : 1,
-                clamp(warmupDurationSeconds, 0, 300),
+                10,
                 mode.respawnRules() ? clamp(respawnDelaySeconds, 0, 60) : 0,
-                mode.respawnRules() && autoRespawn,
+                mode.respawnRules(),
                 friendlyFire,
                 mode.roundSwapping() ? clamp(switchSideEvery, 1, 10) : 0,
-                clamp(minPlayersToStart, 1, 32),
+                clamp(minPlayersToStart, 2, 32),
                 clamp(roundEndDelaySeconds, 1, 600),
                 clamp(matchEndDelaySeconds, 1, 600),
-                keepInventoryOnDeath, suppressDeathMessages, autoReset, requireBothTeams,
-                teamChangePolicy, autoBalanceMode, spawnSelectionStrategy,
+                mode != GameMode.SEARCH_DESTROY, true, autoReset, false,
+                teamChangePolicy, autoBalanceMode, spawnSelectionStrategy == SpawnSelectionStrategy.FARTHEST_FROM_ENEMIES
+                        ? SpawnSelectionStrategy.RANDOM : spawnSelectionStrategy,
                 clamp(maxTeamImbalance, 0, 8));
     }
 
     /** 返回错误文本；null 表示合法。 */
     public String validationError() {
         if (matchDurationSeconds < 0 || matchDurationSeconds > 7200) {
-            return "回合时长必须在 0 到 7200 秒之间（0 表示不限）。";
+            return "比赛时长必须在 0 到 7200 秒之间（0 表示不限）。";
         }
-        if (minPlayersToStart < 1 || minPlayersToStart > 32) {
-            return "最少开赛人数必须在 1 到 32 之间。";
+        if (minPlayersToStart < 2 || minPlayersToStart > 32) {
+            return "最少开赛人数必须在 2 到 32 之间。";
         }
         if (mode.respawnRules()) {
             if (targetKills < 0 || targetKills > 1000) {
                 return "击杀目标必须在 0 到 1000 之间（0 表示不限）。";
             }
             if (targetKills == 0 && matchDurationSeconds == 0) {
-                return "击杀目标与回合时长不能同时为 0，否则比赛无法结束。";
+                return "击杀目标与比赛时长不能同时为 0，否则比赛无法结束。";
             }
         } else if (matchDurationSeconds == 0) {
             return mode.displayName() + "以回合时长兜底判定，回合时长不能为 0。";
@@ -159,7 +160,7 @@ public record RoomRules(GameMode mode,
         switch (mode) {
             case TEAM_DEATHMATCH -> text.append(" · 击杀 ")
                     .append(targetKills <= 0 ? "不限" : Integer.toString(targetKills))
-                    .append(" · 回合 ").append(formatSeconds(matchDurationSeconds))
+                    .append(" · 时长 ").append(formatSeconds(matchDurationSeconds))
                     .append(" · 复活 ").append(respawnDelaySeconds).append("s")
                     .append(autoRespawn ? "" : "（关闭）");
             case SEARCH_DESTROY -> text.append(" · 回合 ").append(formatSeconds(matchDurationSeconds))
@@ -168,7 +169,7 @@ public record RoomRules(GameMode mode,
             case LAST_STANDING -> text.append(" · 总时长 ")
                     .append(formatSeconds(matchDurationSeconds)).append(" · 阵亡不复活");
         }
-        return text.append(" · 热身 ").append(warmupDurationSeconds).append("s")
+        return text.append(" · 等待人数后倒计时 10s")
                 .append(" · 最少 ").append(minPlayersToStart).append(" 人")
                 .append(" · 友伤 ").append(friendlyFire ? "开" : "关").toString();
     }

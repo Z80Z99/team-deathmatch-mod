@@ -51,7 +51,8 @@ public final class LobbyScreen extends UiListScreen<RoomView> {
         if (Minecraft.getInstance().getConnection() != null) FpsTdmNetwork.sendToServer(new RoomActionPacket(action, id, name, "", capacity, password));
     }
     private boolean joinable(RoomView room) {
-        return room != null && room.state() == RoomState.OPEN && (room.maxPlayers() <= 0 || room.memberCount() < room.maxPlayers());
+        return room != null && (room.state() == RoomState.OPEN || room.state() == RoomState.RUNNING
+                && cn.blockforge.generated.generatedmod.client.ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.WARMUP) && (room.maxPlayers() <= 0 || room.memberCount() < room.maxPlayers());
     }
     private void joinSelected() { RoomView room = selectedEntry(); if (joinable(room)) request(RoomAction.JOIN, room.id(), "", 0, passwordDraft.trim()); }
     private void updateButtons() {

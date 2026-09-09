@@ -305,6 +305,8 @@ public final class RoomManager {
         }
         // 匹配比赛房全程开放：准备倒计时可加入，比赛进行中也能通过大厅中途加入。
         boolean joinable = target.state() == RoomState.OPEN
+                || (target.state() == RoomState.RUNNING && roomId.equals(activeRoomId)
+                    && matchManager.state() == cn.blockforge.generated.generatedmod.match.MatchState.WARMUP)
                 || (target.matchmaking() && (target.state() == RoomState.COUNTDOWN
                         || target.state() == RoomState.WAITING_MAP
                         || (target.state() == RoomState.RUNNING
@@ -429,7 +431,7 @@ public final class RoomManager {
             }
             return;
         }
-        String missingSpawns = room.teams().stream().filter(team -> matchManager.spawns().getSpawns(team).isEmpty())
+        String missingSpawns = room.teams().stream().filter(team -> matchManager.spawns().findFixedSpawn(team).isEmpty())
                 .map(Team::displayName).collect(java.util.stream.Collectors.joining("、"));
         if (room.rules().spawnSelectionStrategy() == cn.blockforge.generated.generatedmod.match.SpawnSelectionStrategy.RANDOM
                 && matchManager.spawns().findRandomSpawn().isEmpty()) {
@@ -438,11 +440,10 @@ public final class RoomManager {
         }
         if (room.rules().spawnSelectionStrategy() != cn.blockforge.generated.generatedmod.match.SpawnSelectionStrategy.RANDOM
                 && !missingSpawns.isEmpty()) {
-            cancelStart(room, "地图缺少 " + missingSpawns + " 的出生点，请先在地图编辑器补齐。", true);
+            cancelStart(room, "地图缺少 " + missingSpawns + " 的安全复活区域，请先在规划器创建对应队伍的复活区域。", true);
             return;
         }
-        int seconds = room.matchmaking() ? MatchmakingManager.READY_SECONDS
-                : config.values().roomStartCountdownSeconds();
+        int seconds = room.matchmaking() ? MatchmakingManager.READY_SECONDS : 0;
         if (seconds <= 0) {
             launchRoom(room);
         } else {
@@ -522,7 +523,7 @@ public final class RoomManager {
     private boolean canStart(Room room) {
         int minimum = room.matchmaking() ? MatchmakingManager.MIN_PLAYERS_TO_FORM
                 : room.rules().minPlayersToStart();
-        return room.memberCount() >= minimum && room.teams().stream().allMatch(team -> room.teamSize(team) > 0);
+        return room.memberCount() >= (room.matchmaking() ? minimum : 1);
     }
 
     private void setMap(ServerPlayer player, String roomId, String mapId) {

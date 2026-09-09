@@ -49,11 +49,15 @@ public final class DynamicSpawnPool {
     }
 
     public void tick(ServerLevel world, MapDefinition definition, int tick) {
+        tick(world, definition, tick, 256);
+    }
+
+    public void tick(ServerLevel world, MapDefinition definition, int tick, int budget) {
         boolean urgent = refreshRequested;
         if (!bind(world, definition)) return;
         if (urgent || tick % 20 == 0) revalidate();
         refreshRequested = false;
-        scan(urgent ? 1024 : 256);
+        scan(urgent ? budget * 4 : budget);
     }
 
     private void revalidate() {
@@ -83,6 +87,11 @@ public final class DynamicSpawnPool {
     }
 
     public Optional<SpawnPoint> find(ServerLevel world, MapDefinition definition) {
+        return find(world, definition, pos -> 0.0D);
+    }
+
+    public Optional<SpawnPoint> find(ServerLevel world, MapDefinition definition,
+                                      java.util.function.ToDoubleFunction<BlockPos> score) {
         if (!bind(world, definition)) return Optional.empty();
         revalidate();
         scan(256);
@@ -94,6 +103,11 @@ public final class DynamicSpawnPool {
         if (candidates.isEmpty()) return Optional.empty();
         var points = new ArrayList<>(candidates);
         BlockPos pos = points.get(world.getRandom().nextInt(points.size()));
+        double best = score.applyAsDouble(pos);
+        for (BlockPos candidate : points) {
+            double value = score.applyAsDouble(candidate);
+            if (value > best) { pos = candidate; best = value; }
+        }
         return Optional.of(new SpawnPoint(map.world(), pos.getX() + 0.5D, pos.getY(),
                 pos.getZ() + 0.5D, world.getRandom().nextFloat() * 360.0F, 0));
     }

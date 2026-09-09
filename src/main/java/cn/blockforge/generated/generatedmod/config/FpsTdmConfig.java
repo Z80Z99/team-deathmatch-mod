@@ -84,7 +84,7 @@ public final class FpsTdmConfig {
                     .defineEnum("autoBalanceMode", AutoBalanceMode.ON_JOIN_AND_MATCH_START);
             requireBothTeams = builder
                     .comment("是否要求 A、B 两队都有人才能开始")
-                    .define("requireBothTeams", true);
+                    .define("requireBothTeams", false);
             allowJoinDuringMatch = builder
                     .comment("是否允许比赛进行时加入，加入者仍需遵守队伍锁定规则")
                     .define("allowJoinDuringMatch", true);

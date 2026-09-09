@@ -408,7 +408,7 @@ public final class HudStats {
                 }, () -> 100, () -> Minecraft.getInstance().player != null, 76, 100);
 
         // ---- 比赛文本
-        text("mode_text", "模式名", Group.TEXT, ClientMatchData::modeText, HudStats::inMatch, "团队死斗");
+        text("mode_text", "模式名", Group.TEXT, ClientMatchData::modeText, HudStats::inMatch, "团队竞技");
         text("phase_text", "比赛阶段", Group.TEXT, ClientMatchData::phaseText, HudStats::inMatch, "进行中");
         text("my_team_text", "我的队伍", Group.TEXT,
                 () -> ClientMatchData.myTeam.displayName(), HudStats::inMatch, "A队");
@@ -468,7 +468,7 @@ public final class HudStats {
         text("room_mode", "房间模式", Group.ROOM, () -> {
             RoomView room = roomOrNull();
             return room == null ? "" : room.rules().mode().displayName();
-        }, HudStats::inRoom, "团队死斗");
+        }, HudStats::inRoom, "团队竞技");
         text("room_map", "房间地图", Group.ROOM, () -> {
             RoomView room = roomOrNull();
             return room == null ? "" : ClientLobbyData.mapDisplayName(room.mapId());
@@ -514,7 +514,7 @@ public final class HudStats {
         text("room_line1", "兼容整句：房间横幅第一行", Group.ROOM, () -> {
             RoomView room = roomOrNull();
             return room == null ? "" : SceneHudOverlay.roomLineOne(room);
-        }, HudStats::inRoom, "房间  样例作战大厅  ·  团队死斗");
+        }, HudStats::inRoom, "房间  样例作战大厅  ·  团队竞技");
         text("room_line2", "兼容整句：房间横幅第二行", Group.ROOM, () -> {
             RoomView room = roomOrNull();
             return room == null ? "" : SceneHudOverlay.roomLineTwo(room);

@@ -5,13 +5,13 @@ import java.util.Locale;
 /**
  * 游戏玩法模式。房间规则按模式展示不同的设置项：
  * <ul>
- *   <li>团队死斗：可复活、拼击杀目标或回合时长；</li>
+ *   <li>团队竞技：可复活、拼击杀目标或回合时长；</li>
  *   <li>爆破模式：回合歼灭制，回合内不可复活，按间隔回合换边，先胜 N 个回合赢下整场；</li>
  *   <li>歼灭竞技：单局歼灭，全程不复活，最后站着的队伍获胜。</li>
  * </ul>
  */
 public enum GameMode {
-    TEAM_DEATHMATCH("团队死斗"),
+    TEAM_DEATHMATCH("团队竞技"),
     SEARCH_DESTROY("爆破模式"),
     LAST_STANDING("歼灭竞技");
 
@@ -35,7 +35,7 @@ public enum GameMode {
         return this == SEARCH_DESTROY;
     }
 
-    /** 击杀目标与复活参数只对团队死斗生效。 */
+    /** 击杀目标与复活参数只对团队竞技生效。 */
     public boolean respawnRules() {
         return this == TEAM_DEATHMATCH;
     }

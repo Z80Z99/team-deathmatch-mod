@@ -1875,7 +1875,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         Map<String, String> sample = previewTemplateValues();
         sample.put("matching_line1", "正在匹配  3/6 人成局");
         sample.put("matching_line2", "已等待 00:18  ·  序位 2");
-        sample.put("room_line1", "房间  样例作战大厅  ·  团队死斗");
+        sample.put("room_line1", "房间  样例作战大厅  ·  团队竞技");
         sample.put("room_line2", "人数 4/12  ·  房主 Steve  ·  开放中");
         String one = HudStats.resolveTemplate(values.bannerLineOneTemplate(), sample);
         String two = HudStats.resolveTemplate(values.bannerLineTwoTemplate(), sample);
@@ -1892,7 +1892,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
 
     private Map<String, String> previewTemplateValues() {
         Map<String, String> values = new LinkedHashMap<>();
-        values.put("mode", "团队死斗");
+        values.put("mode", "团队竞技");
         values.put("phase", "进行中");
         values.put("score_a", "12");
         values.put("score_b", "9");
