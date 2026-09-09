@@ -66,7 +66,7 @@ public final class HudParameters {
                     && !ClientMatchData.pending;
             case "playing" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.PLAYING;
             case "warmup" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.WARMUP;
-            case "outside" -> ClientMatchData.boundaryTicks > 0;
+            case "outside" -> ClientMatchData.boundaryOutside;
             case "spectator" -> !ClientMatchData.myTeam.isPlayable();
             case "feed" -> editor || ClientMatchData.killFeedActive();
             case "team_c" -> teamCount(editor) >= 3;

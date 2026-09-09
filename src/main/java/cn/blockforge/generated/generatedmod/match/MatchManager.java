@@ -887,7 +887,7 @@ public final class MatchManager {
     }
 
     private void sendMatchSync(ServerPlayer player, TeamManager.Counts counts, java.util.List<TeamMatchStats> stats) {
-        FpsTdmNetwork.sendToPlayer(new MatchSyncPacket(
+        MatchSyncPacket packet = new MatchSyncPacket(
                 state,
                 scores.getTeamScore(Team.TEAM_A),
                 scores.getTeamScore(Team.TEAM_B),
@@ -919,8 +919,11 @@ public final class MatchManager {
                 matchElapsedTicks()).withTeamStats(stats)
                 .withTimers(boundaryCountdown.remaining(player.getUUID(), server.getTickCount()),
                         (int) secondsToTicks(rulesRespawnDelaySeconds()))
+                .withBoundaryStatus(boundaryCountdown.isOutside(player.getUUID()))
                 .withRespawn(state == MatchState.PLAYING && isDowned(player),
-                        isDowned(player) ? downedPlayers.get(player.getUUID()).deathLabel() : ""), player);
+                        isDowned(player) ? downedPlayers.get(player.getUUID()).deathLabel() : "");
+        maps.currentMap().ifPresent(map -> packet.withBoundaryBox(map.bounds()));
+        FpsTdmNetwork.sendToPlayer(packet, player);
     }
 
     public void broadcastMatchState() {

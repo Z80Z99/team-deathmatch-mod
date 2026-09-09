@@ -149,6 +149,8 @@ class MultiTeamMatchTest {
         MatchSyncPacket packet = new MatchSyncPacket(MatchState.ROUND_END, 9, 9, 2, 2, 3, 25, 100, 0,
                 Team.TEAM_D, 3, 3, 0, false, Team.TEAM_D, 1, "killer", "victim", 0, 3,
                 1, 2, 3, 4, 100, 100, 12, 12, 200).withTeamStats(stats).withTimers(160, 100)
+                .withBoundaryStatus(true).withBoundaryBox(new cn.blockforge.generated.generatedmod.map.MapDefinition.Region(
+                        new net.minecraft.core.BlockPos(10, 50, 20), new net.minecraft.core.BlockPos(90, 100, 120)))
                 .withRespawn(true, "击杀者  PlayerOne");
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
@@ -158,6 +160,8 @@ class MultiTeamMatchTest {
             assertEquals("击杀者  PlayerOne", decoded.deathLabel());
             assertEquals(0, buffer.readableBytes());
             assertEquals(160, decoded.boundaryTicks()); assertEquals(100, decoded.respawnTotalTicks());
+            assertTrue(decoded.boundaryOutside()); assertTrue(decoded.boundaryBoxPresent());
+            assertEquals(10, decoded.boundaryMinX()); assertEquals(120, decoded.boundaryMaxZ());
             assertEquals(stats, decoded.teamStats()); assertEquals(Team.TEAM_D, decoded.winner());
             cn.blockforge.generated.generatedmod.client.ClientMatchData.apply(decoded);
             assertEquals(Team.TEAM_D, cn.blockforge.generated.generatedmod.client.ClientMatchData.myTeam);

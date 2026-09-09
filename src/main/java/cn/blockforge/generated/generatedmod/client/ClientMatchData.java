@@ -29,6 +29,9 @@ public final class ClientMatchData {
     public static int phaseRemainingTicks;
     public static int respawnRemainingTicks;
     public static int boundaryTicks;
+    public static boolean boundaryOutside;
+    public static boolean boundaryBoxPresent;
+    public static int boundaryMinX, boundaryMinY, boundaryMinZ, boundaryMaxX, boundaryMaxY, boundaryMaxZ;
     public static int respawnTotalTicks;
     public static boolean awaitingRespawn;
     public static String deathLabel = "";
@@ -111,6 +114,10 @@ public final class ClientMatchData {
         phaseRemainingTicks = Math.max(0, packet.phaseRemainingTicks());
         respawnRemainingTicks = Math.max(0, packet.respawnRemainingTicks());
         boundaryTicks = Math.max(0, packet.boundaryTicks());
+        boundaryOutside = packet.boundaryOutside();
+        boundaryBoxPresent = packet.boundaryBoxPresent();
+        boundaryMinX = packet.boundaryMinX(); boundaryMinY = packet.boundaryMinY(); boundaryMinZ = packet.boundaryMinZ();
+        boundaryMaxX = packet.boundaryMaxX(); boundaryMaxY = packet.boundaryMaxY(); boundaryMaxZ = packet.boundaryMaxZ();
         respawnTotalTicks = Math.max(0, packet.respawnTotalTicks());
         myTeam = packet.myTeam();
         teamASize = packet.teamASize();
@@ -148,7 +155,7 @@ public final class ClientMatchData {
     /** 客户端只推进显示用倒计时，不参与服务器比赛判定。 */
     public static void tick() {
         clientTick++;
-        if (boundaryTicks > 1) boundaryTicks--;
+        if (boundaryOutside && boundaryTicks > 1) boundaryTicks--;
         if (phaseRemainingTicks > 0) {
             phaseRemainingTicks--;
         }
@@ -195,6 +202,9 @@ public final class ClientMatchData {
         phaseRemainingTicks = 0;
         respawnRemainingTicks = 0;
         boundaryTicks = 0;
+        boundaryOutside = false;
+        boundaryBoxPresent = false;
+        boundaryMinX = boundaryMinY = boundaryMinZ = boundaryMaxX = boundaryMaxY = boundaryMaxZ = 0;
         respawnTotalTicks = 0;
         myTeam = Team.SPECTATOR;
         teamASize = 0;

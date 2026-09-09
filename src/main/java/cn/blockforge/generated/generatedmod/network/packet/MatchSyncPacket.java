@@ -27,11 +27,33 @@ public final class MatchSyncPacket {
     }
     private int boundaryTicks;
     private int respawnTotalTicks;
+    private boolean boundaryOutside;
+    private boolean boundaryBoxPresent;
+    private int boundaryMinX, boundaryMinY, boundaryMinZ, boundaryMaxX, boundaryMaxY, boundaryMaxZ;
     public int boundaryTicks() { return boundaryTicks; }
     public int respawnTotalTicks() { return respawnTotalTicks; }
+    public boolean boundaryOutside() { return boundaryOutside; }
+    public boolean boundaryBoxPresent() { return boundaryBoxPresent; }
+    public int boundaryMinX() { return boundaryMinX; }
+    public int boundaryMinY() { return boundaryMinY; }
+    public int boundaryMinZ() { return boundaryMinZ; }
+    public int boundaryMaxX() { return boundaryMaxX; }
+    public int boundaryMaxY() { return boundaryMaxY; }
+    public int boundaryMaxZ() { return boundaryMaxZ; }
     public MatchSyncPacket withTimers(int boundary, int respawnTotal) {
         boundaryTicks = Math.max(0, boundary);
         respawnTotalTicks = Math.max(0, respawnTotal);
+        return this;
+    }
+    public MatchSyncPacket withBoundaryStatus(boolean outside) {
+        boundaryOutside = outside;
+        return this;
+    }
+    public MatchSyncPacket withBoundaryBox(cn.blockforge.generated.generatedmod.map.MapDefinition.Region box) {
+        if (box == null) return this;
+        boundaryBoxPresent = true;
+        boundaryMinX = box.min().getX(); boundaryMinY = box.min().getY(); boundaryMinZ = box.min().getZ();
+        boundaryMaxX = box.max().getX(); boundaryMaxY = box.max().getY(); boundaryMaxZ = box.max().getZ();
         return this;
     }
     private java.util.List<cn.blockforge.generated.generatedmod.match.TeamMatchStats> teamStats = java.util.List.of();
@@ -144,6 +166,12 @@ public final class MatchSyncPacket {
         matchElapsedTicks = buffer.readVarInt();
         boundaryTicks = buffer.readVarInt();
         respawnTotalTicks = buffer.readVarInt();
+        boundaryOutside = buffer.readBoolean();
+        boundaryBoxPresent = buffer.readBoolean();
+        if (boundaryBoxPresent) {
+            boundaryMinX = buffer.readInt(); boundaryMinY = buffer.readInt(); boundaryMinZ = buffer.readInt();
+            boundaryMaxX = buffer.readInt(); boundaryMaxY = buffer.readInt(); boundaryMaxZ = buffer.readInt();
+        }
         int count = buffer.readVarInt();
         if (count < 0 || count > 4) throw new IllegalArgumentException("Invalid team count");
         var stats = new java.util.ArrayList<cn.blockforge.generated.generatedmod.match.TeamMatchStats>();
@@ -187,6 +215,12 @@ public final class MatchSyncPacket {
         buffer.writeVarInt(matchElapsedTicks);
         buffer.writeVarInt(boundaryTicks);
         buffer.writeVarInt(respawnTotalTicks);
+        buffer.writeBoolean(boundaryOutside);
+        buffer.writeBoolean(boundaryBoxPresent);
+        if (boundaryBoxPresent) {
+            buffer.writeInt(boundaryMinX); buffer.writeInt(boundaryMinY); buffer.writeInt(boundaryMinZ);
+            buffer.writeInt(boundaryMaxX); buffer.writeInt(boundaryMaxY); buffer.writeInt(boundaryMaxZ);
+        }
         buffer.writeVarInt(teamStats.size());
         for (var team : teamStats) {
             buffer.writeEnum(team.team()); buffer.writeVarInt(team.score()); buffer.writeVarInt(team.wins());

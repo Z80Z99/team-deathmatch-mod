@@ -54,17 +54,32 @@ public final class MatchHudOverlay {
         }
         renderCustom(graphics, forgeGui.getMinecraft().font, width, height,
                 HudContext.match(ClientMatchData.mode));
-        if (ClientMatchData.boundaryTicks > 0) {
+        if (ClientMatchData.boundaryOutside && ClientMatchData.boundaryTicks > 0) {
             ClientHudLayout.CustomElement warning = ClientHudLayout.customElements(context).stream()
                     .filter(element -> element.type().equals("boundary") && element.visible()
                             && HudConditions.visible(element, ClientHudLayout.customElements(context), false))
                     .findFirst().orElse(null);
             if (warning == null) return;
             HudGeometry.Rect rect = HudGeometry.custom(warning, width, height);
-            int alpha = warning.opacityPercent()
-                    * (35 + (200 - Math.min(200, ClientMatchData.boundaryTicks)) * 105 / 200) / 100;
-            graphics.fill(0, 0, width, height, (alpha << 24) | (warning.color() & 0xFFFFFF));
+            float elapsed = 1.0F - Math.min(200, ClientMatchData.boundaryTicks) / 200.0F;
+            // The warning remains readable early, then builds sharply after the first 30% of the timer.
+            float late = elapsed <= 0.30F ? 0.0F : (elapsed - 0.30F) / 0.70F;
+            float pressure = late * late;
+            int alpha = Math.round(warning.opacityPercent() * (20 + 180 * pressure) / 100.0F);
+            graphics.fill(0, 0, width, height, (Math.min(210, alpha) << 24) | 0x080305);
+            int edge = Math.max(14, Math.min(width, height) / 7);
+            int edgeAlpha = Math.round(warning.opacityPercent() * (25 + 175 * pressure) / 100.0F);
+            int edgeColor = (Math.min(220, edgeAlpha) << 24) | (warning.color() & 0xFFFFFF);
+            graphics.fillGradient(0, 0, width, edge, edgeColor, 0x00000000);
+            graphics.fillGradient(0, height - edge, width, height, 0x00000000, edgeColor);
+            graphics.fillGradient(0, 0, edge, height, edgeColor, 0x00000000);
+            graphics.fillGradient(width - edge, 0, width, height, 0x00000000, edgeColor);
             Font font = forgeGui.getMinecraft().font;
+            float shake = pressure * pressure * 4.0F;
+            int shakeX = Math.round((float) Math.sin((ClientMatchData.boundaryTicks + partialTick) * 1.8F) * shake);
+            int shakeY = Math.round((float) Math.cos((ClientMatchData.boundaryTicks + partialTick) * 2.3F) * shake);
+            graphics.pose().pushPose();
+            graphics.pose().translate(shakeX, shakeY, 0);
             if (warning.background()) graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
                     UiTheme.withAlpha(warning.placement().backgroundColor() == 0 ? UiTheme.PANEL_RAISED
                             : warning.placement().backgroundColor(), warning.opacityPercent()));
@@ -76,6 +91,7 @@ public final class MatchHudOverlay {
                     Math.max(20, rect.width() - 12)), rect.centerX(), rect.top() + 9, 0xFFFFD6D6);
             graphics.drawCenteredString(font, Integer.toString((ClientMatchData.boundaryTicks + 19) / 20),
                     rect.centerX(), rect.top() + 29, 0xFFFFFFFF);
+            graphics.pose().popPose();
         }
     }
 
