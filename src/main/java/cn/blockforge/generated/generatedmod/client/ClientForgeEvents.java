@@ -42,6 +42,7 @@ public final class ClientForgeEvents {
         }
         Minecraft minecraft = Minecraft.getInstance();
         ClientMatchData.tick();
+        RespawnOverlay.tick();
         ClientLobbyData.tick();
         MapPreview.tick(minecraft);
         closeLobbyScreensWhenMatchStarts(minecraft);
@@ -122,6 +123,25 @@ public final class ClientForgeEvents {
         event.addListener(lobbyButton);
         event.addListener(mapButton);
         event.addListener(hudButton);
+    }
+
+    @SubscribeEvent
+    public static void onScreenOpening(ScreenEvent.Opening event) {
+        if (event.getNewScreen() instanceof net.minecraft.client.gui.screens.DeathScreen
+                && RespawnOverlay.eligible()) {
+            RespawnOverlay.onDeathScreen();
+            event.setNewScreen(null);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onVanillaOverlay(net.minecraftforge.client.event.RenderGuiOverlayEvent.Pre event) {
+        if (!RespawnOverlay.active() || Minecraft.getInstance().screen != null) return;
+        var id = event.getOverlay().id();
+        if (id.equals(net.minecraftforge.client.gui.overlay.VanillaGuiOverlay.CROSSHAIR.id())
+                || id.equals(net.minecraftforge.client.gui.overlay.VanillaGuiOverlay.HOTBAR.id())) {
+            event.setCanceled(true);
+        }
     }
 
     @SubscribeEvent

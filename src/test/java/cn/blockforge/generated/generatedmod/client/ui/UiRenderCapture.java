@@ -35,6 +35,13 @@ final class UiRenderCapture implements AutoCloseable {
             canvas.setTransform(new AffineTransform(matrix.m00() * 3, matrix.m01() * 3,
                     matrix.m10() * 3, matrix.m11() * 3, matrix.m30() * 3, matrix.m31() * 3));
             if (method.equals("pose")) return pose;
+            if (method.equals("fillGradient") && args.length == 6) {
+                int x0 = (int) args[0], y0 = (int) args[1], x1 = (int) args[2], y1 = (int) args[3];
+                canvas.setPaint(new java.awt.GradientPaint(x0, y0, new Color((int) args[4], true),
+                        x0, y1, new Color((int) args[5], true)));
+                canvas.fillRect(x0, y0, x1 - x0, y1 - y0);
+                return null;
+            }
             if (method.equals("fill") && args.length == 5 && args[0] instanceof Integer) {
                 if ((int) args[4] == (UiTheme.PANEL | 0xFF000000)) {
                     opaquePanelDepth = Math.max(opaquePanelDepth, matrix.m32());

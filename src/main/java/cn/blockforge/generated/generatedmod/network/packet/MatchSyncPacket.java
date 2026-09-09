@@ -16,6 +16,15 @@ import java.util.function.Supplier;
  * 供 HUD 统计接口与自定义模块绑定。
  */
 public final class MatchSyncPacket {
+    private boolean awaitingRespawn;
+    private String deathLabel = "";
+    public boolean awaitingRespawn() { return awaitingRespawn; }
+    public String deathLabel() { return deathLabel; }
+    public MatchSyncPacket withRespawn(boolean waiting, String label) {
+        awaitingRespawn = waiting;
+        deathLabel = label.length() > 128 ? label.substring(0, 128) : label;
+        return this;
+    }
     private int boundaryTicks;
     private int respawnTotalTicks;
     public int boundaryTicks() { return boundaryTicks; }
@@ -142,6 +151,8 @@ public final class MatchSyncPacket {
                 buffer.readEnum(Team.class), buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(),
                 buffer.readVarInt(), buffer.readVarInt()));
         teamStats = java.util.List.copyOf(stats);
+        awaitingRespawn = buffer.readBoolean();
+        deathLabel = buffer.readUtf(128);
     }
 
     public void encode(FriendlyByteBuf buffer) {
@@ -181,6 +192,8 @@ public final class MatchSyncPacket {
             buffer.writeEnum(team.team()); buffer.writeVarInt(team.score()); buffer.writeVarInt(team.wins());
             buffer.writeVarInt(team.size()); buffer.writeVarInt(team.kills()); buffer.writeVarInt(team.damage());
         }
+        buffer.writeBoolean(awaitingRespawn);
+        buffer.writeUtf(deathLabel, 128);
     }
 
     public void handle(Supplier<NetworkEvent.Context> contextSupplier) {

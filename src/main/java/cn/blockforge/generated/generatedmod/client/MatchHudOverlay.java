@@ -48,7 +48,7 @@ public final class MatchHudOverlay {
                 HudContext.BuiltIn.FEED, elements, width, height, partialTick)) {
             renderKillFeed(forgeGui, graphics, width, height, elements);
         }
-        if (elements.builtInEnabled(HudContext.BuiltIn.TEXT) && elements.textVisible() && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
+        if (!RespawnOverlay.active() && elements.builtInEnabled(HudContext.BuiltIn.TEXT) && elements.textVisible() && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
                 HudContext.BuiltIn.TEXT, elements, width, height, partialTick)) {
             renderTeamHint(forgeGui, graphics, width, height, elements);
         }

@@ -57,8 +57,9 @@ public final class HudParameters {
         if (external != null) return external;
         if (condition.startsWith("api:")) return false;
         return switch (condition) {
-            case "respawning" -> ClientMatchData.respawnRemainingTicks > 0;
-            case "alive" -> ClientMatchData.respawnRemainingTicks <= 0 && ClientMatchData.myTeam.isPlayable();
+            case "respawning" -> ClientMatchData.awaitingRespawn;
+            case "alive" -> !ClientMatchData.awaitingRespawn && ClientMatchData.myTeam.isPlayable()
+                    && !ClientMatchData.pending;
             case "playing" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.PLAYING;
             case "warmup" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.WARMUP;
             case "outside" -> ClientMatchData.boundaryTicks > 0;

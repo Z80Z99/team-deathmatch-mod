@@ -30,6 +30,8 @@ public final class ClientMatchData {
     public static int respawnRemainingTicks;
     public static int boundaryTicks;
     public static int respawnTotalTicks;
+    public static boolean awaitingRespawn;
+    public static String deathLabel = "";
     public static Team myTeam = Team.SPECTATOR;
     public static int teamASize;
     public static int teamBSize;
@@ -77,6 +79,8 @@ public final class ClientMatchData {
     }
 
     public static void apply(MatchSyncPacket packet) {
+        awaitingRespawn = packet.awaitingRespawn();
+        deathLabel = packet.deathLabel();
         syncApplied = true;
         int previousPhaseSecond = Math.max(0, phaseRemainingTicks) / 20;
         int previousRespawnSecond = Math.max(0, respawnRemainingTicks) / 20;
@@ -165,6 +169,9 @@ public final class ClientMatchData {
     }
 
     public static void clear() {
+        awaitingRespawn = false;
+        deathLabel = "";
+        RespawnOverlay.clear();
         teamStats = java.util.List.of();
         state = MatchState.WAITING;
         teamAScore = 0;

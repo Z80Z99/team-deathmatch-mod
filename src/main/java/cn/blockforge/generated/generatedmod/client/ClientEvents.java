@@ -46,5 +46,6 @@ public final class ClientEvents {
         event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "generated_mod_match_hud", MatchHudOverlay::render);
         event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "generated_mod_scene_hud", SceneHudOverlay::render);
         event.registerAbove(VanillaGuiOverlay.CROSSHAIR.id(), "generated_mod_map_tool_hud", MapToolHud::render);
+        event.registerAboveAll("generated_mod_respawn", RespawnOverlay::render);
     }
 }

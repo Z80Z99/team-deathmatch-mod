@@ -529,7 +529,10 @@ public final class MatchManager {
             pendingDeaths.remove(death.victim().getUUID());
             if (death.cancelled().getAsBoolean() || !death.victim().isDeadOrDying()) continue;
             if (state == MatchState.PLAYING && !isDowned(death.victim())) {
-                scheduleDowned(death.victim(), death.team());
+                ServerPlayer killer = resolveKiller(death.source());
+                String label = killer == null ? "环境伤害" : killer == death.victim() ? "自身伤害"
+                        : "击杀者  " + killer.getGameProfile().getName();
+                scheduleDowned(death.victim(), death.team(), label);
                 creditKill(death.victim(), death.team(), death.source());
             }
             ServerPlayer current = server.getPlayerList().getPlayer(death.victim().getUUID());
@@ -877,7 +880,9 @@ public final class MatchManager {
                 scores.getTeamMatchKills(Team.TEAM_B),
                 matchElapsedTicks()).withTeamStats(stats)
                 .withTimers(boundaryCountdown.remaining(player.getUUID(), server.getTickCount()),
-                        (int) secondsToTicks(rulesRespawnDelaySeconds())), player);
+                        (int) secondsToTicks(rulesRespawnDelaySeconds()))
+                .withRespawn(state == MatchState.PLAYING && isDowned(player),
+                        isDowned(player) ? downedPlayers.get(player.getUUID()).deathLabel() : ""), player);
     }
 
     public void broadcastMatchState() {
@@ -1094,9 +1099,13 @@ public final class MatchManager {
     }
 
     private void scheduleDowned(ServerPlayer player, Team team) {
+        scheduleDowned(player, team, "");
+    }
+
+    private void scheduleDowned(ServerPlayer player, Team team, String deathLabel) {
         long releaseTick = downedReleaseTick();
         downedPlayers.put(player.getUUID(), new DownedEntry(player.getUUID(), team,
-                player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot(), releaseTick));
+                player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot(), releaseTick, deathLabel));
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new MatchRespawnEvent(player,
                 MatchRespawnEvent.Phase.WAITING, releaseTick));
         if (releaseTick == Long.MAX_VALUE) {
@@ -1337,7 +1346,11 @@ public final class MatchManager {
     }
 
     public record DownedEntry(UUID playerId, Team team, double x, double y, double z,
-                               float yaw, float pitch, long releaseTick) {
+                               float yaw, float pitch, long releaseTick, String deathLabel) {
+        public DownedEntry(UUID playerId, Team team, double x, double y, double z,
+                           float yaw, float pitch, long releaseTick) {
+            this(playerId, team, x, y, z, yaw, pitch, releaseTick, "");
+        }
     }
 
     public enum StartResult {

@@ -47,3 +47,18 @@ application and unsafe-spawn waiting. The following require two real clients:
   old entity attached to the connection or restore health to a dead entity.
 
 This has not yet been verified in a two-client game with GD656 installed.
+
+## Client presentation (r94)
+
+Protocol 17 adds an explicit awaiting-respawn flag and victim-specific death label
+to match snapshots. A zero countdown never authorizes a cosmetic return while
+the server still reports waiting for safe terrain. The global kill feed is not
+used as the victim's death summary.
+
+RespawnOverlay suppresses the vanilla death screen for active combatants only.
+The real death/respawn path is untouched. Pause menus and disconnect remain
+accessible. The overlay uses an 180 ms entrance, restrained red edges, deployment
+progress or elimination status, and a 700 ms return fade after the server clears
+waiting and the local player is alive in a non-spectator mode. It has no camera
+shake, shader changes or recorded killcam. Disconnect and leaving combat clear
+the effect. Both server and clients must install r94 because the protocol changed.
