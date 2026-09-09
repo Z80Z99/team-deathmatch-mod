@@ -17,7 +17,11 @@ class HudElementsTest {
         ClientMatchData.state = cn.blockforge.generated.generatedmod.match.MatchState.PLAYING;
         ClientMatchData.respawnTotalTicks = 200;
         ClientMatchData.respawnRemainingTicks = 80;
+        ClientMatchData.boundaryTicks = 160;
         assertEquals(.4, HudStats.byId("respawn_left").ratio(false), .0001);
+        assertEquals("00:08", HudStats.byId("boundary_remaining").display(false));
+        assertTrue(HudStats.sourcesFor(HudContext.TEAM_DEATHMATCH).stream()
+                .anyMatch(source -> source.id().equals("boundary_remaining")));
         assertTrue(HudParameters.visible("team_d", true));
     }
 
@@ -45,6 +49,16 @@ class HudElementsTest {
                 .withAnimation("slide", 450).withMaximum(60);
         var element = new ClientHudLayout.CustomElement("animated", "progress", "%s", 50, 50, 100, 20, 80,
                 -1, true, "respawn_left", 100, true, false, false, placement);
+        assertEquals(element, ClientHudLayout.CustomElement.read(element.toJson()));
+    }
+
+    @Test void alignmentAndDecorationColorsRoundTrip() {
+        var placement = new ClientHudLayout.Placement(0, 0, 0, 0, "", "")
+                .withAlignment("right").withColors(0x112233, 0x445566, 0x778899, 0xAABBCC).withGlow(true);
+        var element = new ClientHudLayout.CustomElement("decorated", "text", "A队 {match_kills_a}",
+                100, 50, 180, 24, 80, 0xFFFFFF, true, "", 100, true, true, true, placement);
+        assertEquals("right", placement.alignment());
+        assertTrue(placement.glow());
         assertEquals(element, ClientHudLayout.CustomElement.read(element.toJson()));
     }
 

@@ -112,20 +112,23 @@ public final class HudCustomRenderer {
             case "block" -> {
                 if (element.shadow()) {
                     graphics.fill(rect.left() + 2, rect.top() + 2, rect.right() + 2, rect.bottom() + 2,
-                            UiTheme.withAlpha(UiTheme.SHADOW, alpha));
+                            UiTheme.withAlpha(shadowColor(element), alpha));
                 }
                 if (element.background()) {
-                    graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(), color);
+                    graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
+                            UiTheme.withAlpha(backgroundColor(element, element.color()), alpha));
                 }
                 if (element.border()) {
-                    graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(), color);
+                    graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(),
+                            UiTheme.withAlpha(borderColor(element, element.color()), alpha));
                 }
+                glow(graphics, element, rect, alpha);
             }
             case "progress" -> drawProgress(graphics, font, element, rect, alpha, color, editor);
             case "image" -> {
                 if (element.shadow()) {
                     graphics.fill(rect.left() + 2, rect.top() + 2, rect.right() + 2, rect.bottom() + 2,
-                            UiTheme.withAlpha(UiTheme.SHADOW, alpha));
+                            UiTheme.withAlpha(shadowColor(element), alpha));
                 }
                 if (!HudBackground.drawImage(graphics, element.text(), rect.left(), rect.top(),
                         rect.width(), rect.height(), alpha)) {
@@ -133,8 +136,10 @@ public final class HudCustomRenderer {
                             ? "未选择" : element.text()));
                 }
                 if (element.border()) {
-                    graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(), color);
+                    graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(),
+                            UiTheme.withAlpha(borderColor(element, element.color()), alpha));
                 }
+                glow(graphics, element, rect, alpha);
             }
             default -> drawText(graphics, font, element, rect, alpha, color, editor);
         }
@@ -144,10 +149,12 @@ public final class HudCustomRenderer {
                                           HudGeometry.Rect rect, int alpha, int color,
                                           String title, String detail, double progress) {
         if (element.shadow()) graphics.fill(rect.left() + 2, rect.top() + 2, rect.right() + 2,
-                rect.bottom() + 2, UiTheme.withAlpha(UiTheme.SHADOW, alpha));
+                rect.bottom() + 2, UiTheme.withAlpha(shadowColor(element), alpha));
         if (element.background()) graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
-                UiTheme.withAlpha(UiTheme.PANEL_RAISED, alpha));
-        if (element.border()) graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(), color);
+                UiTheme.withAlpha(backgroundColor(element, UiTheme.PANEL_RAISED), alpha));
+        if (element.border()) graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(),
+                UiTheme.withAlpha(borderColor(element, element.color()), alpha));
+        glow(graphics, element, rect, alpha);
         graphics.drawCenteredString(font, UiTheme.fit(font, title, rect.width() - 12), rect.centerX(),
                 rect.top() + 9, UiTheme.withAlpha(UiTheme.TEXT, alpha));
         graphics.drawCenteredString(font, detail, rect.centerX(), rect.top() + 25,
@@ -176,11 +183,11 @@ public final class HudCustomRenderer {
         }
         if (element.shadow()) {
             graphics.fill(rect.left() + 2, rect.top() + 2, rect.right() + 2, rect.bottom() + 2,
-                    UiTheme.withAlpha(UiTheme.SHADOW, alpha));
+                    UiTheme.withAlpha(shadowColor(element), alpha));
         }
         if (element.background()) {
             graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
-                    UiTheme.withAlpha(UiTheme.PANEL, alpha));
+                    UiTheme.withAlpha(backgroundColor(element, UiTheme.PANEL), alpha));
         }
         label = HudParameters.render(label, editor);
         int inset = rect.height() < 6 ? 0 : 2;
@@ -190,13 +197,14 @@ public final class HudCustomRenderer {
                 rect.bottom() - inset, color);
         if (element.border()) {
             graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(),
-                    UiTheme.withAlpha(UiTheme.BORDER, alpha));
+                    UiTheme.withAlpha(borderColor(element, UiTheme.BORDER), alpha));
         }
         if (rect.height() >= 12 && !label.isBlank()) {
-            graphics.drawString(font, UiTheme.fit(font, label, inner),
-                    rect.left() + 4, rect.centerY() - 4,
+            String fitted = UiTheme.fit(font, label, inner);
+            graphics.drawString(font, fitted, alignedX(element, font, fitted, rect.left() + 4, rect.right() - 4), rect.centerY() - 4,
                     UiTheme.withAlpha(UiTheme.TEXT, alpha), false);
         }
+        glow(graphics, element, rect, alpha);
     }
 
     /** 文字模块：绑定数据源时内容 = 模板(统计值)；支持 50%~300% 字号缩放。 */
@@ -219,20 +227,51 @@ public final class HudCustomRenderer {
         int halfHeight = Math.round(rect.height() / scale) / 2;
         if (element.shadow()) {
             graphics.fill(-halfWidth + 2, -halfHeight + 2, halfWidth + 2, halfHeight + 2,
-                    UiTheme.withAlpha(UiTheme.SHADOW, alpha));
+                    UiTheme.withAlpha(shadowColor(element), alpha));
         }
         if (element.background()) {
             graphics.fill(-halfWidth, -halfHeight, halfWidth, halfHeight,
-                    UiTheme.withAlpha(UiTheme.PANEL_RAISED, alpha));
+                    UiTheme.withAlpha(backgroundColor(element, UiTheme.PANEL_RAISED), alpha));
         }
         if (element.border()) {
-            graphics.renderOutline(-halfWidth, -halfHeight, halfWidth * 2, halfHeight * 2, color);
+            graphics.renderOutline(-halfWidth, -halfHeight, halfWidth * 2, halfHeight * 2,
+                    UiTheme.withAlpha(borderColor(element, element.color()), alpha));
         }
         // 坐标已按 scale 放大，限宽要换算回本地坐标，文字才不会溢出面板。
         int padding = element.placement().example().isBlank() ? 8 : 0;
         int localLimit = Math.max(1, Math.round((rect.width() - padding) / scale));
-        graphics.drawCenteredString(font, UiTheme.fit(font, content, localLimit), 0, -4, color);
+        String fitted = UiTheme.fit(font, content, localLimit);
+        int textX = switch (element.placement().alignment()) {
+            case "left" -> -halfWidth + 4;
+            case "right" -> halfWidth - 4 - font.width(fitted);
+            default -> -font.width(fitted) / 2;
+        };
+        graphics.drawString(font, fitted, textX, -4, color, false);
         graphics.pose().popPose();
+        glow(graphics, element, rect, alpha);
+    }
+
+    private static int backgroundColor(CustomElement element, int fallback) {
+        return element.placement().backgroundColor() == 0 ? fallback : element.placement().backgroundColor();
+    }
+    private static int borderColor(CustomElement element, int fallback) {
+        return element.placement().borderColor() == 0 ? fallback : element.placement().borderColor();
+    }
+    private static int shadowColor(CustomElement element) {
+        return element.placement().shadowColor() == 0 ? UiTheme.SHADOW : element.placement().shadowColor();
+    }
+    private static int alignedX(CustomElement element, Font font, String text, int left, int right) {
+        return switch (element.placement().alignment()) {
+            case "right" -> right - font.width(text);
+            case "center" -> (left + right - font.width(text)) / 2;
+            default -> left;
+        };
+    }
+    private static void glow(GuiGraphics graphics, CustomElement element, HudGeometry.Rect rect, int alpha) {
+        if (!element.placement().glow()) return;
+        int color = element.placement().glowColor() == 0 ? element.color() : element.placement().glowColor();
+        graphics.renderOutline(rect.left() - 1, rect.top() - 1, rect.width() + 2, rect.height() + 2,
+                UiTheme.withAlpha(color, Math.max(12, alpha / 3)));
     }
 
     /** 隐藏模块的虚线占位框（仅配置窗显示）。 */

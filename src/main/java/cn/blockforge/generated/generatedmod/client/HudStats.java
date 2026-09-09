@@ -380,6 +380,8 @@ public final class HudStats {
         // ---- 时间类
         time("phase_remaining", "回合倒计时", Group.PROGRESS,
                 () -> ClientMatchData.phaseRemainingTicks, HudStats::inMatch, 225 * 20);
+        time("boundary_remaining", "出界倒计时", Group.PROGRESS,
+                () -> ClientMatchData.boundaryTicks, HudStats::inMatch, 10 * 20);
         time("elapsed", "本局已进行时间", Group.PROGRESS, ClientMatchData::elapsedTicks, HudStats::inMatch, 165 * 20);
 
         // ---- 进度类

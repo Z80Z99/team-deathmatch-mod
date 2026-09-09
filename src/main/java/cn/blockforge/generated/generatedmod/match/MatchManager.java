@@ -1223,7 +1223,10 @@ public final class MatchManager {
                 sendMatchSync(player);
                 continue;
             }
-            if ((previousBoundary == 0 && boundaryLeft > 0) || (previousBoundary > 0 && !outside)) sendMatchSync(player);
+            // Keep the client countdown authoritative during the whole out-of-bounds period.
+            // A one-shot packet can be missed when the player changes dimension or reconnects.
+            if ((previousBoundary == 0 && boundaryLeft > 0) || (previousBoundary > 0 && !outside)
+                    || (boundaryLeft > 0 && now % 20 == 0)) sendMatchSync(player);
 
             if (state == MatchState.MAP_RESETTING) {
                 player.setGameMode(GameType.SPECTATOR);

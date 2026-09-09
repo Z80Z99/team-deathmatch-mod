@@ -66,10 +66,14 @@ public final class MatchHudOverlay {
             graphics.fill(0, 0, width, height, (alpha << 24) | (warning.color() & 0xFFFFFF));
             Font font = forgeGui.getMinecraft().font;
             if (warning.background()) graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
-                    UiTheme.withAlpha(UiTheme.PANEL_RAISED, warning.opacityPercent()));
+                    UiTheme.withAlpha(warning.placement().backgroundColor() == 0 ? UiTheme.PANEL_RAISED
+                            : warning.placement().backgroundColor(), warning.opacityPercent()));
             if (warning.border()) graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(),
-                    UiTheme.withAlpha(warning.color(), warning.opacityPercent()));
-            graphics.drawCenteredString(font, "返回作战区域", rect.centerX(), rect.top() + 9, 0xFFFFD6D6);
+                    UiTheme.withAlpha(warning.placement().borderColor() == 0 ? warning.color()
+                            : warning.placement().borderColor(), warning.opacityPercent()));
+            String label = HudParameters.render(warning.text(), false);
+            graphics.drawCenteredString(font, UiTheme.fit(font, label.isBlank() ? "返回作战区域" : label,
+                    Math.max(20, rect.width() - 12)), rect.centerX(), rect.top() + 9, 0xFFFFD6D6);
             graphics.drawCenteredString(font, Integer.toString((ClientMatchData.boundaryTicks + 19) / 20),
                     rect.centerX(), rect.top() + 29, 0xFFFFFFFF);
         }

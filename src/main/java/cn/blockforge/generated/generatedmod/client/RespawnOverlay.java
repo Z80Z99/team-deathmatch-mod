@@ -107,11 +107,14 @@ public final class RespawnOverlay {
         int accent = returning ? 0xA7DDD1 : effectRgb;
         // A local scrim keeps labels readable against bright terrain without framing a card.
         if (element.background()) graphics.fill(left, top - 4, rect.right(), rect.bottom(),
-                color((int) (155 * fade * opacity / 100F), 0x080B0D));
+                color((int) (155 * fade * opacity / 100F), element.placement().backgroundColor() == 0
+                        ? 0x080B0D : element.placement().backgroundColor()));
         if (element.border()) graphics.renderOutline(left, top - 4, panelWidth, rect.height(),
-                color((int) (255 * fade), accent));
+                color((int) (255 * fade), element.placement().borderColor() == 0 ? accent : element.placement().borderColor()));
         graphics.fill(left, top, left + 24, top + 2, color((int) (255 * fade), accent));
-        graphics.drawString(mc.font, returning ? "重返战场" : "已阵亡", left, top + 10, white, false);
+        String title = HudParameters.render(element.text(), false);
+        if (title.isBlank()) title = returning ? "重返战场" : "已阵亡";
+        graphics.drawString(mc.font, mc.font.plainSubstrByWidth(title, panelWidth), left, top + 10, white, false);
         String detail = mc.font.plainSubstrByWidth(ClientMatchData.deathLabel, panelWidth);
         if (returning) detail = "";
         graphics.drawString(mc.font, detail, left, top + 25, muted, false);

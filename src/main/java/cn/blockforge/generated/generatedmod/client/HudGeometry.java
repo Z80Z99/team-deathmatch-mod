@@ -76,8 +76,10 @@ public final class HudGeometry {
         float scale = element.placement().fit(screenWidth, screenHeight);
         int width = Math.max(1, Math.min(screenWidth - 16, Math.round(element.width() * scale)));
         int height = Math.max(1, Math.min(screenHeight - 16, Math.round(element.height() * scale)));
-        int centerX = clamp(Math.round(screenWidth * element.xPercent() / 100F
-                + element.placement().offsetX() * scale), 8 + width / 2, screenWidth - 8 - (width + 1) / 2);
+        float anchorX = screenWidth * element.xPercent() / 100F + element.placement().offsetX() * scale;
+        if (element.placement().alignment().equals("left")) anchorX += width / 2F;
+        if (element.placement().alignment().equals("right")) anchorX -= width / 2F;
+        int centerX = clamp(Math.round(anchorX), 8 + width / 2, screenWidth - 8 - (width + 1) / 2);
         int centerY = clamp(Math.round(screenHeight * element.yPercent() / 100F
                 + element.placement().offsetY() * scale), 8 + height / 2, screenHeight - 8 - (height + 1) / 2);
         return new Rect(centerX - width / 2, centerY - height / 2, width, height, scale,
