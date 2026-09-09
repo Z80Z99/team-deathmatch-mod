@@ -32,7 +32,7 @@ import java.util.List;
  */
 public final class RoomRulesScreen extends UiScreen {
     private static final int FIELD_HEIGHT = 38;
-    private static final int ROW_COUNT = 10;
+    private static final int ROW_COUNT = 12;
     private static final int COLUMN_GAP = 12;
 
     private final Screen parent;
@@ -58,6 +58,7 @@ public final class RoomRulesScreen extends UiScreen {
     private UiCycleButton<AutoBalanceMode> balanceCycle;
     private UiCycleButton<SpawnSelectionStrategy> spawnCycle;
     private UiEditBox imbalanceBox;
+    private UiButton unavailableButton;
     private UiButton saveButton;
     private UiButton resetButton;
     private int sectionY;
@@ -69,10 +70,13 @@ public final class RoomRulesScreen extends UiScreen {
     private int rulesMaxScroll;
     private final int[] rowYs = new int[ROW_COUNT];
     private final int[] ruleBaseYs = new int[ROW_COUNT];
+    private final String[] rowSections = new String[ROW_COUNT];
     private int marqueeTicks;
     private int lastRoomRevision = -1;
     private String status = "";
-    private int category;
+    private boolean unavailableOpen;
+    private boolean draggingRulesScrollbar;
+    private int scrollbarDragOffset;
     private int statusColor = UiTheme.MUTED;
 
     private RoomRulesScreen(Screen parent) {
@@ -125,15 +129,7 @@ public final class RoomRulesScreen extends UiScreen {
     @Override
     protected void init() {
         beginLayout(640, 0, BUTTON_HEIGHT);
-        sectionY = flowRow(BUTTON_HEIGHT);
-        String[] categories = {"比赛", "玩家", "高级"};
-        for (int i = 0; i < categories.length; i++) {
-            int target = i;
-            UiButton tab = flowWidget(uiButton(categories[i], columnX(i, 3, 6), sectionY, columnWidth(3, 6), () -> {
-                draft = collect(); category = target; rulesScroll = 0; rebuildWidgets();
-            }, null), sectionY);
-            tab.setSelected(category == i);
-        }
+        sectionY = contentTop;
         summaryY = flowRow(18);
         if (draft == null) {
             draft = editingRules();
@@ -160,7 +156,7 @@ public final class RoomRulesScreen extends UiScreen {
                 editable, durationTooltip(current.mode()));
         winBox = integer(2, 0, winLabel(current.mode()), current.roundWinTarget(), 2, editable,
                 "需要拿下的回合数才算赢下整场比赛。");
-        warmupBox = integer(2, 1, "热身时长/秒", current.warmupDurationSeconds(), 4, editable,
+        warmupBox = integer(11, 0, "热身时长/秒", current.warmupDurationSeconds(), 4, editable,
                 "开赛前双方自由活动的热身时间（0～300）。");
 
         respawnBox = integer(3, 0, "阵亡恢复/秒", current.respawnDelaySeconds(), 2, editable,
@@ -189,6 +185,16 @@ public final class RoomRulesScreen extends UiScreen {
                 current.spawnSelectionStrategy(), RoomRulesScreen::spawnName, null, null, editable);
         imbalanceBox = integer(9, 1, "队伍最大人数差", current.maxTeamImbalance(), 1, editable,
                 "比赛中换队或补位时的最大队伍人数差；房间内手动选队不受此值限制。");
+        UiTheme.Field unavailableField = ruleField(0);
+        unavailableButton = new UiButton(unavailableField.controlX(), rowYs[10] + 12,
+                innerWidth - 4, BUTTON_HEIGHT,
+                Component.literal(unavailableOpen ? "目前不可用设置  ▲" : "目前不可用设置  ▼"),
+                ignored -> {
+                    draft = collect();
+                    unavailableOpen = !unavailableOpen;
+                    rebuildWidgets();
+                }, UiButton.Kind.SECONDARY);
+        addRenderableWidget(unavailableButton);
 
         applyModeVisibility();
         applyRuleScroll();
@@ -229,18 +235,32 @@ public final class RoomRulesScreen extends UiScreen {
         return mode == GameMode.SEARCH_DESTROY ? "先胜回合数" : "整场需胜回合数";
     }
 
-    /** 只给当前模式实际使用的行分配位置，隐藏行不会留下空白。 */
+    /** 只给实际展示的行分配位置，隐藏行不会留下空白。 */
     private void layoutRuleRows(GameMode mode) {
         int y = rulesViewportTop;
         for (int row = 0; row < ROW_COUNT; row++) {
-            if (rowVisible(mode, row)) {
-                ruleBaseYs[row] = y;
-                rowYs[row] = y - rulesScroll;
-                y += FIELD_HEIGHT + ROW_GAP;
-            } else {
-                ruleBaseYs[row] = -FIELD_HEIGHT;
-                rowYs[row] = -FIELD_HEIGHT;
+            ruleBaseYs[row] = -FIELD_HEIGHT;
+            rowYs[row] = -FIELD_HEIGHT;
+            rowSections[row] = null;
+        }
+        int[] order = mode == GameMode.SEARCH_DESTROY
+                ? new int[]{0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 6}
+                : new int[]{0, 1, 3, 4, 7, 8, 9, 10, 2, 5, 11, 6};
+        String currentSection = "";
+        for (int row : order) {
+            if (!rowVisible(mode, row)) {
+                continue;
             }
+            String section = rowSection(row);
+            if (section != null && !section.equals(currentSection)) {
+                y += currentSection.isBlank() ? 2 : 8;
+                rowSections[row] = section;
+                y += 14;
+                currentSection = section;
+            }
+            ruleBaseYs[row] = y;
+            rowYs[row] = y - rulesScroll;
+            y += row == 10 ? BUTTON_HEIGHT + ROW_GAP : FIELD_HEIGHT + ROW_GAP;
         }
         int contentHeight = Math.max(0, y - rulesViewportTop - ROW_GAP);
         rulesMaxScroll = Math.max(0, contentHeight - (rulesViewportBottom - rulesViewportTop));
@@ -249,16 +269,28 @@ public final class RoomRulesScreen extends UiScreen {
     }
 
     private boolean rowVisible(GameMode mode, int row) {
-        if (row == 0) return category == 0;
-        if (row == 6) return false;
-        if (row == 2 && mode != GameMode.SEARCH_DESTROY) return false;
-        if (row == 5 && mode == GameMode.TEAM_DEATHMATCH) return false;
+        if (row == 2) {
+            return mode == GameMode.SEARCH_DESTROY || unavailableOpen;
+        }
+        if (row == 5) {
+            return mode != GameMode.TEAM_DEATHMATCH || unavailableOpen;
+        }
+        if (row == 6 || row == 11) {
+            return unavailableOpen;
+        }
         if (row == 3 && !mode.respawnRules()) return false;
-        return switch (category) {
-            case 0 -> row == 1 || row == 2 || row == 5;
-            case 1 -> row == 3 || row == 4 || row == 6;
-            default -> row >= 7;
-        };
+        return true;
+    }
+
+    private String rowSection(int row) {
+        if (row == 0 || row == 1) return "比赛";
+        if (row == 2 && (draft == null || draft.mode() == GameMode.SEARCH_DESTROY)) return "比赛";
+        if (row == 5 && (draft == null || draft.mode() != GameMode.TEAM_DEATHMATCH)) return "比赛";
+        if (row == 3 || row == 4) return "玩家";
+        if (row == 7 || row == 8 || row == 9) return "高级";
+        if (row == 10 || row == 6 || row == 11) return "目前不可用设置";
+        if (row == 2 || row == 5) return "目前不可用设置";
+        return null;
     }
 
     private void applyRuleScroll() {
@@ -269,8 +301,8 @@ public final class RoomRulesScreen extends UiScreen {
         setRowY(minPlayersBox, 0);
         setRowY(targetBox, 1, draft != null && draft.mode().respawnRules());
         setRowY(durationBox, 1);
-        setRowY(winBox, 2, draft != null && (draft.mode() == GameMode.SEARCH_DESTROY));
-        setRowY(warmupBox, 2, false);
+        setRowY(winBox, 2);
+        setRowY(warmupBox, 11);
         setRowY(respawnBox, 3, draft != null && draft.mode().respawnRules());
         setRowY(autoRespawnToggle, 3, false);
         setRowY(switchBox, 4, draft != null && draft.mode().roundSwapping());
@@ -285,6 +317,7 @@ public final class RoomRulesScreen extends UiScreen {
         setRowY(balanceCycle, 8);
         setRowY(spawnCycle, 9);
         setRowY(imbalanceBox, 9);
+        setRowY(unavailableButton, 10);
     }
 
     private void setRowY(net.minecraft.client.gui.components.AbstractWidget widget, int row) {
@@ -295,7 +328,8 @@ public final class RoomRulesScreen extends UiScreen {
         if (widget != null) {
             int y = rowYs[row];
             widget.setY(y < 0 ? -FIELD_HEIGHT : y + 12);
-            widget.visible = allowed && y >= rulesViewportTop && y + FIELD_HEIGHT <= rulesViewportBottom;
+            int height = row == 10 ? BUTTON_HEIGHT : FIELD_HEIGHT;
+            widget.visible = allowed && y >= rulesViewportTop && y + height <= rulesViewportBottom;
         }
     }
 
@@ -310,6 +344,14 @@ public final class RoomRulesScreen extends UiScreen {
         durationBox.setMessage(Component.literal(durationLabel(mode)));
         if (modeCycle != null) modeCycle.setValue(mode);
         applyRuleScroll();
+        if (autoRespawnToggle != null) autoRespawnToggle.active = false;
+        if (winBox != null) winBox.setEditable(mode == GameMode.SEARCH_DESTROY && editable());
+        if (warmupBox != null) warmupBox.setEditable(false);
+        if (roundEndDelayBox != null && mode == GameMode.TEAM_DEATHMATCH) roundEndDelayBox.setEditable(false);
+        if (matchEndDelayBox != null && mode == GameMode.TEAM_DEATHMATCH) matchEndDelayBox.setEditable(false);
+        if (keepInventoryToggle != null) keepInventoryToggle.active = false;
+        if (suppressDeathToggle != null) suppressDeathToggle.active = false;
+        if (requireBothToggle != null) requireBothToggle.active = false;
     }
 
     private UiEditBox integer(int row, int column, String label, int value, int maxLength,
@@ -465,6 +507,70 @@ public final class RoomRulesScreen extends UiScreen {
     }
 
     @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 0 && rulesMaxScroll > 0 && mouseX >= scrollbarX() - 2 && mouseX <= scrollbarX() + 6
+                && mouseY >= rulesViewportTop && mouseY <= rulesViewportBottom) {
+            int thumbTop = scrollbarThumbTop();
+            int thumbHeight = scrollbarThumbHeight();
+            if (mouseY >= thumbTop && mouseY <= thumbTop + thumbHeight) {
+                draggingRulesScrollbar = true;
+                scrollbarDragOffset = (int) mouseY - thumbTop;
+            } else {
+                scrollToThumb((int) mouseY - thumbHeight / 2);
+                draggingRulesScrollbar = true;
+                scrollbarDragOffset = thumbHeight / 2;
+            }
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (draggingRulesScrollbar && button == 0) {
+            scrollToThumb((int) mouseY - scrollbarDragOffset);
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0 && draggingRulesScrollbar) {
+            draggingRulesScrollbar = false;
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    private int scrollbarX() {
+        return innerLeft + innerWidth - 4;
+    }
+
+    private int scrollbarThumbHeight() {
+        int trackHeight = rulesViewportBottom - rulesViewportTop;
+        return Math.max(14, trackHeight * trackHeight / Math.max(trackHeight, trackHeight + rulesMaxScroll));
+    }
+
+    private int scrollbarThumbTop() {
+        int trackHeight = rulesViewportBottom - rulesViewportTop;
+        int thumbHeight = scrollbarThumbHeight();
+        return rulesViewportTop + (trackHeight - thumbHeight) * rulesScroll / Math.max(1, rulesMaxScroll);
+    }
+
+    private void scrollToThumb(int thumbTop) {
+        int trackHeight = rulesViewportBottom - rulesViewportTop;
+        int thumbHeight = scrollbarThumbHeight();
+        int range = Math.max(1, trackHeight - thumbHeight);
+        int clampedTop = Math.max(rulesViewportTop, Math.min(rulesViewportBottom - thumbHeight, thumbTop));
+        int next = (clampedTop - rulesViewportTop) * rulesMaxScroll / range;
+        if (next != rulesScroll) {
+            rulesScroll = Math.max(0, Math.min(rulesMaxScroll, next));
+            applyRuleScroll();
+        }
+    }
+
+    @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         RoomView own = ownRoom();
         renderShell(graphics, own == null ? "当前不在房间中"
@@ -480,12 +586,18 @@ public final class RoomRulesScreen extends UiScreen {
             for (int column = 0; column < 2; column++) {
                 String label = rowLabel(row, column);
                 if (label == null || rowYs[row] < rulesViewportTop
-                        || rowYs[row] + FIELD_HEIGHT > rulesViewportBottom) {
+                        || rowYs[row] + (row == 10 ? BUTTON_HEIGHT : FIELD_HEIGHT) > rulesViewportBottom) {
                     continue;
                 }
                 UiTheme.Field field = ruleField(column);
                 final int bandY = rowYs[row];
+                final int columnIndex = column;
+                final String sectionLabel = rowSections[row];
                 paintBand(graphics, bandY, FIELD_HEIGHT, () -> {
+                    if (columnIndex == 0 && sectionLabel != null) {
+                        graphics.drawString(font, fit(sectionLabel, innerWidth - 16), innerLeft,
+                                bandY - 14, UiTheme.MUTED, false);
+                    }
                     graphics.drawString(font, fit(label, field.labelWidth()), field.labelX(),
                             bandY, UiTheme.MUTED, false);
                 });
@@ -494,14 +606,11 @@ public final class RoomRulesScreen extends UiScreen {
         if (rulesMaxScroll > 0) {
             int trackTop = rulesViewportTop;
             int trackBottom = rulesViewportBottom;
-            graphics.fill(innerLeft + innerWidth - 4, trackTop, innerLeft + innerWidth - 2,
+            graphics.fill(scrollbarX(), trackTop, scrollbarX() + 3,
                     trackBottom, UiTheme.BORDER_SUBTLE);
-            int trackHeight = trackBottom - trackTop;
-            int thumbHeight = Math.max(14, trackHeight * trackHeight
-                    / Math.max(trackHeight, trackHeight + rulesMaxScroll));
-            int thumbTop = trackTop + (trackHeight - thumbHeight) * rulesScroll
-                    / Math.max(1, rulesMaxScroll);
-            graphics.fill(innerLeft + innerWidth - 4, thumbTop, innerLeft + innerWidth - 2,
+            int thumbHeight = scrollbarThumbHeight();
+            int thumbTop = scrollbarThumbTop();
+            graphics.fill(scrollbarX(), thumbTop, scrollbarX() + 3,
                     thumbTop + thumbHeight, UiTheme.ACCENT);
         }
         renderStatus(graphics, status, statusColor);
@@ -533,8 +642,7 @@ public final class RoomRulesScreen extends UiScreen {
         }
         if (row == 2) {
             if (column == 0) {
-                return mode == GameMode.SEARCH_DESTROY
-                        ? winLabel(mode) : null;
+                return "先胜回合数";
             }
             return null;
         }
@@ -558,6 +666,12 @@ public final class RoomRulesScreen extends UiScreen {
         }
         if (row == 7) {
             return column == 0 ? "赛后自动复位" : null;
+        }
+        if (row == 10) {
+            return null;
+        }
+        if (row == 11) {
+            return column == 0 ? "热身时长/秒" : null;
         }
         if (row == 8) {
             return column == 0 ? "换队政策" : "自动平衡";

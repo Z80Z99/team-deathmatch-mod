@@ -108,10 +108,9 @@ class UiLayoutTest {
                         capture.save(screen.getClass().getSimpleName() + "-" + size[0] + "x" + size[1]);
                     }
                     if (screen instanceof RoomRulesScreen) {
-                        for (String tab : List.of("玩家", "高级")) {
-                            press(screen, tab);
-                            snapshot(screen, tab, size);
-                        }
+                        screen.mouseScrolled(size[0] / 2.0, size[1] / 2.0, -12);
+                        pressPrefix(screen, "目前不可用设置");
+                        snapshot(screen, "不可用设置", size);
                         UiCycleButton<?> mode = (UiCycleButton<?>) screen.children().stream()
                                 .filter(UiCycleButton.class::isInstance).findFirst().orElseThrow();
                         mode.onPress();
@@ -160,6 +159,11 @@ class UiLayoutTest {
     private static void press(Screen screen, String label) {
         UiButton button = screen.children().stream().filter(UiButton.class::isInstance).map(UiButton.class::cast)
                 .filter(widget -> widget.visible && widget.getMessage().getString().equals(label)).findFirst().orElseThrow();
+        button.onPress();
+    }
+    private static void pressPrefix(Screen screen, String label) {
+        UiButton button = screen.children().stream().filter(UiButton.class::isInstance).map(UiButton.class::cast)
+                .filter(widget -> widget.visible && widget.getMessage().getString().startsWith(label)).findFirst().orElseThrow();
         button.onPress();
     }
     private static void snapshot(Screen screen, String suffix, int[] size) throws Exception {
