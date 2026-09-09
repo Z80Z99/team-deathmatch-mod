@@ -15,6 +15,9 @@ class RespawnOverlayLayoutTest {
     @Test void deathDetailsFitSmallAndLargeGuiScales() throws Exception {
         Minecraft mc = mock(Minecraft.class);
         Font font = mock(Font.class);
+        var gameDirectory = Minecraft.class.getDeclaredField("gameDirectory");
+        gameDirectory.setAccessible(true);
+        gameDirectory.set(mc, new java.io.File("build/test-game-respawn-layout"));
         var field = Minecraft.class.getDeclaredField("font");
         field.setAccessible(true); field.set(mc, font);
         when(font.width(anyString())).thenAnswer(call -> UiRenderCapture.measure(call.getArgument(0)));

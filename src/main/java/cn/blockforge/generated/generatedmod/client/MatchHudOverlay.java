@@ -55,12 +55,21 @@ public final class MatchHudOverlay {
         renderCustom(graphics, forgeGui.getMinecraft().font, width, height,
                 HudContext.match(ClientMatchData.mode));
         if (ClientMatchData.boundaryTicks > 0) {
-            int alpha = 35 + (200 - Math.min(200, ClientMatchData.boundaryTicks)) * 105 / 200;
-            graphics.fill(0, 0, width, height, (alpha << 24) | 0x650008);
+            ClientHudLayout.CustomElement warning = ClientHudLayout.customElements(context).stream()
+                    .filter(element -> element.type().equals("boundary") && element.visible()).findFirst().orElse(null);
+            if (warning == null) return;
+            HudGeometry.Rect rect = HudGeometry.custom(warning, width, height);
+            int alpha = warning.opacityPercent()
+                    * (35 + (200 - Math.min(200, ClientMatchData.boundaryTicks)) * 105 / 200) / 100;
+            graphics.fill(0, 0, width, height, (alpha << 24) | (warning.color() & 0xFFFFFF));
             Font font = forgeGui.getMinecraft().font;
-            graphics.drawCenteredString(font, "返回作战区域", width / 2, height / 3, 0xFFFFD6D6);
+            if (warning.background()) graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
+                    UiTheme.withAlpha(UiTheme.PANEL_RAISED, warning.opacityPercent()));
+            if (warning.border()) graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(),
+                    UiTheme.withAlpha(warning.color(), warning.opacityPercent()));
+            graphics.drawCenteredString(font, "返回作战区域", rect.centerX(), rect.top() + 9, 0xFFFFD6D6);
             graphics.drawCenteredString(font, Integer.toString((ClientMatchData.boundaryTicks + 19) / 20),
-                    width / 2, height / 3 + 20, 0xFFFFFFFF);
+                    rect.centerX(), rect.top() + 29, 0xFFFFFFFF);
         }
     }
 

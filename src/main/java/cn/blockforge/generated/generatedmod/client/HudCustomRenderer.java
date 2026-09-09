@@ -101,6 +101,14 @@ public final class HudCustomRenderer {
         }
         int color = UiTheme.withAlpha(element.color(), alpha);
         switch (element.type()) {
+            case "respawn" -> {
+                if (editor) drawStatusPreview(graphics, font, element, rect, alpha, color,
+                        "已阵亡", "重新部署  4", 0.42);
+            }
+            case "boundary" -> {
+                if (editor) drawStatusPreview(graphics, font, element, rect, alpha, color,
+                        "返回作战区域", "8", 0.80);
+            }
             case "block" -> {
                 if (element.shadow()) {
                     graphics.fill(rect.left() + 2, rect.top() + 2, rect.right() + 2, rect.bottom() + 2,
@@ -130,6 +138,23 @@ public final class HudCustomRenderer {
             }
             default -> drawText(graphics, font, element, rect, alpha, color, editor);
         }
+    }
+
+    private static void drawStatusPreview(GuiGraphics graphics, Font font, CustomElement element,
+                                          HudGeometry.Rect rect, int alpha, int color,
+                                          String title, String detail, double progress) {
+        if (element.shadow()) graphics.fill(rect.left() + 2, rect.top() + 2, rect.right() + 2,
+                rect.bottom() + 2, UiTheme.withAlpha(UiTheme.SHADOW, alpha));
+        if (element.background()) graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
+                UiTheme.withAlpha(UiTheme.PANEL_RAISED, alpha));
+        if (element.border()) graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(), color);
+        graphics.drawCenteredString(font, UiTheme.fit(font, title, rect.width() - 12), rect.centerX(),
+                rect.top() + 9, UiTheme.withAlpha(UiTheme.TEXT, alpha));
+        graphics.drawCenteredString(font, detail, rect.centerX(), rect.top() + 25,
+                UiTheme.withAlpha(UiTheme.TEXT, alpha));
+        int y = rect.bottom() - 7;
+        graphics.fill(rect.left() + 6, y, rect.right() - 6, y + 3, UiTheme.withAlpha(UiTheme.BORDER, alpha));
+        graphics.fill(rect.left() + 6, y, rect.left() + 6 + (int) ((rect.width() - 12) * progress), y + 3, color);
     }
 
     /** 进度条：绑定数据源后按比例填充，标签走模板（%s=百分比/数值）。 */

@@ -326,6 +326,14 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         registerAddButton("+进度条", 2, columns, addButtonLine, "progress",
                 "进度条：可绑定胜利进度、成局人数、生命百分比等真实统计来源。");
         registerAddButton("+图片", 3, columns, addButtonLine, "image", "图片模块：使用 config/fpsmod/hud_images 里的 PNG。");
+        if (activeContext.isMatch()) {
+            rows.add(Row.header("状态效果"));
+            int effectLine = beginLayoutLine();
+            registerAddButton("+阵亡与部署", 0, 2, effectLine, "respawn",
+                    "阵亡后显示暗红遮罩、状态、倒计时和重新部署进度。");
+            registerAddButton("+越界警告", 1, 2, effectLine, "boundary",
+                    "离开地图边界时显示警告遮罩和阵亡倒计时。");
+        }
         UiButton remove = new UiButton(0, 0, 10, CONTROL, Component.literal("删除当前模块"), ignored -> {
             ClientHudLayout.CustomElement chosen = selectedCustom();
             if (chosen != null) {
@@ -558,6 +566,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         boolean textLike = "text".equals(chosen.type());
         boolean progress = "progress".equals(chosen.type());
         boolean image = "image".equals(chosen.type());
+        boolean statusEffect = "respawn".equals(chosen.type()) || "boundary".equals(chosen.type());
 
         if (textLike || progress) {
             addParameterHelp();
@@ -579,6 +588,9 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         }
         if (!image) {
             addColorRow(chosen, id);
+        }
+        if (statusEffect) {
+            rows.add(Row.note("这是比赛状态触发的专用 HUD；颜色同时控制强调色和全屏警告色。"));
         }
         addToggle("显示背景", () -> boolOf(id, ClientHudLayout.CustomElement::background),
                 value -> replaceById(id, e -> e.background = value));
@@ -1130,6 +1142,8 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             case "image" -> ClientHudLayout.CustomElement.image(id,
                     HudBackground.availableImages().isEmpty() ? ""
                             : HudBackground.availableImages().get(0));
+            case "respawn" -> ClientHudLayout.CustomElement.respawn(id);
+            case "boundary" -> ClientHudLayout.CustomElement.boundary(id);
             default -> ClientHudLayout.CustomElement.text(id);
         };
         editDiscrete(() -> draft.addCustomElement(activeContext, element));

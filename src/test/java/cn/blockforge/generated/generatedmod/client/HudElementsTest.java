@@ -47,6 +47,17 @@ class HudElementsTest {
                 -1, true, "respawn_left", 100, true, false, false, placement);
         assertEquals(element, ClientHudLayout.CustomElement.read(element.toJson()));
     }
+
+    @Test void statusEffectKindsAreIndependentSerializableComponents() {
+        var respawn = ClientHudLayout.CustomElement.respawn("respawn_test");
+        var boundary = ClientHudLayout.CustomElement.boundary("boundary_test");
+        assertEquals("respawning", respawn.placement().condition());
+        assertEquals("outside", boundary.placement().condition());
+        assertTrue(respawn.displayName().startsWith("阵亡与部署"));
+        assertTrue(boundary.displayName().startsWith("越界警告"));
+        assertEquals(respawn, ClientHudLayout.CustomElement.read(respawn.toJson()));
+        assertEquals(boundary, ClientHudLayout.CustomElement.read(boundary.toJson()));
+    }
     private MockedStatic<Minecraft> access;
 
     @BeforeEach void setup() throws Exception {

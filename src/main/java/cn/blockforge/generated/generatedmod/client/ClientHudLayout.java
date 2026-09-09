@@ -34,7 +34,7 @@ import java.util.Map;
 public final class ClientHudLayout {
     private static final Logger LOGGER = LoggerFactory.getLogger("generated_mod_hud_layout");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int VERSION = 6;
+    private static final int VERSION = 7;
     private static final int SCORE_BIT = 1;
     private static final int TEXT_BIT = 1 << 1;
     private static final int FEED_BIT = 1 << 2;
@@ -139,6 +139,7 @@ public final class ClientHudLayout {
             CUSTOM_ELEMENTS.put(context, new ArrayList<>());
         }
         loaded = true;
+        installStatusEffectDefaults();
         flattenExamples();
         save();
         return snapshot();
@@ -153,11 +154,13 @@ public final class ClientHudLayout {
         loaded = true;
         Path file = configFile();
         if (!Files.isRegularFile(file)) {
+            installStatusEffectDefaults();
             flattenExamples();
             return;
         }
         try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             JsonObject object = JsonParser.parseReader(reader).getAsJsonObject();
+            int sourceVersion = integer(object, "version", 1);
             if (integer(object, "version", 1) < 6) {
                 Path backup = file.resolveSibling("client-hud.before-v6.json");
                 if (!Files.exists(backup)) {
@@ -171,10 +174,24 @@ public final class ClientHudLayout {
             } else {
                 migrateVersion1(object);
             }
+            if (sourceVersion < 7) installStatusEffectDefaults();
         } catch (Exception error) {
             LOGGER.warn("读取客户端 HUD 配置失败，将使用默认值：{}", file, error);
         }
         flattenExamples();
+    }
+
+    private static void installStatusEffectDefaults() {
+        for (HudContext context : HudContext.values()) {
+            if (!context.isMatch()) continue;
+            List<CustomElement> elements = CUSTOM_ELEMENTS.computeIfAbsent(context, ignored -> new ArrayList<>());
+            if (elements.stream().noneMatch(element -> element.type().equals("respawn"))) {
+                elements.add(CustomElement.respawn("respawn_status"));
+            }
+            if (elements.stream().noneMatch(element -> element.type().equals("boundary"))) {
+                elements.add(CustomElement.boundary("boundary_warning"));
+            }
+        }
     }
 
     private static void flattenExamples() {
@@ -790,6 +807,18 @@ public final class ClientHudLayout {
                     UiTheme.ACCENT, true, "", 100, false, false, false);
         }
 
+        public static CustomElement respawn(String id) {
+            return new CustomElement(id, "respawn", "阵亡与重新部署", 50, 82, 300, 72, 85,
+                    0xFFE65861, true, "", 100, true, false, true,
+                    new Placement(0, 0, 0, 0, "", "respawning").withAnimation("fade", 350));
+        }
+
+        public static CustomElement boundary(String id) {
+            return new CustomElement(id, "boundary", "返回作战区域", 50, 34, 240, 54, 72,
+                    0xFFB71927, true, "", 100, false, false, true,
+                    new Placement(0, 0, 0, 0, "", "outside").withAnimation("fade", 200));
+        }
+
         /** 该模块绑定的统计接口（未绑定返回 null）。 */
         public HudStats.Source boundSource() {
             return source.isBlank() ? null : HudStats.byId(source);
@@ -805,6 +834,8 @@ public final class ClientHudLayout {
                 case "block" -> "色块 · " + id;
                 case "progress" -> "进度条 · " + id + boundLabel;
                 case "image" -> "图片 · " + (text.isBlank() ? "未选择" : text);
+                case "respawn" -> "阵亡与部署 · " + id;
+                case "boundary" -> "越界警告 · " + id;
                 default -> "文字 · " + id + boundLabel;
             };
         }
