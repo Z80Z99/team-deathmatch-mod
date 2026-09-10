@@ -64,10 +64,8 @@ public final class MatchHudOverlay {
             float opacity = Math.max(0, Math.min(100, warning.opacityPercent())) / 100.0F;
             int redAlpha = Math.round(255 * BoundaryEffects.redOpacity(ClientMatchData.boundaryTicks) * opacity);
             int blackAlpha = Math.round(255 * BoundaryEffects.blackOpacity(ClientMatchData.boundaryTicks) * opacity);
-            int grayAlpha = Math.round(255 * BoundaryEffects.grayOpacity(ClientMatchData.boundaryTicks) * opacity);
             graphics.fill(0, 0, width, height, (redAlpha << 24) | 0xC41624);
             if (blackAlpha > 0) graphics.fill(0, 0, width, height, blackAlpha << 24);
-            if (grayAlpha > 0) graphics.fill(0, 0, width, height, (grayAlpha << 24) | 0xE3E6E7);
             Font font = forgeGui.getMinecraft().font;
             if (warning.background()) graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
                     UiTheme.withAlpha(warning.placement().backgroundColor() == 0 ? UiTheme.PANEL_RAISED

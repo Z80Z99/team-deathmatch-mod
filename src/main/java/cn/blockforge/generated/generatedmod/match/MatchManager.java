@@ -1186,7 +1186,9 @@ public final class MatchManager {
             player.setInvulnerable(true);
             player.setDeltaMovement(0.0D, 0.0D, 0.0D);
             player.teleportTo(entry.x(), entry.y(), entry.z());
-            if (now < entry.releaseTick() || !readyRespawnRequests.remove(entry.playerId())) {
+            boolean requested = readyRespawnRequests.remove(entry.playerId());
+            boolean observationFinished = now >= entry.cameraUnlockTick();
+            if (now < entry.releaseTick() || (!requested && !observationFinished)) {
                 continue;
             }
             if (!spawns.tryTeleportToTeamSpawn(player, spawnGroupFor(entry.team()), rulesSpawnStrategy())) {

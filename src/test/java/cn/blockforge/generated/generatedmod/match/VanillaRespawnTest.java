@@ -126,7 +126,8 @@ class VanillaRespawnTest {
 
     @Test void readyPlayerStaysAtDeathCameraUntilMovementRequest() throws Exception {
         Fixture f = new Fixture();
-        f.waiting.put(f.id, new MatchManager.DownedEntry(f.id, Team.TEAM_A, 3, 70, 5, 20, 10, 0));
+        f.waiting.put(f.id, new MatchManager.DownedEntry(f.id, Team.TEAM_A, 3, 70, 5,
+                20, 10, 0, 200, "test"));
         when(f.server.getTickCount()).thenReturn(20);
         invoke(f.match, "processDownedPlayers");
         assertTrue(f.match.isDowned(f.oldPlayer));
@@ -141,6 +142,23 @@ class VanillaRespawnTest {
         when(f.server.getTickCount()).thenReturn(100);
         f.match.requestReadyRespawn(f.oldPlayer);
         assertTrue(f.requests.contains(f.id));
+    }
+
+    @Test void observationDeadlineAutomaticallyDeploysReadyPlayer() throws Exception {
+        Fixture f = new Fixture();
+        f.waiting.put(f.id, new MatchManager.DownedEntry(f.id, Team.TEAM_A, 3, 70, 5,
+                20, 10, 40, 200, "test"));
+        when(f.server.getTickCount()).thenReturn(200);
+        when(f.oldPlayer.getFoodData()).thenReturn(mock(net.minecraft.world.food.FoodData.class));
+        when(f.oldPlayer.getMaxHealth()).thenReturn(20F);
+        doReturn(SpawnSelectionStrategy.RANDOM).when(f.match).rulesSpawnStrategy();
+        doReturn(false).when(f.match).sidesSwappedThisRound();
+        doNothing().when(f.match).sendMatchSync(any());
+        when(f.spawns.tryTeleportToTeamSpawn(f.oldPlayer, Team.TEAM_A, SpawnSelectionStrategy.RANDOM))
+                .thenReturn(true);
+        invoke(f.match, "processDownedPlayers");
+        assertFalse(f.match.isDowned(f.oldPlayer));
+        verify(f.spawns).tryTeleportToTeamSpawn(f.oldPlayer, Team.TEAM_A, SpawnSelectionStrategy.RANDOM);
     }
 
     @Test void respawnProtectionFadesFromConfiguredReductionToNormalDamage() throws Exception {

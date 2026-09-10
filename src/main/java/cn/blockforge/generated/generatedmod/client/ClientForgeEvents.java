@@ -22,6 +22,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.ScreenEvent;
+import net.minecraftforge.client.event.RenderPlayerEvent;
 import net.minecraftforge.client.event.ViewportEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -145,6 +146,13 @@ public final class ClientForgeEvents {
         }
     }
 
+    @SubscribeEvent
+    public static void onRenderPlayer(RenderPlayerEvent.Pre event) {
+        if (RespawnOverlay.shouldHideLocalPlayer(event.getEntity())) {
+            event.setCanceled(true);
+        }
+    }
+
     /** Shakes the rendered world itself; HUD text remains readable and no player rotation is changed. */
     @SubscribeEvent
     public static void onCameraAngles(ViewportEvent.ComputeCameraAngles event) {
@@ -152,9 +160,10 @@ public final class ClientForgeEvents {
         float strength = BoundaryEffects.shake(ClientMatchData.boundaryTicks);
         if (strength <= 0.0F) return;
         double time = System.nanoTime() / 1_000_000_000.0D;
-        event.setYaw(event.getYaw() + (float) Math.sin(time * 19.0D) * strength);
-        event.setPitch(event.getPitch() + (float) Math.sin(time * 23.0D + 1.2D) * strength * 0.72F);
-        event.setRoll(event.getRoll() + (float) Math.sin(time * 16.0D + 2.4D) * strength * 0.48F);
+        double frequency = BoundaryEffects.shakeFrequency(ClientMatchData.boundaryTicks);
+        event.setYaw(event.getYaw() + (float) Math.sin(time * frequency) * strength);
+        event.setPitch(event.getPitch() + (float) Math.sin(time * frequency * 1.19D + 1.2D) * strength * 0.72F);
+        event.setRoll(event.getRoll() + (float) Math.sin(time * frequency * 0.83D + 2.4D) * strength * 0.48F);
     }
 
     @SubscribeEvent

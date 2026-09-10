@@ -3,8 +3,8 @@
   "key.generated_mod.open_lobby": "打开游戏大厅菜单",
   "key.generated_mod.open_hud": "打开 HUD 配置窗",
   "key.categories.generated_mod": "团队死斗",
-  "item.generated_mod.map_planner": "地图规划器",
-  "item.generated_mod.map_planner.tooltip": "右键打开区域菜单；左键选定准星区域。",
-  "item.generated_mod.map_brush": "地图画笔",
-  "item.generated_mod.map_brush.tooltip": "左键端点A / 移除（仅方块），右键端点B / 添加；蹲下右键打开设置。"
+  "item.generated_mod.map_planner": "战术地图平板",
+  "item.generated_mod.map_planner.tooltip": "右键打开规划终端；左键选定准星所指区域。",
+  "item.generated_mod.map_brush": "区域标定激光笔",
+  "item.generated_mod.map_brush.tooltip": "左键标定或移除，右键确认或绘制；蹲下右键打开参数设置。"
 }

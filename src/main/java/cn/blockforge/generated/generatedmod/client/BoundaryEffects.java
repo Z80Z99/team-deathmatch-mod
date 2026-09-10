@@ -19,16 +19,22 @@ public final class BoundaryEffects {
         return 0.50F * phase * phase;
     }
 
-    /** The last five seconds progressively wash the image toward gray-white. */
-    public static float grayOpacity(int remainingTicks) {
+    /** Last-five-second phase used by the grayscale and contrast post effect. */
+    public static float finalPhase(int remainingTicks) {
         float phase = clamp((elapsed(remainingTicks) - 0.50F) / 0.50F);
-        return 0.42F * phase * phase;
+        return phase * phase;
     }
 
     /** Camera movement begins at 30% elapsed and accelerates toward the deadline. */
     public static float shake(int remainingTicks) {
         float phase = clamp((elapsed(remainingTicks) - 0.30F) / 0.70F);
         return 1.55F * phase * phase;
+    }
+
+    /** Oscillation speeds up with danger instead of only increasing displacement. */
+    public static float shakeFrequency(int remainingTicks) {
+        float phase = clamp((elapsed(remainingTicks) - 0.30F) / 0.70F);
+        return 10.0F + 24.0F * phase * phase;
     }
 
     private static float clamp(float value) {

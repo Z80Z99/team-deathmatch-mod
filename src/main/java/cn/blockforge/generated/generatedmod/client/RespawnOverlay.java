@@ -16,7 +16,6 @@ public final class RespawnOverlay {
     private static CameraType previousCamera;
     private static boolean cameraLocked;
     private static boolean ragdollSpawned;
-    private static Boolean visibilityBeforeRagdoll;
     private static int requestCooldown;
     private static double now() { return System.nanoTime() / 1_000_000_000.0; }
     public static boolean eligible() {
@@ -36,7 +35,6 @@ public final class RespawnOverlay {
     public static boolean returning() { return TIMELINE.returning(); }
     public static void clear() {
         if (cameraLocked) restoreCamera(Minecraft.getInstance());
-        restorePlayerVisibility();
         TIMELINE.clear();
         requestCooldown = 0;
         ragdollSpawned = false;
@@ -49,7 +47,6 @@ public final class RespawnOverlay {
         boolean observingDeath = ClientMatchData.awaitingRespawn || (active() && !returning());
         if (observingDeath) {
             lockCamera(mc);
-            if (ragdollSpawned) mc.player.setInvisible(true);
             boolean movement = mc.options.keyUp.isDown() || mc.options.keyDown.isDown()
                     || mc.options.keyLeft.isDown() || mc.options.keyRight.isDown()
                     || mc.options.keyJump.isDown();
@@ -63,7 +60,6 @@ public final class RespawnOverlay {
             mc.player.setDeltaMovement(0, 0, 0);
         } else {
             restoreCamera(mc);
-            restorePlayerVisibility();
             ragdollSpawned = false;
         }
     }
@@ -95,19 +91,16 @@ public final class RespawnOverlay {
             Method blockify = physics.getMethod("blockifyEntity", net.minecraft.world.level.Level.class,
                     net.minecraft.world.entity.LivingEntity.class);
             blockify.invoke(null, minecraft.level, minecraft.player);
-            visibilityBeforeRagdoll = minecraft.player.isInvisible();
-            minecraft.player.setInvisible(true);
             ragdollSpawned = true;
         } catch (ReflectiveOperationException | LinkageError ignored) {
             // Physics Mod is optional. Vanilla death handling stays unchanged when it is absent.
         }
     }
 
-    private static void restorePlayerVisibility() {
-        if (visibilityBeforeRagdoll == null) return;
+    /** Hide the live local body after Physics Mod has captured it for its ragdoll. */
+    public static boolean shouldHideLocalPlayer(net.minecraft.world.entity.player.Player player) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player != null) minecraft.player.setInvisible(visibilityBeforeRagdoll);
-        visibilityBeforeRagdoll = null;
+        return ragdollSpawned && active() && !returning() && minecraft.player == player;
     }
 
     public static void render(ForgeGui gui, GuiGraphics graphics, float partial, int width, int height) {
