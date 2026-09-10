@@ -19,7 +19,7 @@ public final class BoundaryEffects {
         return 0.50F * phase * phase;
     }
 
-    /** Last-five-second phase used by the grayscale and contrast post effect. */
+    /** Last-five-second phase used by the safe neutral warning wash. */
     public static float finalPhase(int remainingTicks) {
         float phase = clamp((elapsed(remainingTicks) - 0.50F) / 0.50F);
         return phase * phase;

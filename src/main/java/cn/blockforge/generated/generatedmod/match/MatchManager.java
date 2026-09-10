@@ -84,6 +84,7 @@ public final class MatchManager {
     private boolean originalKeepInventory;
     private boolean originalDeathMessages;
     private boolean resetFailureNotified;
+    private boolean stopAfterMapReset;
 
     private MatchManager(MinecraftServer server) {
         this.server = server;
@@ -417,9 +418,27 @@ public final class MatchManager {
         if (state == MatchState.WAITING) {
             return false;
         }
-        resetToWaiting();
-        broadcastSystemMessage("比赛已停止。", false);
+        stopAfterMapReset = true;
+        if (state != MatchState.MAP_RESETTING) beginForcedStopReset();
+        broadcastSystemMessage("比赛正在停止，地图恢复完成后退出。", false);
         return true;
+    }
+
+    private void beginForcedStopReset() {
+        state = MatchState.MAP_RESETTING;
+        phaseEndTick = 0L;
+        releaseAllDowned();
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            player.setGameMode(GameType.SPECTATOR);
+            player.setInvulnerable(true);
+            player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+        }
+        if (!maps.beginReset()) {
+            state = MatchState.ROUND_END;
+            phaseEndTick = server.getTickCount() + 20L;
+            broadcastSystemMessage("地图恢复尚未开始，服务器将在稍后重试。", false);
+        }
+        broadcastMatchState();
     }
 
     public StartResult restartMatch() {
@@ -430,6 +449,10 @@ public final class MatchManager {
     }
 
     public void resetToWaiting() {
+        resetToWaiting(true);
+    }
+
+    private void resetToWaiting(boolean teleportToLobby) {
         teamCount = 2;
         roomTeamSelection = false;
         extraWins.clear();
@@ -437,7 +460,7 @@ public final class MatchManager {
         for (ServerPlayer player : new ArrayList<>(server.getPlayerList().getPlayers())) {
             player.setInvulnerable(false);
             healAndReady(player);
-            spawns.teleportToLobby(player);
+            if (teleportToLobby) spawns.teleportToLobby(player);
         }
         teams.resetAll();
         clearRoomRules();
@@ -456,6 +479,7 @@ public final class MatchManager {
         teamAWins = 0;
         teamBWins = 0;
         resetFailureNotified = false;
+        stopAfterMapReset = false;
         state = MatchState.WAITING;
         broadcastMatchState();
     }
@@ -921,7 +945,8 @@ public final class MatchManager {
                         (int) secondsToTicks(rulesRespawnDelaySeconds()))
                 .withBoundaryStatus(boundaryCountdown.isOutside(player.getUUID()))
                 .withRespawn(state == MatchState.PLAYING && isDowned(player),
-                        isDowned(player) ? downedPlayers.get(player.getUUID()).deathLabel() : "");
+                        isDowned(player) ? downedPlayers.get(player.getUUID()).deathLabel() : "")
+                .withDownedPlayers(downedPlayers.keySet());
         maps.currentMap().ifPresent(map -> packet.withBoundaryBox(map.bounds()));
         FpsTdmNetwork.sendToPlayer(packet, player);
     }
@@ -1070,6 +1095,10 @@ public final class MatchManager {
         if (state != MatchState.ROUND_END) {
             return;
         }
+        if (stopAfterMapReset) {
+            beginForcedStopReset();
+            return;
+        }
         state = MatchState.MAP_RESETTING;
         phaseEndTick = 0L;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -1115,6 +1144,11 @@ public final class MatchManager {
             return;
         }
         broadcastSystemMessage("地图恢复完成。", false);
+        if (stopAfterMapReset) {
+            resetToWaiting(false);
+            broadcastSystemMessage("比赛已停止，玩家状态与地图均已恢复。", false);
+            return;
+        }
         if (pendingMatchWinner != null || rulesMode() != GameMode.SEARCH_DESTROY) {
             enterMatchEnd(pendingMatchWinner);
             return;

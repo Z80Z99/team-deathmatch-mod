@@ -18,11 +18,17 @@ import java.util.function.Supplier;
 public final class MatchSyncPacket {
     private boolean awaitingRespawn;
     private String deathLabel = "";
+    private java.util.Set<java.util.UUID> downedPlayerIds = java.util.Set.of();
     public boolean awaitingRespawn() { return awaitingRespawn; }
     public String deathLabel() { return deathLabel; }
+    public java.util.Set<java.util.UUID> downedPlayerIds() { return downedPlayerIds; }
     public MatchSyncPacket withRespawn(boolean waiting, String label) {
         awaitingRespawn = waiting;
         deathLabel = label.length() > 128 ? label.substring(0, 128) : label;
+        return this;
+    }
+    public MatchSyncPacket withDownedPlayers(java.util.Collection<java.util.UUID> playerIds) {
+        downedPlayerIds = java.util.Set.copyOf(playerIds);
         return this;
     }
     private int boundaryTicks;
@@ -181,6 +187,11 @@ public final class MatchSyncPacket {
         teamStats = java.util.List.copyOf(stats);
         awaitingRespawn = buffer.readBoolean();
         deathLabel = buffer.readUtf(128);
+        int downedCount = buffer.readVarInt();
+        if (downedCount < 0 || downedCount > 256) throw new IllegalArgumentException("Invalid downed player count");
+        java.util.HashSet<java.util.UUID> downed = new java.util.HashSet<>();
+        for (int i = 0; i < downedCount; i++) downed.add(buffer.readUUID());
+        downedPlayerIds = java.util.Set.copyOf(downed);
     }
 
     public void encode(FriendlyByteBuf buffer) {
@@ -228,6 +239,8 @@ public final class MatchSyncPacket {
         }
         buffer.writeBoolean(awaitingRespawn);
         buffer.writeUtf(deathLabel, 128);
+        buffer.writeVarInt(downedPlayerIds.size());
+        for (java.util.UUID playerId : downedPlayerIds) buffer.writeUUID(playerId);
     }
 
     public void handle(Supplier<NetworkEvent.Context> contextSupplier) {

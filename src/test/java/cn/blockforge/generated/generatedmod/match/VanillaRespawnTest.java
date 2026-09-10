@@ -1,6 +1,7 @@
 package cn.blockforge.generated.generatedmod.match;
 
 import cn.blockforge.generated.generatedmod.spawn.SpawnManager;
+import cn.blockforge.generated.generatedmod.map.MapManager;
 import cn.blockforge.generated.generatedmod.team.TeamManager;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -27,6 +28,15 @@ class VanillaRespawnTest {
         Fixture f = new Fixture();
         assertFalse(f.match.handleFatalDamage(f.oldPlayer, mock(DamageSource.class), Float.MAX_VALUE));
         verify(f.oldPlayer, never()).setHealth(anyFloat());
+    }
+
+    @Test void stopMatchRestoresMapBeforeLeavingAndDoesNotTeleportToWorldSpawn() throws Exception {
+        Fixture f = new Fixture();
+        when(f.maps.beginReset()).thenReturn(true);
+        assertTrue(f.match.stopMatch());
+        assertEquals(MatchState.MAP_RESETTING, f.match.state());
+        verify(f.maps).beginReset();
+        verify(f.spawns, never()).teleportToLobby(any());
     }
 
     @Test void cancelledDeathDoesNotRespawnOrScore() throws Exception {
@@ -197,6 +207,7 @@ class VanillaRespawnTest {
         final PlayerList list = mock(PlayerList.class);
         final TeamManager teams = mock(TeamManager.class);
         final SpawnManager spawns = mock(SpawnManager.class);
+        final MapManager maps = mock(MapManager.class);
         final ServerPlayer oldPlayer = mock(ServerPlayer.class), newPlayer = mock(ServerPlayer.class);
         final ServerGamePacketListenerImpl connection = mock(ServerGamePacketListenerImpl.class);
         final UUID id = UUID.randomUUID();
@@ -205,6 +216,7 @@ class VanillaRespawnTest {
 
         Fixture() throws Exception {
             set(match, "server", server); set(match, "teams", teams); set(match, "spawns", spawns);
+            set(match, "maps", maps);
             set(match, "downedPlayers", waiting); set(match, "pendingDeaths", new HashMap<>());
             set(match, "respawnedPlayers", new HashSet<>()); set(match, "readyRespawnRequests", requests);
             set(match, "respawnProtectionEnds", new HashMap<>());

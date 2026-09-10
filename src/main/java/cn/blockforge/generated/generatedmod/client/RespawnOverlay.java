@@ -100,7 +100,9 @@ public final class RespawnOverlay {
     /** Hide the live local body after Physics Mod has captured it for its ragdoll. */
     public static boolean shouldHideLocalPlayer(net.minecraft.world.entity.player.Player player) {
         Minecraft minecraft = Minecraft.getInstance();
-        return ragdollSpawned && active() && !returning() && minecraft.player == player;
+        if (!net.minecraftforge.fml.ModList.get().isLoaded("physicsmod")) return false;
+        if (minecraft.player == player) return ragdollSpawned && active() && !returning();
+        return ClientMatchData.inMatch() && ClientMatchData.downedPlayerIds.contains(player.getUUID());
     }
 
     public static void render(ForgeGui gui, GuiGraphics graphics, float partial, int width, int height) {

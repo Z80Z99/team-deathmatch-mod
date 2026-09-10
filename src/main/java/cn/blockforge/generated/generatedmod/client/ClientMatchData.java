@@ -35,6 +35,7 @@ public final class ClientMatchData {
     public static int respawnTotalTicks;
     public static boolean awaitingRespawn;
     public static String deathLabel = "";
+    public static java.util.Set<java.util.UUID> downedPlayerIds = java.util.Set.of();
     public static Team myTeam = Team.SPECTATOR;
     public static int teamASize;
     public static int teamBSize;
@@ -84,6 +85,7 @@ public final class ClientMatchData {
     public static void apply(MatchSyncPacket packet) {
         awaitingRespawn = packet.awaitingRespawn();
         deathLabel = packet.deathLabel();
+        downedPlayerIds = packet.downedPlayerIds();
         syncApplied = true;
         int previousPhaseSecond = Math.max(0, phaseRemainingTicks) / 20;
         int previousRespawnSecond = Math.max(0, respawnRemainingTicks) / 20;
@@ -178,6 +180,7 @@ public final class ClientMatchData {
     public static void clear() {
         awaitingRespawn = false;
         deathLabel = "";
+        downedPlayerIds = java.util.Set.of();
         RespawnOverlay.clear();
         teamStats = java.util.List.of();
         state = MatchState.WAITING;

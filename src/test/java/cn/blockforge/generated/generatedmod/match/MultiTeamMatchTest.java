@@ -151,13 +151,16 @@ class MultiTeamMatchTest {
                 1, 2, 3, 4, 100, 100, 12, 12, 200).withTeamStats(stats).withTimers(160, 100)
                 .withBoundaryStatus(true).withBoundaryBox(new cn.blockforge.generated.generatedmod.map.MapDefinition.Region(
                         new net.minecraft.core.BlockPos(10, 50, 20), new net.minecraft.core.BlockPos(90, 100, 120)))
-                .withRespawn(true, "击杀者  PlayerOne");
+                .withRespawn(true, "击杀者  PlayerOne")
+                .withDownedPlayers(java.util.Set.of(java.util.UUID.fromString("00000000-0000-0000-0000-000000000123")));
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
             packet.encode(buffer);
             var decoded = new MatchSyncPacket(buffer);
             assertTrue(decoded.awaitingRespawn());
             assertEquals("击杀者  PlayerOne", decoded.deathLabel());
+            assertTrue(decoded.downedPlayerIds().contains(
+                    java.util.UUID.fromString("00000000-0000-0000-0000-000000000123")));
             assertEquals(0, buffer.readableBytes());
             assertEquals(160, decoded.boundaryTicks()); assertEquals(100, decoded.respawnTotalTicks());
             assertTrue(decoded.boundaryOutside()); assertTrue(decoded.boundaryBoxPresent());
