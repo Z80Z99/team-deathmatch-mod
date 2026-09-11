@@ -58,4 +58,12 @@ class WeaponRepositoryTest {
             buffer.release();
         }
     }
+
+    @Test void taczTabNamesAreNormalizedForEditorFilters() {
+        assertEquals("gun_pistol", WeaponCategory.canonicalId("pistol"));
+        assertEquals("gun_rifle", WeaponCategory.canonicalId("rifle"));
+        assertEquals("attachment_scope", WeaponCategory.canonicalId("scope"));
+        assertEquals("attachment_extended_mag", WeaponCategory.canonicalId("extended_mag"));
+        assertEquals("ammo", WeaponCategory.canonicalId("ammo"));
+    }
 }

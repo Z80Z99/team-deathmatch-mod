@@ -5,7 +5,17 @@ import net.minecraft.resources.ResourceLocation;
 public record WeaponCategory(String id, String name, WeaponKind kind) {
     public static WeaponCategory fromTab(ResourceLocation tab) {
         String path = tab == null ? "" : tab.getPath();
-        return new WeaponCategory(path, displayName(path), WeaponKind.fromTab(tab));
+        String id = canonicalId(path);
+        return new WeaponCategory(id, displayName(id), WeaponKind.fromTab(tab));
+    }
+
+    public static String canonicalId(String path) {
+        if (path == null) return "";
+        return switch (path) {
+            case "pistol", "rifle", "sniper", "shotgun", "smg", "rpg", "mg" -> "gun_" + path;
+            case "scope", "muzzle", "stock", "grip", "extended_mag", "laser" -> "attachment_" + path;
+            default -> path;
+        };
     }
 
     private static String displayName(String path) {

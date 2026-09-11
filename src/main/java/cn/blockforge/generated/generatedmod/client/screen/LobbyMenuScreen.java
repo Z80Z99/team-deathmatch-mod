@@ -49,15 +49,6 @@ public final class LobbyMenuScreen extends UiScreen {
                 () -> MatchmakingScreen.open(this),
                 "进入独立的匹配界面：排队、看序位与取消都在那里完成，和房间大厅互不混用。"), matchRowY);
 
-        int toolsY = flowRow(BUTTON_HEIGHT);
-        flowWidget(uiButton("地图工作台", columnX(0, 2, 6), toolsY, columnWidth(2, 6),
-                () -> MapLibraryScreen.open(this), null), toolsY);
-        flowWidget(uiButton("HUD 编辑器", columnX(1, 2, 6), toolsY, columnWidth(2, 6),
-                () -> minecraft.setScreen(new HudLayoutScreen(this)), null), toolsY);
-        int arsenalY = flowRow(BUTTON_HEIGHT);
-        flowWidget(uiButton("武器仓库", innerLeft, arsenalY, innerWidth,
-                () -> WeaponRepositoryScreen.open(this),
-                "浏览武器 MOD 的枪械与配件目录，并维护服务器武器仓库。"), arsenalY);
         footerButton("返回游戏", 0, 1, 0, this::onClose, null, UiButton.Kind.SECONDARY);
         updateButtons();
     }

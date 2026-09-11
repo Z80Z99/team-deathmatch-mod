@@ -32,10 +32,13 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -48,6 +51,13 @@ public final class WeaponRepositoryManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final int MAX_CATALOG = 1024;
     private static final int MAX_REPOSITORY = 512;
+    private static final Map<String, String> GUN_TAB_TYPES = Map.of(
+            "gun_pistol", "PISTOL", "gun_rifle", "RIFLE", "gun_sniper", "SNIPER",
+            "gun_shotgun", "SHOTGUN", "gun_smg", "SMG", "gun_rpg", "RPG", "gun_mg", "MG");
+    private static final Map<String, String> ATTACHMENT_TYPES = Map.of(
+            "attachment_scope", "SCOPE", "attachment_muzzle", "MUZZLE",
+            "attachment_stock", "STOCK", "attachment_grip", "GRIP",
+            "attachment_extended_mag", "EXTENDED_MAG", "attachment_laser", "LASER");
 
     private final MinecraftServer server;
     private final Path file;
@@ -194,8 +204,78 @@ public final class WeaponRepositoryManager {
             catalogBuilt = true;
             return;
         }
+        Set<String> seen = new HashSet<>();
+        int[] index = {0};
+        boolean direct = buildDirectTaczCatalog(seen, index);
+        if (!direct || catalog.isEmpty()) buildCatalogFromCreativeTabs(seen, index);
+        catalogBuilt = true;
+        LOGGER.info("武器目录已生成：{} 个分类，{} 个物品", categories.size(), catalog.size());
+    }
+
+    /** TACZ's common indexes are authoritative on both integrated and dedicated servers. */
+    private boolean buildDirectTaczCatalog(Set<String> seen, int[] index) {
+        boolean invoked = false;
+        for (Map.Entry<String, String> entry : GUN_TAB_TYPES.entrySet()) {
+            WeaponCategory category = new WeaponCategory(entry.getKey(),
+                    WeaponCategory.fromTab(ResourceLocation.fromNamespaceAndPath("tacz",
+                            entry.getKey().substring("gun_".length()))).name(), WeaponKind.GUN);
+            categories.putIfAbsent(category.id(), category);
+            invoked |= appendReflectedStacks("com.tacz.guns.api.item.gun.AbstractGunItem",
+                    "com.tacz.guns.api.item.GunTabType", entry.getValue(), category.id(), seen, index);
+        }
+        for (Map.Entry<String, String> entry : ATTACHMENT_TYPES.entrySet()) {
+            WeaponCategory category = new WeaponCategory(entry.getKey(),
+                    WeaponCategory.fromTab(ResourceLocation.fromNamespaceAndPath("tacz",
+                            entry.getKey().substring("attachment_".length()))).name(), WeaponKind.ATTACHMENT);
+            categories.putIfAbsent(category.id(), category);
+            invoked |= appendReflectedStacks("com.tacz.guns.item.AttachmentItem",
+                    "com.tacz.guns.api.item.attachment.AttachmentType",
+                    entry.getValue(), category.id(), seen, index);
+        }
+        WeaponCategory ammo = new WeaponCategory("ammo", "弹药", WeaponKind.AMMO);
+        categories.putIfAbsent(ammo.id(), ammo);
+        invoked |= appendReflectedStacks("com.tacz.guns.item.AmmoItem",
+                null, null, ammo.id(), seen, index);
+        return invoked;
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean appendReflectedStacks(String ownerName, String enumName, String enumValue,
+                                          String categoryId, Set<String> seen, int[] index) {
+        try {
+            Class<?> owner = Class.forName(ownerName);
+            Object parameter = null;
+            Class<?> parameterType = null;
+            if (enumName != null) {
+                parameterType = Class.forName(enumName);
+                parameter = Enum.valueOf((Class<? extends Enum>) parameterType.asSubclass(Enum.class), enumValue);
+            }
+            var method = parameterType == null ? owner.getMethod("fillItemCategory")
+                    : owner.getMethod("fillItemCategory", parameterType);
+            Object result = parameter == null ? method.invoke(null) : method.invoke(null, parameter);
+            if (!(result instanceof Collection<?> collection)) return false;
+            appendStacks(categoryId, (Collection<ItemStack>) collection, seen, index);
+            return true;
+        } catch (Throwable error) {
+            LOGGER.debug("TACZ 直接目录不可用：{}.{} -> {}", ownerName, enumValue, error.toString());
+            return false;
+        }
+    }
+
+    private void appendStacks(String categoryId, Collection<ItemStack> stacks,
+                              Set<String> seen, int[] index) {
+        for (ItemStack stack : stacks) {
+            if (stack == null || stack.isEmpty() || catalog.size() >= MAX_CATALOG) continue;
+            WeaponSnapshot snapshot = WeaponSnapshot.from(stack.copy());
+            if (!snapshot.valid()) continue;
+            String signature = snapshot.itemId() + "|" + snapshot.tagBase64();
+            if (!seen.add(signature)) continue;
+            catalog.add(new WeaponCatalogItem(categoryId + "#" + index[0]++, categoryId, snapshot));
+        }
+    }
+
+    private void buildCatalogFromCreativeTabs(Set<String> seen, int[] index) {
         FeatureFlagSet features = FeatureFlagSet.of();
-        int index = 0;
         for (Map.Entry<ResourceKey<CreativeModeTab>, CreativeModeTab> entry
                 : BuiltInRegistries.CREATIVE_MODE_TAB.entrySet()) {
             ResourceLocation tabId = entry.getKey().location();
@@ -206,21 +286,11 @@ public final class WeaponRepositoryManager {
                         features, true, server.registryAccess()));
                 WeaponCategory category = WeaponCategory.fromTab(tabId);
                 categories.putIfAbsent(category.id(), category);
-                for (ItemStack stack : tab.getDisplayItems()) {
-                    if (stack.isEmpty() || !stack.isItemEnabled(features)) continue;
-                    WeaponSnapshot snapshot = WeaponSnapshot.from(stack.copy());
-                    if (!snapshot.valid()) continue;
-                    catalog.add(new WeaponCatalogItem(
-                            tabId.getNamespace() + ":" + tabId.getPath() + "#" + index++,
-                            category.id(), snapshot));
-                    if (catalog.size() >= MAX_CATALOG) break;
-                }
+                appendStacks(category.id(), tab.getDisplayItems(), seen, index);
             } catch (Throwable error) {
                 LOGGER.warn("无法读取 TACZ 创造分类 {}：{}", tabId, error.toString());
             }
         }
-        catalogBuilt = true;
-        LOGGER.info("武器目录已生成：{} 个分类，{} 个物品", categories.size(), catalog.size());
     }
 
     private void setMessage(ServerPlayer player, String message, boolean error) {

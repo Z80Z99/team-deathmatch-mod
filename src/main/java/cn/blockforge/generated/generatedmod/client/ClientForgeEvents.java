@@ -10,6 +10,7 @@ import cn.blockforge.generated.generatedmod.client.screen.MatchmakingScreen;
 import cn.blockforge.generated.generatedmod.client.screen.RoomMapSelectScreen;
 import cn.blockforge.generated.generatedmod.client.screen.RoomRulesScreen;
 import cn.blockforge.generated.generatedmod.client.screen.RoomScreen;
+import cn.blockforge.generated.generatedmod.client.screen.WeaponRepositoryScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
@@ -130,9 +131,15 @@ public final class ClientForgeEvents {
                 .bounds(left, 56, 100, 20)
                 .tooltip(Tooltip.create(Component.literal("可伸缩实时配置：拖动位置、参考线、背景图。")))
                 .build();
+        Button weaponButton = Button.builder(Component.literal("武器仓库"),
+                        ignored -> WeaponRepositoryScreen.open(pauseScreen))
+                .bounds(left, 80, 100, 20)
+                .tooltip(Tooltip.create(Component.literal("武器 MOD 目录与服务器仓库。")))
+                .build();
         event.addListener(lobbyButton);
         event.addListener(mapButton);
         event.addListener(hudButton);
+        event.addListener(weaponButton);
     }
 
     @SubscribeEvent
