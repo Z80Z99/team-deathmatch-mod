@@ -77,8 +77,9 @@ class UiLayoutTest {
             List<Supplier<Screen>> factories = List.of(() -> new LobbyMenuScreen(null), () -> new LobbyScreen(null),
                     () -> new RoomCreateScreen(null), () -> new RoomScreen(null), () -> new MatchmakingScreen(null),
                     () -> new MapLibraryScreen(null), () -> new RoomMapSelectScreen(null),
-                    () -> new MapCreateScreen(null), () -> new MapEditorScreen(null),
-                    () -> new MapBrushScreen(), () -> new MapPlannerScreen(List.of()),
+                    () -> new MapCreateScreen(null), () -> new MapBrushScreen(),
+                    () -> new MapPlannerScreen(List.of()),
+                    () -> new MapToolsTutorialScreen(null),
                     () -> rulesScreen(), () -> new HudLayoutScreen(null), () -> new HudParameterHelpScreen(null));
             for (int[] size : List.of(new int[]{320, 240}, new int[]{480, 270}, new int[]{640, 360}, new int[]{960, 540})) {
                 for (Supplier<Screen> factory : factories) {
@@ -127,11 +128,6 @@ class UiLayoutTest {
                             press(screen, ">");
                             snapshot(screen, "更多队伍", size);
                         }
-                    }
-                    if (screen instanceof MapEditorScreen) {
-                        screen.children().stream().filter(UiButton.class::isInstance).map(UiButton.class::cast)
-                                .filter(button -> button.getMessage().getString().startsWith("出生点")).findFirst().orElseThrow().onPress();
-                        snapshot(screen, "多队出生点", size);
                     }
                     if (screen instanceof HudLayoutScreen) {
                         press(screen, "属性"); snapshot(screen, "属性", size);

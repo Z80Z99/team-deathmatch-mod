@@ -414,8 +414,8 @@ public final class MapEditorManager {
 
     private void setSpectator(ServerPlayer player, MapDefinition target) {
         SpawnPoint point = spawnFromPlayer(player);
-        if (!maps.isValidSpawnFor(target, point)) {
-            setMessage(player, "观战出生点保存失败：请确认位置在地图边界内且可安全站立。", true);
+        if (!MapManager.isValidSpectatorSpawnFor(target, point)) {
+            setMessage(player, "观战出生点保存失败：请先传送到这张地图所在的维度。", true);
             return;
         }
         if (maps.saveDefinition(target.withTeamSpawns(Team.SPECTATOR, List.of(point)))) {
@@ -991,8 +991,18 @@ public final class MapEditorManager {
     private void addSpawnAt(ServerPlayer player, MapDefinition target, MapTool tool, BlockPos position) {
         Team team = tool.team();
         SpawnPoint point = new SpawnPoint(player.serverLevel().dimension(), position, player.getYRot());
-        if (!maps.isValidSpawnFor(target, point)) {
+        boolean spectator = team == Team.SPECTATOR;
+        if (spectator ? !MapManager.isValidSpectatorSpawnFor(target, point)
+                : !maps.isValidSpawnFor(target, point)) {
             feedback(player, "出生点保存失败：请确认位置在地图边界内且可安全站立。", true);
+            return;
+        }
+        if (spectator) {
+            if (maps.saveDefinition(target.withTeamSpawns(team, List.of(point)))) {
+                feedback(player, "已设置观战出生点。", false);
+            } else {
+                feedback(player, "观战出生点保存失败。", true);
+            }
             return;
         }
         List<SpawnPoint> updated = new ArrayList<>(target.spawns(team));

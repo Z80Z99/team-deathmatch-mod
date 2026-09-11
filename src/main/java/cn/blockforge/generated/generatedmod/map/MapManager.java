@@ -279,6 +279,10 @@ public final class MapManager {
         return current != null && isValidSpawnFor(current, point);
     }
 
+    public boolean isValidSpectatorSpawn(SpawnPoint point) {
+        return isValidSpectatorSpawnFor(current, point);
+    }
+
     /** 针对指定的地图定义校验出生点；区域保存时用它对照新边界而不是旧边界。 */
     public boolean isValidSpawnFor(MapDefinition definition, SpawnPoint point) {
         if (definition == null || !definition.world().equals(point.dimension())
@@ -294,6 +298,11 @@ public final class MapManager {
                 && definition.bounds().contains(point.x(), point.y(), point.z());
     }
 
+    /** 观战点只要求与地图同维度；允许放在边界外、高处或空中。 */
+    public static boolean isValidSpectatorSpawnFor(MapDefinition definition, SpawnPoint point) {
+        return definition != null && definition.world().equals(point.dimension());
+    }
+
     /**
      * 加载地图时清理历史遗留的越界出生点（旧版本区域保存未过滤导致），
      * 有变动时直接写回地图定义，避免坏数据反复回到运行时。
@@ -307,7 +316,7 @@ public final class MapManager {
         List<SpawnPoint> teamB = definition.teamBSpawns().stream()
                 .filter(point -> isSpawnInsideBounds(definition, point)).toList();
         List<SpawnPoint> spectator = definition.spectatorSpawns().stream()
-                .filter(point -> isSpawnInsideBounds(definition, point)).toList();
+                .filter(point -> isValidSpectatorSpawnFor(definition, point)).toList();
         MapDefinition cleaned = definition.withTeamSpawns(Team.TEAM_A, teamA)
                 .withTeamSpawns(Team.TEAM_B, teamB).withTeamSpawns(Team.SPECTATOR, spectator)
                 .withTeamSpawns(Team.TEAM_C, definition.spawns(Team.TEAM_C).stream().filter(point -> isSpawnInsideBounds(definition, point)).toList())
@@ -401,13 +410,13 @@ public final class MapManager {
             return -1;
         }
         MapDefinition candidate = target.withRegions(bounds, resetRegion);
-        // 必须对照“新”边界过滤出生点，否则越界出生点会残留在地图外。
+        // 队伍出生点必须对照“新”边界过滤；观战点允许在边界外，只校验维度。
         List<SpawnPoint> teamA = candidate.teamASpawns().stream()
                 .filter(point -> isValidSpawnFor(candidate, point)).toList();
         List<SpawnPoint> teamB = candidate.teamBSpawns().stream()
                 .filter(point -> isValidSpawnFor(candidate, point)).toList();
         List<SpawnPoint> spectator = candidate.spectatorSpawns().stream()
-                .filter(point -> isValidSpawnFor(candidate, point)).toList();
+                .filter(point -> isValidSpectatorSpawnFor(candidate, point)).toList();
         int removed = (candidate.teamASpawns().size() - teamA.size())
                 + (candidate.teamBSpawns().size() - teamB.size())
                 + (candidate.spectatorSpawns().size() - spectator.size());

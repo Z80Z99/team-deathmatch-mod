@@ -5,7 +5,6 @@ import cn.blockforge.generated.generatedmod.client.screen.HudLayoutScreen;
 import cn.blockforge.generated.generatedmod.client.screen.LobbyMenuScreen;
 import cn.blockforge.generated.generatedmod.client.screen.LobbyScreen;
 import cn.blockforge.generated.generatedmod.client.screen.MapCreateScreen;
-import cn.blockforge.generated.generatedmod.client.screen.MapEditorScreen;
 import cn.blockforge.generated.generatedmod.client.screen.MapLibraryScreen;
 import cn.blockforge.generated.generatedmod.client.screen.MatchmakingScreen;
 import cn.blockforge.generated.generatedmod.client.screen.RoomMapSelectScreen;
@@ -93,7 +92,6 @@ public final class ClientForgeEvents {
         return screen instanceof cn.blockforge.generated.generatedmod.client.ui.UiScreen || screen instanceof LobbyMenuScreen
                 || screen instanceof MatchmakingScreen || screen instanceof RoomScreen
                 || screen instanceof RoomRulesScreen || screen instanceof RoomMapSelectScreen
-                || screen instanceof MapEditorScreen
                 || screen instanceof MapCreateScreen || screen instanceof MapLibraryScreen;
     }
 

@@ -1,6 +1,6 @@
 package cn.blockforge.generated.generatedmod.client;
 
-import cn.blockforge.generated.generatedmod.client.screen.MapEditorScreen;
+import cn.blockforge.generated.generatedmod.client.screen.MapPlannerScreen;
 import cn.blockforge.generated.generatedmod.map.MapEditorView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.particles.ParticleOptions;
@@ -14,7 +14,7 @@ public final class MapPreview {
     private MapPreview() { }
 
     public static void tick(Minecraft minecraft) {
-        if (!(minecraft.screen instanceof MapEditorScreen) || minecraft.level == null
+        if (!(minecraft.screen instanceof MapPlannerScreen) || minecraft.level == null
                 || minecraft.player == null || minecraft.player.tickCount % 10 != 0) {
             return;
         }

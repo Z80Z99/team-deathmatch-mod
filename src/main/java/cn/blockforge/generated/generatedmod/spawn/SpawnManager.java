@@ -2,6 +2,7 @@ package cn.blockforge.generated.generatedmod.spawn;
 
 import cn.blockforge.generated.generatedmod.map.MapDefinition;
 import cn.blockforge.generated.generatedmod.map.MapManager;
+import cn.blockforge.generated.generatedmod.match.MapRegionActivation;
 import cn.blockforge.generated.generatedmod.match.SpawnSelectionStrategy;
 import cn.blockforge.generated.generatedmod.match.Team;
 import net.minecraft.core.BlockPos;
@@ -26,6 +27,7 @@ public final class SpawnManager {
     private final DynamicSpawnPool randomSpawns = new DynamicSpawnPool();
     private MapDefinition verifiedRandomSource;
     private SpawnPoint verifiedRandomSpawn;
+    private MapRegionActivation.Context activationContext = MapRegionActivation.INACTIVE;
 
     public SpawnManager(MinecraftServer server, MapManager maps) {
         this.server = server;
@@ -63,7 +65,7 @@ public final class SpawnManager {
     }
 
     public boolean setSpectatorSpawn(SpawnPoint point) {
-        return maps.isValidTeamSpawn(point) && maps.updateSpectatorSpawns(List.of(point));
+        return maps.isValidSpectatorSpawn(point) && maps.updateSpectatorSpawns(List.of(point));
     }
 
     public boolean clearSpectatorSpawn() {
@@ -98,7 +100,7 @@ public final class SpawnManager {
         return distance;
     }
 
-    private MapDefinition fixedMap(Team team) {
+    private MapDefinition fixedMap(Team team, MapRegionActivation.Context context) {
         MapDefinition map = maps.currentMap().orElse(null);
         if (fixedSource != map) {
             fixedSource = map;
@@ -112,7 +114,8 @@ public final class SpawnManager {
             case TEAM_C -> "spawn_c"; case TEAM_D -> "spawn_d";
             default -> "";
         };
-        var parts = map.customRegions().stream().filter(region -> region.type().id().equals(type))
+        var parts = MapRegionActivation.activeRegions(map.customRegions(), context).stream()
+                .filter(region -> region.type().id().equals(type))
                 .flatMap(region -> region.region().boxes().stream()).toList();
         if (parts.isEmpty()) return null;
         var region = MapDefinition.Region.composite(parts);
@@ -123,7 +126,11 @@ public final class SpawnManager {
     }
 
     public Optional<SpawnPoint> findFixedSpawn(Team team) {
-        MapDefinition scoped = fixedMap(team);
+        return findFixedSpawn(team, activationContext);
+    }
+
+    public Optional<SpawnPoint> findFixedSpawn(Team team, MapRegionActivation.Context context) {
+        MapDefinition scoped = fixedMap(team, context);
         if (scoped != null) {
             return fixedPools.computeIfAbsent(team, ignored -> new DynamicSpawnPool())
                     .find(server.getLevel(scoped.world()), scoped).filter(this::isUsableCurrentMapSpawn);
@@ -172,6 +179,15 @@ public final class SpawnManager {
         fixedPools.values().forEach(DynamicSpawnPool::requestRefresh);
     }
 
+    public void updateActivationContext(MapRegionActivation.Context context) {
+        MapRegionActivation.Context next = context == null ? MapRegionActivation.INACTIVE : context;
+        if (next.equals(activationContext)) return;
+        activationContext = next;
+        fixedPools.clear();
+        fixedMaps.clear();
+        fixedSource = null;
+    }
+
     public void tickRandomSpawns(boolean enabled, SpawnSelectionStrategy strategy) {
         if (!enabled) {
             randomSpawns.clear();
@@ -186,7 +202,7 @@ public final class SpawnManager {
             return;
         }
         for (Team team : List.of(Team.TEAM_A, Team.TEAM_B, Team.TEAM_C, Team.TEAM_D)) {
-            MapDefinition scoped = fixedMap(team);
+            MapDefinition scoped = fixedMap(team, activationContext);
             if (scoped != null) fixedPools.computeIfAbsent(team, ignored -> new DynamicSpawnPool())
                     .tick(server.getLevel(scoped.world()), scoped, server.getTickCount(), 64);
         }

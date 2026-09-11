@@ -84,12 +84,14 @@ class MultiTeamMatchTest {
         when(definition.isComplete()).thenReturn(true);
         when(maps.currentMap()).thenReturn(Optional.of(definition));
         when(maps.isReady()).thenReturn(true);
-        for (Team team : Team.playing(3)) when(spawns.findFixedSpawn(team))
+        for (Team team : Team.playing(3)) when(spawns.findFixedSpawn(eq(team), any(MapRegionActivation.Context.class)))
                 .thenReturn(Optional.of(mock(cn.blockforge.generated.generatedmod.spawn.SpawnPoint.class)));
         set(match, "maps", maps); set(match, "spawns", spawns); set(match, "teams", teams);
         set(match, "state", MatchState.WAITING); match.configureRoomTeams(4);
         assertEquals(MatchManager.StartResult.NO_TEAM_SPAWNS, match.startMatch(List.of(UUID.randomUUID())));
-        verifyNoInteractions(teams);
+        verify(teams, never()).prepareRoster(any());
+        verify(teams, never()).balanceTeamsAtMatchStart();
+        verify(teams, never()).prepareForMatch();
     }
 
     @Test void roomRosterKeepsSelectedTeamsEvenWhenUneven() {
@@ -141,7 +143,9 @@ class MultiTeamMatchTest {
         doReturn(0).when(match).rulesMatchDurationSeconds();
         assertEquals(MatchManager.StartResult.NO_END_CONDITION, match.startMatch());
         verify(spawns, never()).getSpawns(any());
-        verifyNoInteractions(teams);
+        verify(teams, never()).prepareRoster(any());
+        verify(teams, never()).balanceTeamsAtMatchStart();
+        verify(teams, never()).prepareForMatch();
     }
 
     @Test void matchPacketSynchronizesAllFourScoresAndWinner() {

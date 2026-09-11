@@ -57,17 +57,19 @@ public final class MapLibraryScreen extends UiListScreen<MapLibraryScreen.MapRow
                     () -> send(MapEditorAction.REVOKE_SHARE, row.id()));
         }, null), shareY);
         addList();
-        footerButton("获得工具", 0, 4, 0, () -> send(MapEditorAction.GIVE_TOOLS, ""),
+        footerButton("获得工具", 0, 5, 0, () -> send(MapEditorAction.GIVE_TOOLS, ""),
                 "领取地图规划器和地图画笔。", UiButton.Kind.PRIMARY);
-        footerButton("返回", 1, 4, 0, this::onClose, null, UiButton.Kind.SECONDARY);
-        delete = footerButton("删除地图", 2, 4, 0, () -> {
+        footerButton("返回", 1, 5, 0, this::onClose, null, UiButton.Kind.SECONDARY);
+        delete = footerButton("删除地图", 2, 5, 0, () -> {
             MapRow row = selectedEntry();
             if (row != null) confirmAction("删除地图", "删除「" + row.name() + "」的地图配置和关联数据？此操作不可撤销。",
                     () -> send(MapEditorAction.DELETE_MAP, row.id()));
         }, null, UiButton.Kind.DANGER);
-        edit = footerButton("编辑地图", 3, 4, 0, () -> {
+        footerButton("教程", 3, 5, 0, () -> MapToolsTutorialScreen.open(this),
+                "打开地图工具完整教程。", UiButton.Kind.SECONDARY);
+        edit = footerButton("编辑地图", 4, 5, 0, () -> {
             MapRow row = selectedEntry();
-            if (row != null) { send(MapEditorAction.EDIT_MAP, row.id()); MapEditorScreen.open(this); }
+            if (row != null) { send(MapEditorAction.EDIT_MAP, row.id()); MapPlannerScreen.open(); }
         }, null, UiButton.Kind.PRIMARY);
         updateButtons();
     }

@@ -4,6 +4,7 @@ import cn.blockforge.generated.generatedmod.config.FpsTdmConfig;
 import cn.blockforge.generated.generatedmod.config.FpsTdmConfigController;
 import cn.blockforge.generated.generatedmod.integration.IntegrationManager;
 import cn.blockforge.generated.generatedmod.map.MapManager;
+import cn.blockforge.generated.generatedmod.match.MapRegionActivation;
 import cn.blockforge.generated.generatedmod.network.FpsTdmNetwork;
 import cn.blockforge.generated.generatedmod.network.packet.MatchSyncPacket;
 import cn.blockforge.generated.generatedmod.spawn.SpawnManager;
@@ -373,8 +374,10 @@ public final class MatchManager {
         if (rulesSpawnStrategy() == SpawnSelectionStrategy.RANDOM && spawns.prepareRandomSpawnForMatch().isEmpty()) {
             return StartResult.NO_SAFE_RANDOM_SPAWN;
         }
+        MapRegionActivation.Context startContext = new MapRegionActivation.Context(
+                true, rulesMode(), 1, activeTeams().size(), teams.totalParticipants());
         if (rulesSpawnStrategy() != SpawnSelectionStrategy.RANDOM
-                && activeTeams().stream().anyMatch(team -> spawns.findFixedSpawn(team).isEmpty())) {
+                && activeTeams().stream().anyMatch(team -> spawns.findFixedSpawn(team, startContext).isEmpty())) {
             return StartResult.NO_TEAM_SPAWNS;
         }
         if (rulesTargetKills() <= 0 && rulesMatchDurationSeconds() <= 0) {
@@ -426,6 +429,7 @@ public final class MatchManager {
 
     private void beginForcedStopReset() {
         state = MatchState.MAP_RESETTING;
+        spawns.updateActivationContext(MapRegionActivation.INACTIVE);
         phaseEndTick = 0L;
         releaseAllDowned();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -453,6 +457,7 @@ public final class MatchManager {
     }
 
     private void resetToWaiting(boolean teleportToLobby) {
+        spawns.updateActivationContext(MapRegionActivation.INACTIVE);
         teamCount = 2;
         roomTeamSelection = false;
         extraWins.clear();
@@ -485,6 +490,9 @@ public final class MatchManager {
     }
 
     public void tick() {
+        spawns.updateActivationContext(new MapRegionActivation.Context(
+                isMatchActive(), rulesMode(), isMatchActive() ? roundNumber : 0,
+                activeTeams().size(), teams.totalParticipants()));
         processVanillaDeaths();
         // 快照捕获和恢复必须在 Dedicated Server 主线程的 tick 中推进。
         maps.tick();
@@ -971,6 +979,8 @@ public final class MatchManager {
     }
 
     private void beginWarmup(boolean firstRound) {
+        spawns.updateActivationContext(new MapRegionActivation.Context(
+                true, rulesMode(), roundNumber, activeTeams().size(), teams.totalParticipants()));
         if (!firstRound) {
             teams.activatePendingPlayers();
             if (rulesAutoBalanceMode().balancesOnMatchStart()) {
@@ -1005,6 +1015,8 @@ public final class MatchManager {
     }
 
     private void beginPlaying() {
+        spawns.updateActivationContext(new MapRegionActivation.Context(
+                true, rulesMode(), roundNumber, activeTeams().size(), teams.totalParticipants()));
         if (rulesAutoBalanceMode().balancesOnMatchStart()) teams.balanceTeamsAtMatchStart();
         scores.resetRound();
         state = MatchState.PLAYING;

@@ -59,9 +59,7 @@ public final class MapToolClientEvents {
         }
 
         if (planner) {
-            MapEditorView view = ClientMapEditorData.view();
-            List<MapRegion> hits = MapRegionPicker.pick(minecraft, view, 128.0D);
-            minecraft.setScreen(new MapPlannerScreen(hits.isEmpty() ? view.regions() : hits));
+            MapPlannerScreen.open();
             if (event.isCancelable()) event.setCanceled(true);
             return;
         }

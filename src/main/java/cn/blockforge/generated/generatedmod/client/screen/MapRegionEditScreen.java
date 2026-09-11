@@ -45,8 +45,9 @@ public final class MapRegionEditScreen extends UiScreen {
     protected void init() {
         beginLayout(MENU_WIDTH, 0, BUTTON_HEIGHT * 2 + 8, true, true);
         int titleY = flowRow(18);
-        flowWidget(uiButton("？", innerLeft + innerWidth - 24, titleY, 22, this::toggleHelp,
-                "查看区域属性的全部说明。", UiButton.Kind.SECONDARY), titleY);
+        flowWidget(uiButton("教程", innerLeft + innerWidth - 52, titleY, 52,
+                () -> MapToolsTutorialScreen.open(this),
+                "打开地图工具完整教程。", UiButton.Kind.SECONDARY), titleY);
         if (!helpLines.isEmpty()) {
             helpY = flowRow(helpLines.size() * 12 + 10);
         }
@@ -93,9 +94,9 @@ public final class MapRegionEditScreen extends UiScreen {
                 region.type(), MapRegion.Type::displayName, ignored -> { },
                 "区域在玩法中的用途。", UiButton.Kind.SECONDARY), typeY);
         flowWidget(helpButton(helpX, typeY,
-                "类型用于区分自定义、爆破、占领、热点、目标和普通区域。",
+                "类型用于区分自定义、爆破、占领、热点、目标、其他和四队复活区域。",
                 "内置边界和重置区域不能修改类型。",
-                "当前版本保存类型，后续玩法逻辑会按类型接入。"), typeY);
+                "A～D队复活区域会参与固定出生点选择；其他玩法类型用于标识与显示。"), typeY);
 
         int visibleY = flowRow(BUTTON_HEIGHT);
         visible = flowWidget(new UiCycleButton<>(innerLeft, visibleY, controlWidth, BUTTON_HEIGHT,
@@ -134,7 +135,7 @@ public final class MapRegionEditScreen extends UiScreen {
         flowWidget(helpButton(helpX, activationY,
                 "始终生效：不限制；仅比赛：进入对局后生效。",
                 "指定模式：填写模式 ID 后生效。",
-                "条件表达式：为后续玩法脚本预留。"), activationY);
+                "条件表达式：按比赛上下文实时计算。"), activationY);
 
         int activationValueY = flowRow(BUTTON_HEIGHT);
         activationValue = flowWidget(new UiEditBox(font, innerLeft, activationValueY, controlWidth,
@@ -142,8 +143,9 @@ public final class MapRegionEditScreen extends UiScreen {
         activationValue.setMaxLength(128);
         activationValue.setValue(region.activationValue());
         flowWidget(helpButton(helpX, activationValueY,
-                "指定模式时填写模式 ID，例如 bomb、capture、hotspot。",
-                "条件表达式目前只保存文本，后续版本接入解析。"), activationValueY);
+                "指定模式时填写一个模式，例如 SEARCH_DESTROY、SD 或 爆破模式。",
+                "多模式共用请使用条件表达式，例如：",
+                "mode == \"TEAM_DEATHMATCH\" || mode == \"SEARCH_DESTROY\""), activationValueY);
 
         int colorY = flowRow(BUTTON_HEIGHT);
         color = flowWidget(new UiCycleButton<>(innerLeft, colorY, controlWidth, BUTTON_HEIGHT,
@@ -219,7 +221,7 @@ public final class MapRegionEditScreen extends UiScreen {
         showHelp(
                 "区域属性会完整写入地图 JSON，并可随邀请码副本导入。",
                 "范围需要用画笔调整；这里编辑名称、类型和显示策略。",
-                "出现逻辑为后续玩法接入保留，当前先完成配置与同步。",
+                "出现逻辑会参与比赛；复活区域会按当前激活上下文筛选。",
                 "保存前可随时关闭，未保存修改不会写入服务器。");
     }
 

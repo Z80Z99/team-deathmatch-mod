@@ -180,7 +180,7 @@ public final class MapCreateScreen extends UiScreen {
     @Override
     public void onClose() {
         if (minecraft != null) {
-            if (created) MapEditorScreen.open(parent); else minecraft.setScreen(parent);
+            if (created) MapPlannerScreen.open(); else minecraft.setScreen(parent);
         }
     }
 

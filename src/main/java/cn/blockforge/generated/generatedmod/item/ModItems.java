@@ -18,6 +18,10 @@ public final class ModItems {
             ITEMS.register("map_planner", () -> new MapPlannerItem(new Item.Properties()));
     public static final RegistryObject<MapBrushItem> MAP_BRUSH =
             ITEMS.register("map_brush", () -> new MapBrushItem(new Item.Properties()));
+    public static final RegistryObject<C4Item> C4 =
+            ITEMS.register("c4", () -> new C4Item(new Item.Properties()));
+    public static final RegistryObject<JammerTabletItem> JAMMER_TABLET =
+            ITEMS.register("jammer_tablet", () -> new JammerTabletItem(new Item.Properties()));
 
     private ModItems() {
     }
@@ -30,6 +34,8 @@ public final class ModItems {
         if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(MAP_PLANNER);
             event.accept(MAP_BRUSH);
+            event.accept(C4);
+            event.accept(JAMMER_TABLET);
         }
     }
 }

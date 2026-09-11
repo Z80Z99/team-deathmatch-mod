@@ -6,5 +6,9 @@
   "item.generated_mod.map_planner": "战术地图平板",
   "item.generated_mod.map_planner.tooltip": "右键打开规划终端；左键选定准星所指区域。",
   "item.generated_mod.map_brush": "区域标定激光笔",
-  "item.generated_mod.map_brush.tooltip": "左键标定或移除，右键确认或绘制；蹲下右键打开参数设置。"
+  "item.generated_mod.map_brush.tooltip": "左键标定或移除，右键确认或绘制；蹲下右键打开参数设置。",
+  "item.generated_mod.c4": "C4 爆炸物",
+  "item.generated_mod.c4.tooltip": "爆破模式专用爆炸物。",
+  "item.generated_mod.jammer_tablet": "拆弹平板",
+  "item.generated_mod.jammer_tablet.tooltip": "爆破模式专用拆弹器。"
 }
