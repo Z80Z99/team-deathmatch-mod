@@ -234,6 +234,35 @@ public final class SpawnManager {
         return teleportToSpectator(player);
     }
 
+    /** Terrain restore holds players outside the playable box while reset packets are sent. */
+    public SpawnPoint teleportToTerrainRestoreHold(ServerPlayer player) {
+        MapDefinition map = maps.currentMap().orElse(null);
+        if (map == null || !map.hasBounds()) {
+            teleportToSpectator(player);
+            return null;
+        }
+        ServerLevel level = server.getLevel(map.world());
+        if (level == null) {
+            teleportToSpectator(player);
+            return null;
+        }
+        var bounds = map.bounds();
+        int margin = 12 + level.random.nextInt(13);
+        int side = level.random.nextInt(4);
+        int width = Math.max(1, bounds.max().getX() - bounds.min().getX() + 1);
+        int depth = Math.max(1, bounds.max().getZ() - bounds.min().getZ() + 1);
+        int x = side == 0 ? bounds.min().getX() - margin
+                : side == 1 ? bounds.max().getX() + 1 + margin
+                : bounds.min().getX() + level.random.nextInt(width);
+        int z = side == 2 ? bounds.min().getZ() - margin
+                : side == 3 ? bounds.max().getZ() + 1 + margin
+                : bounds.min().getZ() + level.random.nextInt(depth);
+        int y = Math.min(level.getMaxBuildHeight() - 2, bounds.max().getY() + 12 + level.random.nextInt(17));
+        float yaw = level.random.nextFloat() * 360.0F;
+        player.teleportTo(level, x + 0.5D, y, z + 0.5D, yaw, 0.0F);
+        return new SpawnPoint(level.dimension(), x + 0.5D, y, z + 0.5D, yaw, 0.0F);
+    }
+
     public boolean isInsideMap(ServerPlayer player) {
         return maps.isInsideMap(player);
     }

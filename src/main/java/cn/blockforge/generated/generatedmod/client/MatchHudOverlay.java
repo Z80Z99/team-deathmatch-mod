@@ -29,7 +29,11 @@ public final class MatchHudOverlay {
         // 模组配置界面会绘制自己的内容；实时 HUD 必须让出整个屏幕，避免盖住配置面板。
         if (Minecraft.getInstance().screen instanceof UiScreen
                 || Minecraft.getInstance().screen instanceof HudLayoutScreen
-                || !ClientMatchData.inMatch() || width <= 0 || height <= 0) {
+            || !ClientMatchData.inMatch() || width <= 0 || height <= 0) {
+            return;
+        }
+        if (ClientMatchData.state == MatchState.TERRAIN_RESTORING) {
+            graphics.fill(0, 0, width, height, 0xFF030303);
             return;
         }
         Elements elements = ClientHudLayout.elements(HudContext.match(ClientMatchData.mode));
@@ -164,6 +168,9 @@ public final class MatchHudOverlay {
         }
         if (ClientMatchData.state == MatchState.MAP_RESETTING) {
             return "地图恢复中，请稍候";
+        }
+        if (ClientMatchData.state == MatchState.TERRAIN_RESTORING) {
+            return "地形恢复中，请稍候";
         }
         if (ClientMatchData.respawnRemainingTicks > 0) {
             return "状态恢复倒计时  " + ClientMatchData.respawnTimerText();

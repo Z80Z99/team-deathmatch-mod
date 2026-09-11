@@ -42,6 +42,16 @@ public final class ClientForgeEvents {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player != null && ClientMatchData.movementFrozen()) {
+            minecraft.player.input.leftImpulse = 0.0F;
+            minecraft.player.input.forwardImpulse = 0.0F;
+            minecraft.player.input.up = false;
+            minecraft.player.input.down = false;
+            minecraft.player.input.left = false;
+            minecraft.player.input.right = false;
+            minecraft.player.input.jumping = false;
+            minecraft.player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+        }
         ClientMatchData.tick();
         RespawnOverlay.tick();
         ClientLobbyData.tick();

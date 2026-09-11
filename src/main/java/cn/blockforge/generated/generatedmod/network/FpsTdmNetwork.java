@@ -17,6 +17,8 @@ import cn.blockforge.generated.generatedmod.network.packet.RoomMapListSyncPacket
 import cn.blockforge.generated.generatedmod.network.packet.RoomRulesPacket;
 import cn.blockforge.generated.generatedmod.network.packet.RoomSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.RespawnRequestPacket;
+import cn.blockforge.generated.generatedmod.network.packet.WeaponRepositoryActionPacket;
+import cn.blockforge.generated.generatedmod.network.packet.WeaponRepositorySyncPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkDirection;
@@ -25,7 +27,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class FpsTdmNetwork {
-    private static final String PROTOCOL_VERSION = "18";
+    private static final String PROTOCOL_VERSION = "19";
     private static SimpleChannel channel;
     private static int nextId;
 
@@ -120,6 +122,16 @@ public final class FpsTdmNetwork {
                 .encoder(RespawnRequestPacket::encode)
                 .decoder(RespawnRequestPacket::new)
                 .consumerMainThread(RespawnRequestPacket::handle)
+                .add();
+        channel.messageBuilder(WeaponRepositoryActionPacket.class, nextId(), NetworkDirection.PLAY_TO_SERVER)
+                .encoder(WeaponRepositoryActionPacket::encode)
+                .decoder(WeaponRepositoryActionPacket::new)
+                .consumerMainThread(WeaponRepositoryActionPacket::handle)
+                .add();
+        channel.messageBuilder(WeaponRepositorySyncPacket.class, nextId(), NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(WeaponRepositorySyncPacket::encode)
+                .decoder(WeaponRepositorySyncPacket::new)
+                .consumerMainThread(WeaponRepositorySyncPacket::handle)
                 .add();
     }
 

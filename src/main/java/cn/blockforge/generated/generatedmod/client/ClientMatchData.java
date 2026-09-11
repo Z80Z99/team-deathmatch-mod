@@ -237,6 +237,12 @@ public final class ClientMatchData {
         return state != MatchState.WAITING;
     }
 
+    /** Server-owned phases ask the local client to suppress movement input as well as interactions. */
+    public static boolean movementFrozen() {
+        return state == MatchState.TERRAIN_RESTORING
+                || (state == MatchState.WARMUP && phaseRemainingTicks > 0 && phaseRemainingTicks <= 200);
+    }
+
     /** 整场已打时长（tick）：服务器快照 + 本地时钟推进，两包之间也不会停。 */
     public static int elapsedTicks() {
         if (elapsedBaseTicks <= 0 && !inMatch()) {
@@ -320,6 +326,7 @@ public final class ClientMatchData {
             case WARMUP -> phaseRemainingTicks == 0 ? "热身 · 等待玩家" : "即将开始";
             case PLAYING -> "进行中";
             case ROUND_END -> "回合结束";
+            case TERRAIN_RESTORING -> "地形恢复";
             case MAP_RESETTING -> "地图恢复";
             case MATCH_END -> "比赛结束";
         };

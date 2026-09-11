@@ -167,7 +167,7 @@ public final class MatchEvents {
     @SubscribeEvent
     public static void onExplosionDetonate(ExplosionEvent.Detonate event) {
         MatchManager manager = MatchManager.get();
-        if (manager == null || !manager.isMapResetting()) {
+        if (manager == null || !manager.isRestoringTerrain()) {
             return;
         }
         manager.removeResetRegionExplosionBlocks(event);

@@ -4,6 +4,7 @@ import cn.blockforge.generated.generatedmod.item.ModItems;
 import cn.blockforge.generated.generatedmod.map.MapDefinition;
 import cn.blockforge.generated.generatedmod.map.MapRegion;
 import cn.blockforge.generated.generatedmod.network.packet.BombSyncPacket;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;

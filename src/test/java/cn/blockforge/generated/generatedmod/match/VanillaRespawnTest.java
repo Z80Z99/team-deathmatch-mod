@@ -39,6 +39,31 @@ class VanillaRespawnTest {
         verify(f.spawns, never()).teleportToLobby(any());
     }
 
+    @Test void warmupRunsTerrainRestoreBeforeRespawningIntoPlaying() throws Exception {
+        Fixture f = new Fixture();
+        when(f.maps.beginReset()).thenReturn(true);
+        invoke(f.match, "beginTerrainRestore", true);
+        assertEquals(MatchState.TERRAIN_RESTORING, f.match.state());
+        verify(f.maps).beginReset();
+
+        when(f.maps.isResetComplete()).thenReturn(true);
+        doReturn(AutoBalanceMode.OFF).when(f.match).rulesAutoBalanceMode();
+        doReturn(0).when(f.match).rulesMatchDurationSeconds();
+        invoke(f.match, "completeTerrainRestore");
+        assertEquals(MatchState.PLAYING, f.match.state());
+    }
+
+    @Test void forcedStopUsesSeparateStateFromNormalTerrainRestore() throws Exception {
+        Fixture f = new Fixture();
+        when(f.maps.beginReset()).thenReturn(true);
+        invoke(f.match, "beginTerrainRestore", false);
+        when(f.maps.isResetting()).thenReturn(true);
+
+        assertTrue(f.match.stopMatch());
+        assertEquals(MatchState.MAP_RESETTING, f.match.state());
+        verify(f.maps, times(1)).beginReset();
+    }
+
     @Test void cancelledDeathDoesNotRespawnOrScore() throws Exception {
         Fixture f = new Fixture();
         f.match.onPlayerKilled(f.oldPlayer, mock(DamageSource.class));
@@ -196,9 +221,19 @@ class VanillaRespawnTest {
     }
 
     private static void invoke(MatchManager target, String name) throws Exception {
-        var method = MatchManager.class.getDeclaredMethod(name);
+        invoke(target, name, new Class<?>[0], new Object[0]);
+    }
+
+    private static void invoke(MatchManager target, String name, Object argument) throws Exception {
+        Class<?> type = argument instanceof Boolean ? boolean.class : argument.getClass();
+        invoke(target, name, new Class<?>[] {type}, new Object[] {argument});
+    }
+
+    private static void invoke(MatchManager target, String name, Class<?>[] types, Object[] arguments)
+            throws Exception {
+        var method = MatchManager.class.getDeclaredMethod(name, types);
         method.setAccessible(true);
-        method.invoke(target);
+        method.invoke(target, arguments);
     }
 
     private static final class Fixture {
@@ -220,8 +255,11 @@ class VanillaRespawnTest {
             set(match, "downedPlayers", waiting); set(match, "pendingDeaths", new HashMap<>());
             set(match, "respawnedPlayers", new HashSet<>()); set(match, "readyRespawnRequests", requests);
             set(match, "respawnProtectionEnds", new HashMap<>());
+            set(match, "frozenPositions", new HashMap<>());
+            set(match, "scores", new MatchScoreTracker());
             set(match, "state", MatchState.PLAYING);
             when(server.getPlayerList()).thenReturn(list);
+            when(list.getPlayers()).thenReturn(java.util.List.of());
             when(list.getPlayer(id)).thenReturn(oldPlayer);
             when(oldPlayer.getUUID()).thenReturn(id); when(newPlayer.getUUID()).thenReturn(id);
             when(oldPlayer.isAlive()).thenReturn(true); when(newPlayer.isAlive()).thenReturn(true);

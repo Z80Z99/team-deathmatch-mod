@@ -10,6 +10,7 @@ import cn.blockforge.generated.generatedmod.network.packet.MatchSyncPacket;
 import cn.blockforge.generated.generatedmod.spawn.SpawnManager;
 import cn.blockforge.generated.generatedmod.spawn.SpawnPoint;
 import cn.blockforge.generated.generatedmod.team.TeamManager;
+import cn.blockforge.generated.generatedmod.weapon.WeaponRepositoryManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
@@ -47,12 +48,14 @@ public final class MatchManager {
     private final cn.blockforge.generated.generatedmod.lobby.RoomManager rooms;
     private final cn.blockforge.generated.generatedmod.map.MapEditorManager mapEditor;
     private final MatchScoreTracker scores = new MatchScoreTracker();
+    private final WeaponRepositoryManager weapons;
     private final Map<UUID, DownedEntry> downedPlayers = new HashMap<>();
     private final java.util.Set<UUID> readyRespawnRequests = new java.util.HashSet<>();
     private final Map<UUID, Long> respawnProtectionEnds = new HashMap<>();
     private final Map<UUID, PendingDeath> pendingDeaths = new HashMap<>();
     private final java.util.Set<UUID> respawnedPlayers = new java.util.HashSet<>();
     private final Map<UUID, Long> regionReturnTicks = new HashMap<>();
+    private final Map<UUID, SpawnPoint> frozenPositions = new HashMap<>();
 
     /** 整场开始时刻（tick），供 HUD「本局已进行时间」统计源使用。 */
     private long matchStartTick;
@@ -67,6 +70,8 @@ public final class MatchManager {
     private MatchState state = MatchState.WAITING;
     /** 本次比赛的房间级规则覆盖；由房主在大厅设置，开赛时应用，结束即清除。 */
     private cn.blockforge.generated.generatedmod.lobby.RoomRules roomRules;
+    private boolean terrainRestoreAfterWarmup;
+    private boolean terrainRestoreStarted;
     private Team winner;
     private Team roundWinner;
     private Team pendingMatchWinner;
@@ -92,6 +97,7 @@ public final class MatchManager {
         this.maps = new MapManager(server);
         this.spawns = new SpawnManager(server, maps);
         this.teams = new TeamManager(server, this);
+        this.weapons = new WeaponRepositoryManager(server);
         this.rooms = new cn.blockforge.generated.generatedmod.lobby.RoomManager(server, this);
         this.mapEditor = new cn.blockforge.generated.generatedmod.map.MapEditorManager(server, this, maps);
         if (!maps.registry().definitions().isEmpty()) {
@@ -133,6 +139,14 @@ public final class MatchManager {
         return teams;
     }
 
+    Team attackingTeam() {
+        return sidesSwappedThisRound() ? Team.TEAM_B : Team.TEAM_A;
+    }
+
+    Team defendingTeam() {
+        return sidesSwappedThisRound() ? Team.TEAM_A : Team.TEAM_B;
+    }
+
     public cn.blockforge.generated.generatedmod.lobby.RoomManager rooms() {
         return rooms;
     }
@@ -143,6 +157,10 @@ public final class MatchManager {
 
     public MatchScoreTracker scores() {
         return scores;
+    }
+
+    public WeaponRepositoryManager weapons() {
+        return weapons;
     }
 
     public MatchState state() {
@@ -171,6 +189,14 @@ public final class MatchManager {
 
     public boolean isMapResetting() {
         return state == MatchState.MAP_RESETTING;
+    }
+
+    public boolean isTerrainRestoring() {
+        return state == MatchState.TERRAIN_RESTORING;
+    }
+
+    public boolean isRestoringTerrain() {
+        return state == MatchState.TERRAIN_RESTORING || state == MatchState.MAP_RESETTING;
     }
 
     public boolean isCombatActive() {
@@ -431,11 +457,18 @@ public final class MatchManager {
         state = MatchState.MAP_RESETTING;
         spawns.updateActivationContext(MapRegionActivation.INACTIVE);
         phaseEndTick = 0L;
+        frozenPositions.clear();
+        terrainRestoreAfterWarmup = false;
+        terrainRestoreStarted = false;
         releaseAllDowned();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
             player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+        }
+        if (maps.isResetting()) {
+            broadcastMatchState();
+            return;
         }
         if (!maps.beginReset()) {
             state = MatchState.ROUND_END;
@@ -510,17 +543,25 @@ public final class MatchManager {
             }
         }
         if (state == MatchState.WARMUP && phaseEndTick > 0L && server.getTickCount() >= phaseEndTick) {
-            beginPlaying();
+            beginTerrainRestore(true);
         } else if (state == MatchState.PLAYING && phaseEndTick > 0L
                 && server.getTickCount() >= phaseEndTick) {
             finishRound(null);
         } else if (state == MatchState.ROUND_END && phaseEndTick > 0L
                 && server.getTickCount() >= phaseEndTick) {
             beginMapReset();
+        } else if (state == MatchState.TERRAIN_RESTORING && maps.isResetComplete()) {
+            completeTerrainRestore();
+        } else if (state == MatchState.TERRAIN_RESTORING && maps.isResetFailed()
+                && (phaseEndTick == 0L || server.getTickCount() >= phaseEndTick)) {
+            retryTerrainRestore();
+        } else if (state == MatchState.TERRAIN_RESTORING && phaseEndTick > 0L
+                && server.getTickCount() >= phaseEndTick) {
+            retryTerrainRestore();
         } else if (state == MatchState.MAP_RESETTING && maps.isResetComplete()) {
-            completeMapReset();
+            completeForcedMapReset();
         } else if (state == MatchState.MAP_RESETTING && maps.isResetFailed()) {
-            retryMapReset();
+            retryForcedMapReset();
         } else if (state == MatchState.MATCH_END && phaseEndTick > 0L
                 && server.getTickCount() >= phaseEndTick
                 && rulesAutoReset()) {
@@ -530,6 +571,7 @@ public final class MatchManager {
         spawns.tickRandomSpawns(state == MatchState.PLAYING || state == MatchState.WARMUP, rulesSpawnStrategy());
         processDownedPlayers();
         enforceArenaRules();
+        updateFrozenPlayers();
         if (server.getTickCount() % stateBroadcastInterval(isMatchActive()) == 0) {
             broadcastMatchState();
         }
@@ -542,6 +584,31 @@ public final class MatchManager {
 
     static int stateBroadcastInterval(boolean matchActive) {
         return matchActive ? 10 : 100;
+    }
+
+    private void teleportFrozen(ServerPlayer player, SpawnPoint hold) {
+        ServerLevel level = server.getLevel(hold.dimension());
+        if (level == null) player.teleportTo(hold.x(), hold.y(), hold.z());
+        else player.teleportTo(level, hold.x(), hold.y(), hold.z(), hold.yaw(), hold.pitch());
+    }
+
+    private void updateFrozenPlayers() {
+        boolean freeze = state == MatchState.TERRAIN_RESTORING
+                || (state == MatchState.WARMUP && phaseEndTick > 0L
+                && server.getTickCount() >= phaseEndTick - 200L);
+        if (!freeze) {
+            frozenPositions.clear();
+            return;
+        }
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            SpawnPoint hold = frozenPositions.computeIfAbsent(player.getUUID(),
+                    ignored -> new SpawnPoint(player.level().dimension(), player.getX(), player.getY(),
+                            player.getZ(), player.getYRot(), player.getXRot()));
+            teleportFrozen(player, hold);
+            player.setGameMode(GameType.SPECTATOR);
+            player.setInvulnerable(true);
+            player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+        }
     }
 
     /** Waiting players cannot take damage; active players use the real death pipeline. */
@@ -752,6 +819,12 @@ public final class MatchManager {
             spawns.teleportToSpectator(player);
             return;
         }
+        if (state == MatchState.TERRAIN_RESTORING) {
+            player.setGameMode(GameType.SPECTATOR);
+            player.setInvulnerable(true);
+            spawns.teleportToTerrainRestoreHold(player);
+            return;
+        }
         if (state == MatchState.ROUND_END || state == MatchState.MATCH_END) {
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
@@ -783,11 +856,12 @@ public final class MatchManager {
             return;
         }
         teams.rememberGameMode(player);
-        if (state == MatchState.MAP_RESETTING) {
+        if (state == MatchState.MAP_RESETTING || state == MatchState.TERRAIN_RESTORING) {
             teams.setPending(player);
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
-            spawns.teleportToSpectator(player);
+            if (state == MatchState.TERRAIN_RESTORING) spawns.teleportToTerrainRestoreHold(player);
+            else spawns.teleportToSpectator(player);
             broadcastMatchState();
             return;
         }
@@ -837,6 +911,7 @@ public final class MatchManager {
         readyRespawnRequests.remove(player.getUUID());
         respawnProtectionEnds.remove(player.getUUID());
         regionReturnTicks.remove(player.getUUID());
+        frozenPositions.remove(player.getUUID());
         teams.clearPlayer(player);
         rooms.onLogout(player);
         mapEditor.onLogout(player);
@@ -844,6 +919,9 @@ public final class MatchManager {
     }
 
     public boolean shouldCancelAttack(LivingEntity target, DamageSource source) {
+        if (state == MatchState.TERRAIN_RESTORING) {
+            return true;
+        }
         if (state == MatchState.MAP_RESETTING) {
             return target instanceof ServerPlayer || resolveKiller(source) != null;
         }
@@ -877,7 +955,7 @@ public final class MatchManager {
     }
 
     public boolean shouldCancelInteraction(ServerPlayer player) {
-        return state == MatchState.MAP_RESETTING || isDowned(player)
+        return arePlayersFrozen() || state == MatchState.MAP_RESETTING || isDowned(player)
                 || (isMatchActive() && (!teams.getTeam(player).isPlayable() || teams.isPending(player)));
     }
 
@@ -887,7 +965,7 @@ public final class MatchManager {
             return false;
         }
         return shouldProtectOutside(serverLevel, pos)
-                || (state == MatchState.MAP_RESETTING && maps.isInResetRegion(serverLevel, pos));
+                || (isRestoringTerrain() && maps.isInResetRegion(serverLevel, pos));
     }
 
     public boolean shouldProtectOutside(ServerLevel level, BlockPos pos) {
@@ -897,6 +975,12 @@ public final class MatchManager {
 
     public boolean shouldCancelBlockAction(ServerPlayer player) {
         return shouldCancelInteraction(player);
+    }
+
+    private boolean arePlayersFrozen() {
+        return state == MatchState.TERRAIN_RESTORING
+                || (state == MatchState.WARMUP && phaseEndTick > 0L
+                && server.getTickCount() >= phaseEndTick - 200L);
     }
 
     /** 重置阶段过滤当前地图区域内的爆炸方块，保留其他区域的服务器行为。 */
@@ -1041,7 +1125,7 @@ public final class MatchManager {
         finishRound(requestedWinner, true);
     }
 
-    private void finishRound(Team requestedWinner, boolean resolveOnTimeout) {
+    void finishRound(Team requestedWinner, boolean resolveOnTimeout) {
         if (state != MatchState.PLAYING) {
             return;
         }
@@ -1111,16 +1195,94 @@ public final class MatchManager {
             beginForcedStopReset();
             return;
         }
-        state = MatchState.MAP_RESETTING;
+        beginTerrainRestore(false);
+    }
+
+    private void beginTerrainRestore(boolean afterWarmup) {
+        terrainRestoreAfterWarmup = afterWarmup;
+        state = MatchState.TERRAIN_RESTORING;
         phaseEndTick = 0L;
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            player.setGameMode(GameType.SPECTATOR);
-            player.setInvulnerable(true);
-            player.setDeltaMovement(0.0D, 0.0D, 0.0D);
-            spawns.teleportToSpectator(player);
+        downedPlayers.clear();
+        readyRespawnRequests.clear();
+        respawnProtectionEnds.clear();
+        if (!terrainRestoreStarted) {
+            frozenPositions.clear();
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                SpawnPoint hold = spawns.teleportToTerrainRestoreHold(player);
+                frozenPositions.put(player.getUUID(), hold == null
+                        ? new SpawnPoint(player.level().dimension(), player.getX(), player.getY(), player.getZ(),
+                        player.getYRot(), player.getXRot()) : hold);
+                player.setGameMode(GameType.SPECTATOR);
+                player.setInvulnerable(true);
+                player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+            }
+            terrainRestoreStarted = true;
         }
         if (!maps.beginReset()) {
-            state = MatchState.ROUND_END;
+            phaseEndTick = server.getTickCount() + 20L;
+            if (!resetFailureNotified) {
+                resetFailureNotified = true;
+                String reason = maps.resetManager() == null ? "没有可用的地图快照"
+                        : maps.resetManager().lastError();
+                broadcastSystemMessage("地形恢复尚未开始：" + reason + "，服务器将重试。", false);
+            }
+            broadcastMatchState();
+            return;
+        }
+        resetFailureNotified = false;
+        broadcastSystemMessage(afterWarmup ? "热身结束，正在恢复比赛地形。"
+                : "回合结束，正在恢复比赛地形。", false);
+        broadcastMatchState();
+    }
+
+    private void retryTerrainRestore() {
+        if (state != MatchState.TERRAIN_RESTORING) {
+            return;
+        }
+        if (phaseEndTick > 0L && server.getTickCount() < phaseEndTick) return;
+        if (!maps.beginReset()) {
+            phaseEndTick = server.getTickCount() + 20L;
+            if (!resetFailureNotified) {
+                resetFailureNotified = true;
+                String reason = maps.resetManager() == null ? "没有可用的地图快照"
+                        : maps.resetManager().lastError();
+                broadcastSystemMessage("地形恢复中断：" + reason + "，服务器将重试。", false);
+            }
+            return;
+        }
+        phaseEndTick = 0L;
+        resetFailureNotified = false;
+        broadcastMatchState();
+    }
+
+    private void completeTerrainRestore() {
+        if (state != MatchState.TERRAIN_RESTORING) {
+            return;
+        }
+        frozenPositions.clear();
+        boolean restoreAfterWarmup = terrainRestoreAfterWarmup;
+        terrainRestoreAfterWarmup = false;
+        terrainRestoreStarted = false;
+        broadcastSystemMessage("地形恢复完成。", false);
+        if (restoreAfterWarmup) {
+            beginPlaying();
+            return;
+        }
+        if (pendingMatchWinner != null || rulesMode() != GameMode.SEARCH_DESTROY) {
+            enterMatchEnd(pendingMatchWinner);
+            return;
+        }
+        roundNumber++;
+        beginWarmup(false);
+    }
+
+    private void retryForcedMapReset() {
+        if (state != MatchState.MAP_RESETTING) {
+            return;
+        }
+        state = MatchState.MAP_RESETTING;
+        phaseEndTick = 0L;
+        if (!maps.beginReset()) {
             phaseEndTick = server.getTickCount() + 20L;
             if (!resetFailureNotified) {
                 resetFailureNotified = true;
@@ -1132,7 +1294,6 @@ public final class MatchManager {
             return;
         }
         resetFailureNotified = false;
-        broadcastSystemMessage("回合结束，正在分 Tick 恢复地图，请稍候。", false);
         broadcastMatchState();
     }
 
@@ -1151,10 +1312,11 @@ public final class MatchManager {
         }
     }
 
-    private void completeMapReset() {
+    private void completeForcedMapReset() {
         if (state != MatchState.MAP_RESETTING) {
             return;
         }
+        frozenPositions.clear();
         broadcastSystemMessage("地图恢复完成。", false);
         if (stopAfterMapReset) {
             resetToWaiting(false);
@@ -1284,8 +1446,11 @@ public final class MatchManager {
 
     private void enforceArenaRules() {
         if (!isMatchActive()) {
-            regionReturnTicks.clear();
-            boundaryCountdown.clear();
+        regionReturnTicks.clear();
+        frozenPositions.clear();
+        terrainRestoreAfterWarmup = false;
+        terrainRestoreStarted = false;
+        boundaryCountdown.clear();
             return;
         }
         long now = server.getTickCount();
@@ -1316,6 +1481,16 @@ public final class MatchManager {
                 if (canReturnNow(player, now)) {
                     spawns.teleportToSpectator(player);
                 }
+                continue;
+            }
+            if (state == MatchState.TERRAIN_RESTORING) {
+                SpawnPoint hold = frozenPositions.get(player.getUUID());
+                if (hold != null) {
+                    teleportFrozen(player, hold);
+                }
+                player.setGameMode(GameType.SPECTATOR);
+                player.setInvulnerable(true);
+                player.setDeltaMovement(0.0D, 0.0D, 0.0D);
                 continue;
             }
 

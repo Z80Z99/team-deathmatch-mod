@@ -39,7 +39,7 @@ public final class LobbyMenuScreen extends UiScreen {
 
     @Override
     protected void init() {
-        beginLayout(460, 230, BUTTON_HEIGHT, true, true);
+        beginLayout(460, 270, BUTTON_HEIGHT, true, true);
         roomRowY = flowRow(ENTRY_HEIGHT);
         matchRowY = flowRow(ENTRY_HEIGHT);
 
@@ -54,6 +54,10 @@ public final class LobbyMenuScreen extends UiScreen {
                 () -> MapLibraryScreen.open(this), null), toolsY);
         flowWidget(uiButton("HUD 编辑器", columnX(1, 2, 6), toolsY, columnWidth(2, 6),
                 () -> minecraft.setScreen(new HudLayoutScreen(this)), null), toolsY);
+        int arsenalY = flowRow(BUTTON_HEIGHT);
+        flowWidget(uiButton("武器仓库", innerLeft, arsenalY, innerWidth,
+                () -> WeaponRepositoryScreen.open(this),
+                "浏览武器 MOD 的枪械与配件目录，并维护服务器武器仓库。"), arsenalY);
         footerButton("返回游戏", 0, 1, 0, this::onClose, null, UiButton.Kind.SECONDARY);
         updateButtons();
     }
