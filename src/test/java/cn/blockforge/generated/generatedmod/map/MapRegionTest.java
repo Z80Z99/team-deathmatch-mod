@@ -116,4 +116,24 @@ class MapRegionTest {
         assertTrue(decoded.hasResetRegion());
         assertTrue(!decoded.isComplete());
     }
+
+    @Test
+    void duplicateCustomRegionIdsAreDisambiguatedAndDeleteIndependently() {
+        MapDefinition.Region bounds = new MapDefinition.Region(
+                new BlockPos(0, 0, 0), new BlockPos(32, 32, 32));
+        MapRegion first = MapRegion.custom("custom", "第一个", MapRegion.Type.CUSTOM, bounds);
+        MapRegion second = MapRegion.custom("custom", "第二个", MapRegion.Type.CUSTOM, bounds);
+        MapDefinition map = new MapDefinition("duplicates", "Duplicates", Level.OVERWORLD,
+                bounds, bounds, List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(first, second));
+
+        assertEquals(List.of("custom", "custom_1"),
+                map.customRegions().stream().map(MapRegion::id).toList());
+        MapDefinition removedFirst = map.withoutRegion("custom");
+        assertEquals(List.of("custom_1"),
+                removedFirst.customRegions().stream().map(MapRegion::id).toList());
+        MapRegion updatedSecond = removedFirst.customRegions().get(0).withId("custom_1");
+        assertEquals(List.of("custom_1"), removedFirst.withRegion(updatedSecond)
+                .customRegions().stream().map(MapRegion::id).toList());
+    }
 }

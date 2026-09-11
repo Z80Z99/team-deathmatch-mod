@@ -7,6 +7,7 @@ import cn.blockforge.generated.generatedmod.network.packet.MapEditorSyncPacket;
 public final class ClientMapEditorData {
     private static MapEditorView view = empty();
     private static int revision;
+    private static int contentRevision;
     private static net.minecraft.core.BlockPos firstPoint;
     private static net.minecraft.core.BlockPos secondPoint;
     public static net.minecraft.core.BlockPos firstPoint() { return firstPoint; }
@@ -17,6 +18,9 @@ public final class ClientMapEditorData {
 
     public static void apply(MapEditorSyncPacket packet) {
         BrushTransitions.acknowledge(view, packet.view());
+        if (plannerContentChanged(view, packet.view())) {
+            contentRevision++;
+        }
         view = packet.view();
         firstPoint = packet.firstPoint();
         secondPoint = packet.secondPoint();
@@ -29,6 +33,7 @@ public final class ClientMapEditorData {
         firstPoint = null;
         secondPoint = null;
         revision++;
+        contentRevision++;
     }
 
     public static MapEditorView view() {
@@ -37,6 +42,17 @@ public final class ClientMapEditorData {
 
     public static int revision() {
         return revision;
+    }
+
+    /** 只在地图目标或区域列表变化时递增，避免每秒轮询重建整个规划器。 */
+    public static int contentRevision() {
+        return contentRevision;
+    }
+
+    private static boolean plannerContentChanged(MapEditorView before, MapEditorView after) {
+        return before.hasTarget() != after.hasTarget()
+                || !before.mapId().equals(after.mapId())
+                || !before.regions().equals(after.regions());
     }
 
     private static MapEditorView empty() {

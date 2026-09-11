@@ -5,6 +5,7 @@ import cn.blockforge.generated.generatedmod.client.HudBackground;
 import cn.blockforge.generated.generatedmod.client.HudContext;
 import cn.blockforge.generated.generatedmod.client.HudCustomRenderer;
 import cn.blockforge.generated.generatedmod.client.HudGeometry;
+import cn.blockforge.generated.generatedmod.client.HudParameters;
 import cn.blockforge.generated.generatedmod.client.HudStats;
 import cn.blockforge.generated.generatedmod.client.MatchHudOverlay;
 import cn.blockforge.generated.generatedmod.client.ui.UiButton;
@@ -128,6 +129,10 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     private long lastHistoryChange;
     private boolean historySuspended;
     private boolean historyPending;
+    private String sourceFilterKey = "";
+    private String sourcePrimary = "全部";
+    private String sourceSecondary = "全部";
+    private String sourceTertiary = "全部";
 
     private int dockWidth;
     private int dockX;
@@ -150,6 +155,8 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     private int resizeOriginWidth;
     private int resizeOriginBottom;
     private boolean sidePanelNeedsRebuild;
+    private boolean draggingPanelScrollbar;
+    private int panelScrollbarDragOffset;
 
     private String status = "";
     private int statusColor = UiTheme.INFO;
@@ -214,20 +221,20 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
 
         addTabs();
         if (dockHidden) return;
-        if (globalTab) {
-            addGlobalControls();
-        } else {
-            int line = beginLayoutLine();
-            for (int i = 0; i < 2; i++) {
-                boolean properties = i == 1;
-                UiButton tab = new UiButton(0, 0, 10, CONTROL, Component.literal(properties ? "属性" : "组件"), ignored -> {
-                    commitHistoryEdit(); propertyTab = properties; scroll = 0; rebuildWidgets();
-                }, UiButton.Kind.SECONDARY);
-                tab.setSelected(propertyTab == properties);
-                register(tab, CONTROL, line, i, 2);
-            }
-            if (propertyTab) addPropertyControls(); else addComponentList();
+        int toolY = dockTop + DOCK_HEADER_HEIGHT + 4;
+        int toolGap = 6;
+        int toolWidth = (dockInnerWidth() - toolGap) / 2;
+        for (int i = 0; i < 2; i++) {
+            boolean properties = i == 1;
+            UiButton tab = new UiButton(dockX + 8 + i * (toolWidth + toolGap), toolY,
+                    toolWidth, CONTROL, Component.literal(properties ? "属性" : "组件"), ignored -> {
+                commitHistoryEdit(); propertyTab = properties; scroll = 0; rebuildWidgets();
+            }, UiButton.Kind.SECONDARY);
+            tab.setSelected(propertyTab == properties);
+            addRenderableWidget(tab);
         }
+        if (globalTab && !propertyTab) addGlobalControls();
+        if (propertyTab) addPropertyControls(); else addComponentList();
         rows.removeIf(row -> row.kind() == RowKind.NOTE && !row.text().startsWith("示例由"));
         addFooter();
         clampScroll();
@@ -243,7 +250,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             return;
         }
         int gap = 4;
-        int columns = HudContext.values().length + 1;
+        int columns = HudContext.values().length;
         int tabWidth = (width - 40 - gap * (columns - 1)) / columns;
         int index = 0;
         for (HudContext context : HudContext.values()) {
@@ -251,7 +258,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             UiButton tab = new UiButton(6 + index * (tabWidth + gap), TAB_TOP, tabWidth, TAB_HEIGHT,
                     Component.literal(context.tabLabel()), ignored -> {
                         commitHistoryEdit();
-                        globalTab = false;
+                        globalTab = target == HudContext.GLOBAL;
                         if (activeContext != target) {
                             activeContext = target;
                             selected = defaultSelection();
@@ -259,22 +266,12 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                             scroll = 0;
                         }
                         rebuildWidgets();
-                    }, globalTab || activeContext != context
+                    }, globalTab != (context == HudContext.GLOBAL) || activeContext != context
                             ? UiButton.Kind.SECONDARY : UiButton.Kind.PRIMARY);
-            tab.setSelected(!globalTab && activeContext == context);
+            tab.setSelected(activeContext == context);
             addRenderableWidget(tab);
             index++;
         }
-        UiButton global = new UiButton(6 + index * (tabWidth + gap), TAB_TOP, tabWidth, TAB_HEIGHT,
-                Component.literal("背景/全局"), ignored -> {
-            commitHistoryEdit();
-            globalTab = true;
-            paletteOpen = false;
-            scroll = 0;
-            rebuildWidgets();
-        }, globalTab ? UiButton.Kind.PRIMARY : UiButton.Kind.SECONDARY);
-        global.setSelected(globalTab);
-        addRenderableWidget(global);
         UiButton toggleDock = new UiButton(width - 28, TAB_TOP, 22, TAB_HEIGHT,
                 Component.literal(dockHidden ? "<" : ">"), ignored -> {
                     commitHistoryEdit(); dockHidden = !dockHidden; rebuildWidgets();
@@ -291,9 +288,11 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     // ---------------------------------------------------------------- 组件列表
 
     private void addComponentList() {
-        rows.add(Row.note("示例由独立元素拼成。\n文字、数值、底板均可单独删除。"));
-        addLayoutPresets();
-        rows.add(Row.header("组件种类"));
+        rows.add(Row.note(globalTab
+                ? "全局组件会在比赛、匹配和房间界面常驻。\n只有组件自身的触发条件会影响显示。"
+                : "示例由独立元素拼成。\n文字、数值、底板均可单独删除。"));
+        if (!globalTab) addLayoutPresets();
+        rows.add(Row.header(globalTab ? "全局组件种类" : "组件种类"));
         int kindLine = beginLayoutLine();
         registerAddButton("+文字", 0, 4, kindLine, "text", "文字模块：固定文字或插入多个实时参数。");
         registerAddButton("+色块", 1, 4, kindLine, "block", "纯色块：常用作底板、比分底或装饰。");
@@ -304,13 +303,15 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             registerAddButton("+阵亡与部署", 0, 2, effectLine, "respawn", "可完全编辑的阵亡与回归效果。");
             registerAddButton("+越界警告", 1, 2, effectLine, "boundary", "可完全编辑的出界倒计时效果。");
         }
-        rows.add(Row.header("场景组件"));
-        if (activeContext.isMatch()) {
-            addBuiltInRow("score", "记分板（内置）", () -> current().scoreVisible);
-            addBuiltInRow("text", "状态文字（内置）", () -> current().textVisible);
-            addBuiltInRow("feed", "击杀播报（内置）", () -> current().feedVisible);
-        } else {
-            addBuiltInRow("banner", "场景横幅（内置）", () -> current().bannerVisible);
+        if (!globalTab) {
+            rows.add(Row.header("场景组件"));
+            if (activeContext.isMatch()) {
+                addBuiltInRow("score", "记分板（内置）", () -> current().scoreVisible);
+                addBuiltInRow("text", "状态文字（内置）", () -> current().textVisible);
+                addBuiltInRow("feed", "击杀播报（内置）", () -> current().feedVisible);
+            } else {
+                addBuiltInRow("banner", "场景横幅（内置）", () -> current().bannerVisible);
+            }
         }
         List<ClientHudLayout.CustomElement> elements = draft.customElements(activeContext);
         if (elements.isEmpty()) {
@@ -655,7 +656,27 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                 "显示条件切换时播放动画。", UiButton.Kind.SECONDARY), CONTROL);
         addSlider("动画时长 ms", 50, 2000, () -> intOf(id, e -> e.placement().animationMillis(), 250),
                 value -> replaceById(id, e -> e.placement = e.placement.withAnimation(e.placement.animation(), value)));
+        if (textLike || progress) {
+            rows.add(Row.header("内容变化过渡"));
+            register(new UiCycleButton<>(0, 0, 10, CONTROL, List.of("none", "fade", "slide", "zoom"),
+                    chosen.placement().contentAnimation(), value -> switch (value) {
+                        case "fade" -> "内容淡入"; case "slide" -> "内容滑入";
+                        case "zoom" -> "内容缩放"; default -> "内容无过渡";
+                    }, value -> replaceByIdDiscrete(id, e -> e.placement = e.placement
+                            .withContentAnimation(value, e.placement.contentAnimationMillis())),
+                    "数据值或文字变化时播放的内容过渡。", UiButton.Kind.SECONDARY), CONTROL);
+            addSlider("内容过渡 ms", 50, 2000,
+                    () -> intOf(id, e -> e.placement().contentAnimationMillis(), 250),
+                    value -> replaceById(id, e -> e.placement = e.placement
+                            .withContentAnimation(e.placement.contentAnimation(), value)));
+        }
         if (chosen.type().equals("progress")) {
+            register(new UiCycleButton<>(0, 0, 10, CONTROL, List.of("fill", "drain"),
+                    chosen.placement().progressDirection(),
+                    value -> "进度效果：" + ("drain".equals(value) ? "消耗（从右向左）" : "填充（从左向右）"),
+                    value -> replaceByIdDiscrete(id, e -> e.placement =
+                            e.placement.withProgressDirection(value)),
+                    "填充适合安装进度，消耗适合复活减伤等倒计时。", UiButton.Kind.SECONDARY), CONTROL);
             addSlider(chosen.boundSource() != null && chosen.boundSource().kind() == HudStats.Kind.TIME
                     ? "进度上限 秒（0=来源）" : "进度上限（0=来源）", 0, 10000,
                     () -> intOf(id, e -> e.placement().progressMaximum(), 0),
@@ -732,9 +753,20 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     private void addParameterInserter(ClientHudLayout.CustomElement chosen) {
         List<HudStats.Source> sources = HudStats.sourcesFor(activeContext);
         if (sources.isEmpty()) return;
-        List<String> options = sources.stream().map(HudStats.Source::id).toList();
+        String filterKey = "parameter:" + chosen.id();
+        if (!filterKey.equals(sourceFilterKey)) {
+            sourceFilterKey = filterKey;
+            sourcePrimary = sourceSecondary = sourceTertiary = "全部";
+        }
+        addSourceFilterControls(sources);
+        List<HudStats.Source> filtered = filterSources(sources);
+        if (filtered.isEmpty()) {
+            rows.add(Row.note("当前三级筛选没有可用参数。"));
+            return;
+        }
+        List<String> options = filtered.stream().map(HudStats.Source::id).toList();
         Map<String, String> labels = new LinkedHashMap<>();
-        for (HudStats.Source source : sources) labels.put(source.id(), "+ 参数 · " + source.pickerLabel());
+        for (HudStats.Source source : filtered) labels.put(source.id(), sourceHierarchyLabel(source));
         String id = chosen.id();
         register(new UiCycleButton<>(0, 0, 10, CONTROL, options, options.get(0), labels::get,
                 value -> {
@@ -749,12 +781,22 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     private void addSourcePicker(ClientHudLayout.CustomElement chosen) {
         rows.add(Row.header("数据来源"));
         List<HudStats.Source> sources = HudStats.sourcesFor(activeContext);
+        String filterKey = "source:" + chosen.id();
+        HudStats.Source currentSource = chosen.boundSource();
+        if (!filterKey.equals(sourceFilterKey)) {
+            sourceFilterKey = filterKey;
+            sourcePrimary = currentSource == null ? "全部" : HudStats.primaryCategory(currentSource);
+            sourceSecondary = currentSource == null ? "全部" : HudStats.secondaryCategory(currentSource);
+            sourceTertiary = currentSource == null ? "全部" : HudStats.tertiaryCategory(currentSource);
+        }
+        addSourceFilterControls(sources);
+        List<HudStats.Source> filtered = filterSources(sources);
         List<String> options = new ArrayList<>();
         Map<String, String> labelsByOption = new LinkedHashMap<>();
         options.add(FIXED_SOURCE);
         labelsByOption.put(FIXED_SOURCE, "固定内容");
         String wanted = chosen.source();
-        for (HudStats.Source source : sources) {
+        for (HudStats.Source source : filtered) {
             if ("progress".equals(chosen.type()) && source.kind() == HudStats.Kind.TEXT) {
                 continue;
             }
@@ -763,7 +805,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                 continue;
             }
             options.add(source.id());
-            labelsByOption.put(source.id(), source.pickerLabel());
+            labelsByOption.put(source.id(), sourceHierarchyLabel(source));
         }
         // 配置文件里如果还绑定着已下线的源，也要保留这一项，不能第一次点击就清空。
         if (!wanted.isBlank() && !labelsByOption.containsKey(wanted)) {
@@ -779,6 +821,65 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                 "选择当前场景的数据；固定内容不绑定统计值。",
                 UiButton.Kind.SECONDARY);
         register(cycle, CONTROL);
+    }
+
+    private void addSourceFilterControls(List<HudStats.Source> sources) {
+        List<String> primary = new ArrayList<>();
+        primary.add("全部");
+        sources.stream().map(HudStats::primaryCategory).distinct().sorted().forEach(primary::add);
+        if (!primary.contains(sourcePrimary)) sourcePrimary = "全部";
+        register(new UiCycleButton<>(0, 0, 10, CONTROL, primary, sourcePrimary,
+                value -> "一级 · 指标：" + value,
+                value -> {
+                    sourcePrimary = value;
+                    sourceSecondary = "全部";
+                    sourceTertiary = "全部";
+                    rebuildWidgets();
+                }, "先按数据指标筛选。", UiButton.Kind.SECONDARY), CONTROL);
+
+        List<HudStats.Source> primaryFiltered = sources.stream()
+                .filter(source -> sourcePrimary.equals("全部")
+                        || HudStats.primaryCategory(source).equals(sourcePrimary)).toList();
+        List<String> secondary = new ArrayList<>();
+        secondary.add("全部");
+        primaryFiltered.stream().map(HudStats::secondaryCategory).distinct().sorted().forEach(secondary::add);
+        if (!secondary.contains(sourceSecondary)) sourceSecondary = "全部";
+        register(new UiCycleButton<>(0, 0, 10, CONTROL, secondary, sourceSecondary,
+                value -> "二级 · 范围：" + value,
+                value -> {
+                    sourceSecondary = value;
+                    sourceTertiary = "全部";
+                    rebuildWidgets();
+                }, "再按本轮、整场、自己等范围筛选。", UiButton.Kind.SECONDARY), CONTROL);
+
+        List<HudStats.Source> secondaryFiltered = primaryFiltered.stream()
+                .filter(source -> sourceSecondary.equals("全部")
+                        || HudStats.secondaryCategory(source).equals(sourceSecondary)).toList();
+        List<String> tertiary = new ArrayList<>();
+        tertiary.add("全部");
+        secondaryFiltered.stream().map(HudStats::tertiaryCategory).distinct().sorted().forEach(tertiary::add);
+        if (!tertiary.contains(sourceTertiary)) sourceTertiary = "全部";
+        register(new UiCycleButton<>(0, 0, 10, CONTROL, tertiary, sourceTertiary,
+                value -> "三级 · 对象：" + value,
+                value -> {
+                    sourceTertiary = value;
+                    rebuildWidgets();
+                }, "最后按A队、B队、自己、敌方等对象筛选。", UiButton.Kind.SECONDARY), CONTROL);
+    }
+
+    private List<HudStats.Source> filterSources(List<HudStats.Source> sources) {
+        return sources.stream().filter(source -> sourcePrimary.equals("全部")
+                        || HudStats.primaryCategory(source).equals(sourcePrimary))
+                .filter(source -> sourceSecondary.equals("全部")
+                        || HudStats.secondaryCategory(source).equals(sourceSecondary))
+                .filter(source -> sourceTertiary.equals("全部")
+                        || HudStats.tertiaryCategory(source).equals(sourceTertiary)).toList();
+    }
+
+    private static String sourceHierarchyLabel(HudStats.Source source) {
+        return "【" + HudStats.primaryCategory(source) + "】→【"
+                + HudStats.secondaryCategory(source) + "】→【"
+                + HudStats.tertiaryCategory(source) + "】";
     }
 
     private void addTemplateEditor(String label, java.util.function.Supplier<String> getter,
@@ -984,7 +1085,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     }
 
     private int viewportTop() {
-        return dockTop + 22;
+        return dockTop + DOCK_HEADER_HEIGHT + CONTROL + 8;
     }
 
     /** 内容视口止于底栏分隔线，避免最后一行控件压到固定操作区。 */
@@ -1491,10 +1592,8 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             setStatus("正在移动 HUD 配置面板。", UiTheme.ACCENT);
             return true;
         }
+        if (beginPanelScrollbarDrag(mouseX, mouseY)) return true;
         if (insideTabBar(mouseX, mouseY) || insideDock(mouseX, mouseY)) {
-            return super.mouseClicked(mouseX, mouseY, button);
-        }
-        if (globalTab) {
             return super.mouseClicked(mouseX, mouseY, button);
         }
         ClientHudLayout.Elements values = draft.elements(activeContext);
@@ -1553,6 +1652,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     }
 
     private boolean pickBuiltInWindow(ClientHudLayout.Elements values, double mouseX, double mouseY) {
+        if (globalTab) return false;
         String[] keys = activeContext.isMatch()
                 ? new String[]{"feed", "text", "score"} : new String[]{"banner"};
         for (String key : keys) {
@@ -1662,6 +1762,10 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             moveDock(mouseX, mouseY);
             return true;
         }
+        if (draggingPanelScrollbar) {
+            dragPanelScrollbar(mouseY);
+            return true;
+        }
         switch (drag) {
             case SCORE -> {
                 HudGeometry.Rect score = HudGeometry.score(draft.elements(activeContext), width, height);
@@ -1730,6 +1834,10 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             setStatus("HUD 配置面板位置已调整。", UiTheme.SUCCESS);
             return true;
         }
+        if (button == 0 && draggingPanelScrollbar) {
+            draggingPanelScrollbar = false;
+            return true;
+        }
         if (drag != Drag.NONE && button == 0) {
             drag = Drag.NONE;
             dragCustomId = "";
@@ -1747,6 +1855,44 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     private boolean insideDockViewport(double mouseX, double mouseY) {
         return !dockHidden && mouseX >= dockX && mouseX <= dockX + dockWidth
                 && mouseY >= viewportTop() && mouseY <= viewportBottom();
+    }
+
+    private int panelScrollbarX() {
+        return dockX + dockWidth - 11;
+    }
+
+    private boolean beginPanelScrollbarDrag(double mouseX, double mouseY) {
+        int overflow = Math.max(0, contentHeight() - (viewportBottom() - viewportTop()));
+        if (dockHidden || overflow <= 0 || mouseX < panelScrollbarX()
+                || mouseX > panelScrollbarX() + 8
+                || mouseY < viewportTop() || mouseY > viewportBottom()) return false;
+        int trackHeight = viewportBottom() - viewportTop();
+        int thumb = Math.max(16, trackHeight * trackHeight / Math.max(1, contentHeight()));
+        int thumbTop = viewportTop() + (trackHeight - thumb) * scroll / Math.max(1, overflow);
+        if (mouseY >= thumbTop && mouseY <= thumbTop + thumb) {
+            panelScrollbarDragOffset = (int) mouseY - thumbTop;
+        } else {
+            panelScrollbarDragOffset = thumb / 2;
+            dragPanelScrollbar(mouseY);
+        }
+        draggingPanelScrollbar = true;
+        return true;
+    }
+
+    private void dragPanelScrollbar(double mouseY) {
+        int overflow = Math.max(0, contentHeight() - (viewportBottom() - viewportTop()));
+        if (overflow <= 0) return;
+        int trackHeight = viewportBottom() - viewportTop();
+        int thumb = Math.max(16, trackHeight * trackHeight / Math.max(1, contentHeight()));
+        int range = Math.max(1, trackHeight - thumb);
+        int thumbTop = clamp((int) Math.round(mouseY) - panelScrollbarDragOffset,
+                viewportTop(), viewportTop() + range);
+        int next = clamp((int) Math.round((thumbTop - viewportTop()) * (double) overflow / range),
+                0, overflow);
+        if (next != scroll) {
+            scroll = next;
+            layoutRows();
+        }
     }
 
     @Override
@@ -1865,6 +2011,17 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     private void renderPreview(GuiGraphics graphics) {
         ClientHudLayout.Elements values = draft.elements(activeContext);
         ClientHudLayout.CustomElement chosen = selectedCustom();
+        if (globalTab) {
+            HudCustomRenderer.render(graphics, font, draft.customElements(HudContext.GLOBAL),
+                    width, height, true, true);
+            if (chosen != null && chosen.visible()
+                    && HudParameters.visible(chosen.placement().condition(), true)) {
+                HudGeometry.Rect rect = HudGeometry.custom(chosen, width, height);
+                graphics.renderOutline(rect.left() - 2, rect.top() - 2, rect.width() + 4,
+                        rect.height() + 4, 0xFFFFD27A);
+            }
+            return;
+        }
         HudCustomRenderer.render(graphics, font, draft.customElements(activeContext),
                 width, height, true, true);
         if (values.builtInMask() != 0) {
@@ -2076,13 +2233,14 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         if (overflow > 0) {
             int trackTop = viewportTop();
             int trackBottom = viewportBottom();
-            graphics.fill(dockX + dockWidth - 4, trackTop, dockX + dockWidth - 2, trackBottom,
+            int scrollbarX = dockX + dockWidth - 11;
+            graphics.fill(scrollbarX, trackTop, scrollbarX + 8, trackBottom,
                     UiTheme.BORDER_SUBTLE);
-            int thumb = Math.max(14, (trackBottom - trackTop) * (trackBottom - trackTop)
+            int thumb = Math.max(16, (trackBottom - trackTop) * (trackBottom - trackTop)
                     / Math.max(1, contentHeight()));
             int thumbTop = trackTop + (trackBottom - trackTop - thumb) * scroll / Math.max(1, overflow);
-            graphics.fill(dockX + dockWidth - 4, thumbTop, dockX + dockWidth - 2, thumbTop + thumb,
-                    UiTheme.ACCENT);
+            graphics.fill(scrollbarX + 1, thumbTop, scrollbarX + 7, thumbTop + thumb, UiTheme.ACCENT);
+            graphics.renderOutline(scrollbarX, thumbTop, 8, thumb, UiTheme.BORDER);
         }
     }
 

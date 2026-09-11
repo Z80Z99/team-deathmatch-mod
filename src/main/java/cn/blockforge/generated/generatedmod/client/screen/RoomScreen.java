@@ -25,6 +25,8 @@ public final class RoomScreen extends UiScreen {
     private int infoY, listY, listHeight, columns, page, ticks;
     private boolean hadRoom;
     private String query = "";
+    private Team draggingScrollbarTeam;
+    private int scrollbarDragOffset;
     private static final int MEMBER_HEIGHT = 25;
     public RoomScreen(Screen parent) { super(Component.literal("我的房间")); this.parent = parent; }
     public static void open(Screen parent) {
@@ -164,10 +166,13 @@ public final class RoomScreen extends UiScreen {
                     divider(graphics, x + 6, y + MEMBER_HEIGHT - 1, w - 6);
                 });
             }
+            int barX = x + w - 10;
             if (names.size() > rows) paintBand(graphics, listY, listHeight, () -> {
-                int thumb = Math.max(6, listHeight * rows / names.size());
+                graphics.fill(barX, listY, barX + 8, listY + listHeight, UiTheme.BORDER_SUBTLE);
+                int thumb = Math.max(16, listHeight * rows / names.size());
                 int top = listY + (listHeight - thumb) * offset / (names.size() - rows);
-                graphics.fill(x + w - 2, top, x + w, top + thumb, team.hudColor());
+                graphics.fill(barX + 1, top, barX + 7, top + thumb, team.hudColor());
+                graphics.renderOutline(barX, top, 8, thumb, UiTheme.BORDER);
             });
         }
         renderStatus(graphics, ClientLobbyData.roomMessage(), ClientLobbyData.roomError() ? UiTheme.ERROR : UiTheme.INFO);
@@ -187,6 +192,60 @@ public final class RoomScreen extends UiScreen {
             }
         }
         return super.mouseScrolled(x, y, amount);
+    }
+    @Override public boolean mouseClicked(double x, double y, int button) {
+        if (button == 0 && beginScrollbarDrag(x, y)) return true;
+        return super.mouseClicked(x, y, button);
+    }
+    @Override public boolean mouseDragged(double x, double y, int button, double dragX, double dragY) {
+        if (button == 0 && draggingScrollbarTeam != null) {
+            dragScrollbar(y);
+            return true;
+        }
+        return super.mouseDragged(x, y, button, dragX, dragY);
+    }
+    @Override public boolean mouseReleased(double x, double y, int button) {
+        if (button == 0 && draggingScrollbarTeam != null) {
+            draggingScrollbarTeam = null;
+            return true;
+        }
+        return super.mouseReleased(x, y, button);
+    }
+
+    private boolean beginScrollbarDrag(double mouseX, double mouseY) {
+        if (!bandFits(listY, listHeight) || mouseY < bandScreenY(listY)
+                || mouseY > bandScreenY(listY) + listHeight) return false;
+        var shown = visibleTeams();
+        int rows = Math.max(1, listHeight / MEMBER_HEIGHT);
+        for (int col = 0; col < shown.size(); col++) {
+            int barX = columnX(col, columns, 8) + columnWidth(columns, 8) - 10;
+            if (mouseX < barX || mouseX > barX + 8) continue;
+            Team team = shown.get(col);
+            int count = members(team).size();
+            if (count <= rows) return false;
+            int thumb = Math.max(16, listHeight * rows / count);
+            int offset = offsets.getOrDefault(team, 0);
+            int top = bandScreenY(listY) + (listHeight - thumb) * offset / (count - rows);
+            draggingScrollbarTeam = team;
+            scrollbarDragOffset = mouseY >= top && mouseY <= top + thumb
+                    ? (int) mouseY - top : thumb / 2;
+            if (mouseY < top || mouseY > top + thumb) dragScrollbar(mouseY);
+            return true;
+        }
+        return false;
+    }
+
+    private void dragScrollbar(double mouseY) {
+        Team team = draggingScrollbarTeam;
+        if (team == null) return;
+        int rows = Math.max(1, listHeight / MEMBER_HEIGHT);
+        int count = members(team).size();
+        int maximum = Math.max(0, count - rows);
+        int thumb = Math.max(16, listHeight * rows / Math.max(1, count));
+        int range = Math.max(1, listHeight - thumb);
+        int top = bandScreenY(listY);
+        int thumbTop = clamp((int) Math.round(mouseY) - scrollbarDragOffset, top, top + range);
+        offsets.put(team, clamp((int) Math.round((thumbTop - top) * (double) maximum / range), 0, maximum));
     }
     @Override public void onClose() { if (minecraft != null) minecraft.setScreen(parent); }
     @Override public boolean isPauseScreen() { return false; }

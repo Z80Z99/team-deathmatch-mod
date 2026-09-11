@@ -63,6 +63,37 @@ public final class FpsCommand {
                 .then(Commands.literal("integration")
                         .requires(source -> source.hasPermission(ADMIN_PERMISSION))
                         .executes(FpsCommand::integration))
+                .then(Commands.literal("money")
+                        .then(Commands.literal("balance")
+                                .executes(FpsCommand::moneyBalanceSelf)
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .requires(source -> source.hasPermission(ADMIN_PERMISSION))
+                                        .executes(FpsCommand::moneyBalance)))
+                        .then(Commands.literal("add")
+                                .requires(source -> source.hasPermission(ADMIN_PERMISSION))
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .then(Commands.argument("amount", IntegerArgumentType.integer())
+                                                .executes(FpsCommand::moneyAdd))))
+                        .then(Commands.literal("set")
+                                .requires(source -> source.hasPermission(ADMIN_PERMISSION))
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .then(Commands.argument("amount", IntegerArgumentType.integer(0))
+                                                .executes(FpsCommand::moneySet)))))
+                .then(Commands.literal("economy")
+                        .then(Commands.literal("reload")
+                                .requires(source -> source.hasPermission(ADMIN_PERMISSION))
+                                .executes(FpsCommand::economyReload)))
+                .then(Commands.literal("shop")
+                        .then(Commands.literal("list")
+                                .executes(FpsCommand::shopList))
+                        .then(Commands.literal("addheld")
+                                .requires(source -> source.hasPermission(ADMIN_PERMISSION))
+                                .executes(FpsCommand::shopAddHeld))
+                        .then(Commands.literal("price")
+                                .requires(source -> source.hasPermission(ADMIN_PERMISSION))
+                                .then(Commands.argument("entry", StringArgumentType.word())
+                                        .then(Commands.argument("price", IntegerArgumentType.integer(0))
+                                                .executes(FpsCommand::shopPrice)))))
                 .then(Commands.literal("map")
                         .then(Commands.literal("list")
                                 .executes(FpsCommand::mapList))
@@ -523,12 +554,110 @@ public final class FpsCommand {
             case MAP_NOT_READY -> "当前地图快照不可用，请检查地图配置和服务器日志。";
             case NO_TEAM_SPAWNS -> "每支启用队伍至少需要一个出生点。";
             case NO_SAFE_RANDOM_SPAWN -> "地图内未找到安全随机出生位置，请检查地面支撑、头顶空间和通路。";
+            case NO_BOMB_SITES -> "爆破模式至少需要一个激活的爆破区（BOMB 区域）。";
             case MAP_BUSY -> "地图正在恢复，请等待恢复完成。";
         };
     }
 
     private static void success(CommandContext<CommandSourceStack> context, String message) {
         context.getSource().sendSuccess(() -> Component.literal(message), false);
+    }
+
+    // ------------------------------------------------------ /fps money 与 /fps shop
+
+    private static int moneyBalanceSelf(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        return moneyMessage(context, player, "你的");
+    }
+
+    private static int moneyBalance(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        return moneyMessage(context, EntityArgument.getPlayer(context, "player"), "玩家");
+    }
+
+    private static int moneyMessage(CommandContext<CommandSourceStack> context,
+                                    ServerPlayer player, String prefix) {
+        MatchManager manager = MatchManager.get();
+        if (manager == null) return unavailable(context);
+        success(context, prefix + " " + player.getGameProfile().getName()
+                + "：大厅账户 $" + manager.economy().globalBalance(player.getUUID())
+                + "，比赛资金 $" + manager.economy().matchBalance(player.getUUID()));
+        return 1;
+    }
+
+    private static int moneyAdd(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        MatchManager manager = MatchManager.get();
+        if (manager == null) return unavailable(context);
+        ServerPlayer player = EntityArgument.getPlayer(context, "player");
+        int amount = IntegerArgumentType.getInteger(context, "amount");
+        int value = manager.economy().addBalance(player.getUUID(), amount, false);
+        success(context, "已把 " + player.getGameProfile().getName()
+                + " 的大厅账户调整为 $" + value + "。");
+        return 1;
+    }
+
+    private static int moneySet(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        MatchManager manager = MatchManager.get();
+        if (manager == null) return unavailable(context);
+        ServerPlayer player = EntityArgument.getPlayer(context, "player");
+        int value = manager.economy().setBalance(player.getUUID(),
+                IntegerArgumentType.getInteger(context, "amount"), false);
+        success(context, "已设置 " + player.getGameProfile().getName()
+                + " 的大厅账户为 $" + value + "。");
+        return 1;
+    }
+
+    private static int economyReload(CommandContext<CommandSourceStack> context) {
+        MatchManager manager = MatchManager.get();
+        if (manager == null) return unavailable(context);
+        manager.economy().reload();
+        success(context, "经济配置已重载：" + manager.economy().config().toJson().toString());
+        return 1;
+    }
+
+    private static int shopList(CommandContext<CommandSourceStack> context) {
+        MatchManager manager = MatchManager.get();
+        if (manager == null) return unavailable(context);
+        var items = manager.weapons().repository();
+        if (items.isEmpty()) {
+            success(context, "武器仓库暂无可购买条目。先在“武器仓库”界面把目录物品加入仓库。");
+            return 0;
+        }
+        StringBuilder builder = new StringBuilder("商店条目：");
+        for (var item : items) {
+            int price = manager.economy().price(item.id(), item.categoryId(),
+                    Math.max(1, item.snapshot().stack().getCount()));
+            builder.append("\n").append(item.id()).append("  $").append(price).append("  ")
+                    .append(item.title());
+        }
+        success(context, builder.toString());
+        return items.size();
+    }
+
+    private static int shopPrice(CommandContext<CommandSourceStack> context) {
+        MatchManager manager = MatchManager.get();
+        if (manager == null) return unavailable(context);
+        String entry = StringArgumentType.getString(context, "entry");
+        int price = IntegerArgumentType.getInteger(context, "price");
+        manager.economy().setItemPrice(entry, price);
+        success(context, "已把仓库条目 " + entry + " 的价格固定为 $" + price
+                + "（0 表示免费）。");
+        return 1;
+    }
+
+    private static int shopAddHeld(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        MatchManager manager = MatchManager.get();
+        if (manager == null) return unavailable(context);
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        manager.weapons().handleAction(player,
+                cn.blockforge.generated.generatedmod.weapon.WeaponRepositoryAction.ADD_HELD,
+                "", "", 0);
+        success(context, "已请求把手持物品加入商店仓库。 ");
+        return 1;
+    }
+
+    private static int unavailable(CommandContext<CommandSourceStack> context) {
+        failure(context, "比赛管理器尚未初始化。");
+        return 0;
     }
 
     private static void failure(CommandContext<CommandSourceStack> context, String message) {

@@ -2,6 +2,7 @@ package cn.blockforge.generated.generatedmod.match;
 
 import cn.blockforge.generated.generatedmod.config.FpsTdmConfig;
 import cn.blockforge.generated.generatedmod.config.FpsTdmConfigController;
+import cn.blockforge.generated.generatedmod.economy.EconomyManager;
 import cn.blockforge.generated.generatedmod.integration.IntegrationManager;
 import cn.blockforge.generated.generatedmod.map.MapManager;
 import cn.blockforge.generated.generatedmod.match.MapRegionActivation;
@@ -11,6 +12,7 @@ import cn.blockforge.generated.generatedmod.spawn.SpawnManager;
 import cn.blockforge.generated.generatedmod.spawn.SpawnPoint;
 import cn.blockforge.generated.generatedmod.team.TeamManager;
 import cn.blockforge.generated.generatedmod.weapon.WeaponRepositoryManager;
+import cn.blockforge.generated.generatedmod.shop.MatchShopManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
@@ -49,6 +51,9 @@ public final class MatchManager {
     private final cn.blockforge.generated.generatedmod.map.MapEditorManager mapEditor;
     private final MatchScoreTracker scores = new MatchScoreTracker();
     private final WeaponRepositoryManager weapons;
+    private final EconomyManager economy;
+    private final MatchShopManager matchShop;
+    private final ClassicBombManager bomb;
     private final Map<UUID, DownedEntry> downedPlayers = new HashMap<>();
     private final java.util.Set<UUID> readyRespawnRequests = new java.util.HashSet<>();
     private final Map<UUID, Long> respawnProtectionEnds = new HashMap<>();
@@ -59,6 +64,7 @@ public final class MatchManager {
 
     /** 整场开始时刻（tick），供 HUD「本局已进行时间」统计源使用。 */
     private long matchStartTick;
+    private long roundStartTick;
 
     /** 最近一次击杀的公告信息，随 MatchSyncPacket 下发给客户端 HUD。 */
     private int killFeedSequence;
@@ -98,6 +104,9 @@ public final class MatchManager {
         this.spawns = new SpawnManager(server, maps);
         this.teams = new TeamManager(server, this);
         this.weapons = new WeaponRepositoryManager(server);
+        this.economy = new EconomyManager(server);
+        this.matchShop = new MatchShopManager(server, this);
+        this.bomb = new ClassicBombManager(this);
         this.rooms = new cn.blockforge.generated.generatedmod.lobby.RoomManager(server, this);
         this.mapEditor = new cn.blockforge.generated.generatedmod.map.MapEditorManager(server, this, maps);
         if (!maps.registry().definitions().isEmpty()) {
@@ -161,6 +170,18 @@ public final class MatchManager {
 
     public WeaponRepositoryManager weapons() {
         return weapons;
+    }
+
+    public EconomyManager economy() {
+        return economy;
+    }
+
+    public MatchShopManager matchShop() {
+        return matchShop;
+    }
+
+    public ClassicBombManager bomb() {
+        return bomb;
     }
 
     public MatchState state() {
@@ -402,6 +423,9 @@ public final class MatchManager {
         }
         MapRegionActivation.Context startContext = new MapRegionActivation.Context(
                 true, rulesMode(), 1, activeTeams().size(), teams.totalParticipants());
+        if (rulesMode() == GameMode.SEARCH_DESTROY && (bomb == null || !bomb.hasBombSites())) {
+            return StartResult.NO_BOMB_SITES;
+        }
         if (rulesSpawnStrategy() != SpawnSelectionStrategy.RANDOM
                 && activeTeams().stream().anyMatch(team -> spawns.findFixedSpawn(team, startContext).isEmpty())) {
             return StartResult.NO_TEAM_SPAWNS;
@@ -420,6 +444,7 @@ public final class MatchManager {
         }
 
         captureRules();
+        economy.beginMatch(server.getPlayerList().getPlayers());
         teams.prepareForMatch();
         scores.resetMatch();
         matchStartTick = server.getTickCount();
@@ -434,6 +459,7 @@ public final class MatchManager {
         roundWinner = null;
         pendingMatchWinner = null;
         roundNumber = 1;
+        roundStartTick = 0L;
         teamAWins = 0;
         teamBWins = 0;
         extraWins.clear();
@@ -490,6 +516,8 @@ public final class MatchManager {
     }
 
     private void resetToWaiting(boolean teleportToLobby) {
+        economy.abortMatch();
+        if (bomb != null) bomb.cleanupRound();
         spawns.updateActivationContext(MapRegionActivation.INACTIVE);
         teamCount = 2;
         roomTeamSelection = false;
@@ -527,6 +555,7 @@ public final class MatchManager {
                 isMatchActive(), rulesMode(), isMatchActive() ? roundNumber : 0,
                 activeTeams().size(), teams.totalParticipants()));
         processVanillaDeaths();
+        if (bomb != null) bomb.tick();
         // 快照捕获和恢复必须在 Dedicated Server 主线程的 tick 中推进。
         maps.tick();
         rooms.tick();
@@ -570,6 +599,7 @@ public final class MatchManager {
 
         spawns.tickRandomSpawns(state == MatchState.PLAYING || state == MatchState.WARMUP, rulesSpawnStrategy());
         processDownedPlayers();
+        economy.tick(server.getPlayerList().getPlayers());
         enforceArenaRules();
         updateFrozenPlayers();
         if (server.getTickCount() % stateBroadcastInterval(isMatchActive()) == 0) {
@@ -638,6 +668,7 @@ public final class MatchManager {
 
     public void onPlayerKilled(ServerPlayer victim, DamageSource source,
                                java.util.function.BooleanSupplier cancelled) {
+        if (bomb != null) bomb.onPlayerDeath(victim);
         if (!state.isActive()) {
             return;
         }
@@ -686,6 +717,7 @@ public final class MatchManager {
         Team killerTeam = killer == null ? Team.SPECTATOR : teams.getTeam(killer);
         if (killer != null && killer != victim && killerTeam.isPlayable() && killerTeam != victimTeam) {
             scores.addKill(killerTeam, killer, victim);
+            economy.recordKill(killer, victim);
             publishKill(killer, victim);
             if (rulesElimination() && finishEliminationIfDecided(victimTeam, victim)) {
                 return true;
@@ -698,6 +730,7 @@ public final class MatchManager {
             return false;
         }
         scores.addDeath(victim);
+        economy.recordKill(victim, victim);
         if (rulesElimination() && finishEliminationIfDecided(victimTeam, victim)) {
             return true;
         }
@@ -706,6 +739,11 @@ public final class MatchManager {
 
     private boolean finishEliminationIfDecided(Team victimTeam, ServerPlayer victim) {
         if (!isTeamWipedOut(victimTeam, victim)) return false;
+        if (rulesMode() == GameMode.SEARCH_DESTROY && victimTeam == attackingTeam()
+                && (bomb.state().phase() == ClassicBombState.Phase.PLANTED
+                || bomb.state().phase() == ClassicBombState.Phase.DEFUSING)) {
+            return false;
+        }
         var survivors = activeTeams().stream().filter(team -> team != victimTeam && aliveCount(team) > 0).toList();
         if (survivors.size() > 1) return false;
         finishRound(survivors.isEmpty() ? null : survivors.get(0), false);
@@ -733,6 +771,7 @@ public final class MatchManager {
             return;
         }
         scores.addDamage(attackerTeam, attacker, victim, Math.max(1, Math.round(amount)));
+        economy.recordDamage(attacker, amount);
     }
 
     /** 整场已进行时间（tick）；未在整场比赛中时为 0。 */
@@ -915,6 +954,7 @@ public final class MatchManager {
         teams.clearPlayer(player);
         rooms.onLogout(player);
         mapEditor.onLogout(player);
+        if (bomb != null) bomb.onPlayerLogout(player);
         broadcastMatchState();
     }
 
@@ -1038,7 +1078,9 @@ public final class MatchManager {
                 .withBoundaryStatus(boundaryCountdown.isOutside(player.getUUID()))
                 .withRespawn(state == MatchState.PLAYING && isDowned(player),
                         isDowned(player) ? downedPlayers.get(player.getUUID()).deathLabel() : "")
-                .withDownedPlayers(downedPlayers.keySet());
+                .withDownedPlayers(downedPlayers.keySet())
+                .withEconomy(economy.enabled(), economy.globalBalance(player.getUUID()),
+                        economy.matchBalance(player.getUUID()));
         maps.currentMap().ifPresent(map -> packet.withBoundaryBox(map.bounds()));
         FpsTdmNetwork.sendToPlayer(packet, player);
     }
@@ -1072,6 +1114,7 @@ public final class MatchManager {
             }
         }
         scores.resetRound();
+        if (bomb != null) bomb.cleanupRound();
         downedPlayers.clear();
         readyRespawnRequests.clear();
         respawnProtectionEnds.clear();
@@ -1104,6 +1147,7 @@ public final class MatchManager {
         if (rulesAutoBalanceMode().balancesOnMatchStart()) teams.balanceTeamsAtMatchStart();
         scores.resetRound();
         state = MatchState.PLAYING;
+        roundStartTick = server.getTickCount();
         phaseEndTick = rulesMatchDurationSeconds() <= 0
                 ? 0L
                 : server.getTickCount() + secondsToTicks(rulesMatchDurationSeconds());
@@ -1116,9 +1160,28 @@ public final class MatchManager {
                 spawns.teleportToTeamSpawn(player, spawnGroupFor(team), rulesSpawnStrategy());
             }
         }
+        if (rulesMode() == GameMode.SEARCH_DESTROY && bomb != null && !bomb.startRound()) {
+            finishRound(defendingTeam(), false);
+            return;
+        }
         broadcastSystemMessage(rulesMode() == GameMode.TEAM_DEATHMATCH ? "团队竞技开始！" : "比赛开始，回合 " + roundNumber + "！", false);
         playPhaseSound();
         broadcastMatchState();
+    }
+
+    /** CS-style buy phase: warmup is always open, combat has a configurable opening window. */
+    public boolean isBuyPhaseOpen(int buyWindowSeconds) {
+        if (state == MatchState.WARMUP) return true;
+        if (state != MatchState.PLAYING || roundStartTick <= 0L) return false;
+        return server.getTickCount() - roundStartTick <= Math.max(0, buyWindowSeconds) * 20L;
+    }
+
+    public int buyPhaseRemainingSeconds(int buyWindowSeconds) {
+        if (state == MatchState.WARMUP) return Integer.MAX_VALUE;
+        if (state != MatchState.PLAYING || roundStartTick <= 0L) return 0;
+        long elapsed = Math.max(0L, server.getTickCount() - roundStartTick);
+        long remaining = Math.max(0L, Math.max(0, buyWindowSeconds) * 20L - elapsed);
+        return (int) ((remaining + 19L) / 20L);
     }
 
     private void finishRound(Team requestedWinner) {
@@ -1134,6 +1197,12 @@ public final class MatchManager {
             resolvedWinner = resolveRoundWinnerOnTimeout();
         }
         roundWinner = resolvedWinner;
+        Map<UUID, Team> combatants = new HashMap<>();
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            Team team = teams.getTeam(player);
+            if (team.isPlayable()) combatants.put(player.getUUID(), team);
+        }
+        economy.finishRound(resolvedWinner, combatants);
         if (resolvedWinner == Team.TEAM_A) {
             teamAWins++;
         } else if (resolvedWinner == Team.TEAM_B) {
@@ -1144,6 +1213,7 @@ public final class MatchManager {
         int requiredWins = rulesRoundWinTarget();
         pendingMatchWinner = activeTeams().stream().filter(team -> roundWins(team) >= requiredWins).findFirst().orElse(null);
         state = MatchState.ROUND_END;
+        if (bomb != null) bomb.cleanupRound();
         phaseEndTick = server.getTickCount() + secondsToTicks(rulesRoundEndDelaySeconds());
         resetFailureNotified = false;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -1165,6 +1235,11 @@ public final class MatchManager {
 
     /** 回合超时裁定：歼灭类模式先比存活人数、再比回合击杀；死斗直接比回合击杀。 */
     private Team resolveRoundWinnerOnTimeout() {
+        if (rulesMode() == GameMode.SEARCH_DESTROY) {
+            return bomb.state().phase() == ClassicBombState.Phase.PLANTED
+                    || bomb.state().phase() == ClassicBombState.Phase.DEFUSING
+                    ? attackingTeam() : defendingTeam();
+        }
         return resolveWinner(activeTeams(), rulesElimination() ? this::aliveCount : team -> 0, scores::getTeamScore);
     }
 
@@ -1332,6 +1407,13 @@ public final class MatchManager {
     }
 
     private void enterMatchEnd(Team finalWinner) {
+        Map<UUID, Team> combatants = new HashMap<>();
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            Team team = teams.getTeam(player);
+            if (team.isPlayable()) combatants.put(player.getUUID(), team);
+        }
+        economy.finishMatch(server.getPlayerList().getPlayers(), finalWinner, combatants);
+        if (bomb != null) bomb.cleanupRound();
         state = MatchState.MATCH_END;
         winner = finalWinner;
         phaseEndTick = server.getTickCount() + secondsToTicks(rulesMatchEndDelaySeconds());
@@ -1653,6 +1735,7 @@ public final class MatchManager {
         MAP_NOT_READY,
         NO_TEAM_SPAWNS,
         NO_SAFE_RANDOM_SPAWN,
+        NO_BOMB_SITES,
         MAP_BUSY
     }
 }

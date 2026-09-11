@@ -30,6 +30,12 @@ public final class ClientEvents {
             InputConstants.Type.KEYSYM,
             InputConstants.KEY_H,
             "key.categories.generated_mod");
+    /** B：对局内商店。 */
+    public static final KeyMapping OPEN_MATCH_SHOP_KEY = new KeyMapping(
+            "key.generated_mod.open_match_shop",
+            InputConstants.Type.KEYSYM,
+            InputConstants.KEY_B,
+            "key.categories.generated_mod");
 
     private ClientEvents() {
     }
@@ -39,6 +45,7 @@ public final class ClientEvents {
         event.register(OPEN_MAP_WORKBENCH_KEY);
         event.register(OPEN_LOBBY_KEY);
         event.register(OPEN_HUD_KEY);
+        event.register(OPEN_MATCH_SHOP_KEY);
     }
 
     @SubscribeEvent

@@ -162,6 +162,7 @@ public final class HudStats {
     }
 
     public static List<Source> sourcesFor(HudContext context) {
+        if (context == HudContext.GLOBAL) return sourcesWithDynamic();
         return sourcesWithDynamic().stream().filter(source -> switch (source.group()) {
             case SYSTEM, DYNAMIC, STATUS -> true;
             case ROOM -> context == HudContext.ROOM;
@@ -169,6 +170,57 @@ public final class HudStats {
             default -> context.isMatch() && (!source.id().equals("respawn_left")
                     || context == HudContext.TEAM_DEATHMATCH);
         }).toList();
+    }
+
+    public static String primaryCategory(Source source) {
+        if (source == null) return "其他";
+        String name = source.name();
+        String id = source.id();
+        if (source.group() == Group.MATCHING) return "匹配";
+        if (source.group() == Group.ROOM) return "房间";
+        if (source.group() == Group.DYNAMIC) return "自定义";
+        if (id.contains("bomb") || name.contains("C4")) return "爆破";
+        if (id.contains("money") || name.contains("资金") || name.contains("账户")) return "金钱";
+        if (name.contains("得分") || name.contains("比分")) return "得分";
+        if (name.contains("击杀")) return "击杀数";
+        if (name.contains("伤害")) return "伤害";
+        if (name.contains("KD") || name.contains("击杀死亡")) return "击杀/死亡比";
+        if (name.contains("胜场") || name.contains("胜利")) return "胜场";
+        if (name.contains("时间") || name.contains("倒计时") || name.contains("计时")) return "时间";
+        if (name.contains("进度") || name.contains("百分比")) return "进度";
+        if (name.contains("生命") || name.contains("护甲") || name.contains("氧气")
+                || name.contains("饥饿") || name.contains("状态")) return "玩家状态";
+        if (name.contains("坐标") || name.contains("维度") || name.contains("高度")
+                || name.contains("朝向")) return "位置";
+        if (name.contains("模式") || name.contains("阶段") || name.contains("回合")) return "比赛信息";
+        if (source.group() == Group.TEAM) return "队伍";
+        if (source.group() == Group.SELF) return "个人";
+        return "其他";
+    }
+
+    public static String secondaryCategory(Source source) {
+        if (source == null) return "全部";
+        String name = source.name();
+        if (name.contains("本轮") || name.contains("当前回合")) return "本轮";
+        if (name.contains("整场") || name.contains("本局")) return "整场";
+        if (name.contains("倒计时")) return "倒计时";
+        if (name.contains("百分比") || name.contains("进度")) return "进度";
+        if (name.contains("状态")) return "状态";
+        return source.group().displayName();
+    }
+
+    public static String tertiaryCategory(Source source) {
+        if (source == null) return "全部";
+        String name = source.name();
+        if (name.contains("A队")) return "A队";
+        if (name.contains("B队")) return "B队";
+        if (name.contains("C队")) return "C队";
+        if (name.contains("D队")) return "D队";
+        if (name.contains("我方")) return "我方";
+        if (name.contains("敌方")) return "敌方";
+        if (name.contains("双方")) return "双方";
+        if (name.contains("我的") || name.contains("自己")) return "自己";
+        return name;
     }
 
     /** 第三方玩法注册的实时数据源；重复 id 会替换旧定义。 */
@@ -358,6 +410,24 @@ public final class HudStats {
                 HudStats::inMatch, 1.8);
         time("respawn_left", "我的恢复倒计时", Group.SELF,
                 () -> ClientMatchData.respawnRemainingTicks, HudStats::inMatch, 5 * 20);
+        text("my_match_money", "我的比赛资金", Group.SELF,
+                () -> "$" + ClientMatchData.matchBalance, HudStats::inMatch, "$800");
+        text("my_global_money", "我的大厅账户", Group.SELF,
+                () -> "$" + ClientMatchData.globalBalance, HudStats::inMatch, "$1000");
+        text("bomb_phase", "爆破阶段", Group.TEXT, () -> switch (ClientBombData.phase) {
+            case CARRIED -> "C4 已携带";
+            case DROPPED -> "C4 已掉落";
+            case PLANTING -> "正在安装 C4";
+            case PLANTED -> "C4 已安装";
+            case DEFUSING -> "正在拆除 C4";
+            case EXPLODED -> "C4 已引爆";
+            case DEFUSED -> "C4 已拆除";
+            default -> "";
+        }, () -> ClientBombData.active, "C4 已安装");
+        text("bomb_site", "爆破地点", Group.TEXT,
+                () -> ClientBombData.bombSiteName, () -> ClientBombData.active, "A 点");
+        time("bomb_countdown", "C4 倒计时", Group.PROGRESS,
+                () -> ClientBombData.detonationRemainingTicks, () -> ClientBombData.active, 40 * 20);
 
         // ---- 队伍统计
         number("match_kills_a", "A队整场击杀", Group.TEAM, () -> ClientMatchData.teamAMatchKills, HudStats::inMatch, 15);
@@ -408,6 +478,48 @@ public final class HudStats {
                     var player = Minecraft.getInstance().player;
                     return player == null ? 0 : player.getHealth() / player.getMaxHealth() * 100.0;
                 }, () -> 100, () -> Minecraft.getInstance().player != null, 76, 100);
+        number("my_armor_percent", "我的护甲百分比", Group.STATUS, () -> {
+            var player = Minecraft.getInstance().player;
+            return player == null ? 0 : player.getArmorValue();
+        }, () -> Minecraft.getInstance().player != null, 60);
+        progress("my_armor_percent_progress", "我的护甲进度", Group.STATUS, () -> {
+            var player = Minecraft.getInstance().player;
+            return player == null ? 0 : player.getArmorValue();
+        }, () -> 20, () -> Minecraft.getInstance().player != null, 12, 20);
+        number("my_hunger", "我的饥饿值", Group.STATUS, () -> {
+            var player = Minecraft.getInstance().player;
+            return player == null ? 0 : player.getFoodData().getFoodLevel();
+        }, () -> Minecraft.getInstance().player != null, 18);
+        number("my_air", "我的氧气 tick", Group.STATUS, () -> {
+            var player = Minecraft.getInstance().player;
+            return player == null ? 0 : player.getAirSupply();
+        }, () -> Minecraft.getInstance().player != null, 240);
+        number("my_xp_level", "我的经验等级", Group.STATUS, () -> {
+            var player = Minecraft.getInstance().player;
+            return player == null ? 0 : player.experienceLevel;
+        }, () -> Minecraft.getInstance().player != null, 12);
+        number("my_effect_count", "我的药水效果数", Group.STATUS,
+                () -> Minecraft.getInstance().player == null ? 0
+                        : Minecraft.getInstance().player.getActiveEffects().size(),
+                () -> Minecraft.getInstance().player != null, 2);
+        text("my_position", "我的坐标", Group.SYSTEM, () -> {
+            var player = Minecraft.getInstance().player;
+            return player == null ? "" : String.format(Locale.ROOT, "%.1f %.1f %.1f",
+                    player.getX(), player.getY(), player.getZ());
+        }, () -> Minecraft.getInstance().player != null, "12.5 64.0 -8.0");
+        text("my_dimension", "我的维度", Group.SYSTEM, () -> {
+            var player = Minecraft.getInstance().player;
+            return player == null ? "" : player.level().dimension().location().toString();
+        }, () -> Minecraft.getInstance().player != null, "minecraft:overworld");
+        number("world_day_time", "世界时间 tick", Group.SYSTEM,
+                () -> Minecraft.getInstance().level == null ? 0
+                        : Minecraft.getInstance().level.getDayTime() % 24000L,
+                () -> Minecraft.getInstance().level != null, 12000);
+        text("world_weather", "世界天气", Group.SYSTEM, () -> {
+            var level = Minecraft.getInstance().level;
+            if (level == null) return "";
+            return level.isThundering() ? "雷雨" : level.isRaining() ? "下雨" : "晴朗";
+        }, () -> Minecraft.getInstance().level != null, "晴朗");
 
         // ---- 比赛文本
         text("mode_text", "模式名", Group.TEXT, ClientMatchData::modeText, HudStats::inMatch, "团队竞技");

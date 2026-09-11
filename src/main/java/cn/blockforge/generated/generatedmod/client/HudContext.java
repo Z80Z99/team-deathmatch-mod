@@ -11,7 +11,8 @@ public enum HudContext {
     SEARCH_DESTROY("比赛 · 爆破模式", "match:SEARCH_DESTROY"),
     LAST_STANDING("比赛 · 歼灭竞技", "match:LAST_STANDING"),
     MATCHING("正在匹配", "scene:MATCHING"),
-    ROOM("房间中", "scene:ROOM");
+    ROOM("房间中", "scene:ROOM"),
+    GLOBAL("背景/全局", "global");
 
     private final String displayName;
     private final String key;
@@ -33,6 +34,7 @@ public enum HudContext {
             case LAST_STANDING -> "歼灭";
             case MATCHING -> "正在匹配";
             case ROOM -> "房间中";
+            case GLOBAL -> "背景/全局";
         };
     }
 

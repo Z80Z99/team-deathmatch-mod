@@ -6,6 +6,8 @@ import cn.blockforge.generated.generatedmod.client.ClientLobbyData;
 import cn.blockforge.generated.generatedmod.client.ClientMapEditorData;
 import cn.blockforge.generated.generatedmod.client.ClientMatchData;
 import cn.blockforge.generated.generatedmod.client.ClientWeaponRepositoryData;
+import cn.blockforge.generated.generatedmod.client.ClientMatchShopData;
+import cn.blockforge.generated.generatedmod.client.ClientBombData;
 import cn.blockforge.generated.generatedmod.network.packet.ConfigSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.HudStatSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.LobbyConfigSyncPacket;
@@ -13,6 +15,8 @@ import cn.blockforge.generated.generatedmod.network.packet.MapEditorSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.MatchmakingSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.MatchSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.WeaponRepositorySyncPacket;
+import cn.blockforge.generated.generatedmod.network.packet.MatchShopSyncPacket;
+import cn.blockforge.generated.generatedmod.network.packet.BombSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.RoomMapListSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.RoomSyncPacket;
 
@@ -54,5 +58,13 @@ public final class ClientPacketHandler {
 
     public static void handle(WeaponRepositorySyncPacket packet) {
         ClientWeaponRepositoryData.apply(packet);
+    }
+
+    public static void handle(MatchShopSyncPacket packet) {
+        ClientMatchShopData.apply(packet);
+    }
+
+    public static void handle(BombSyncPacket packet) {
+        ClientBombData.apply(packet);
     }
 }

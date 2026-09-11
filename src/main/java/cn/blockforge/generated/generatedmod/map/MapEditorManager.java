@@ -670,7 +670,7 @@ public final class MapEditorManager {
             }
             case SELECT -> selectRegion(player, region == null ? target.region("bounds") : region);
             case CREATE -> {
-                MapRegion created = region == null ? MapRegion.custom(uniqueRegionId(target),
+                MapRegion created = region == null ? MapRegion.custom("",
                         "自定义区域", MapRegion.Type.CUSTOM, target.bounds()) : region;
                 if (created.type() == MapRegion.Type.BOUNDS) {
                     created = MapRegion.builtIn("bounds", "地图边界", MapRegion.Type.BOUNDS,
@@ -679,11 +679,16 @@ public final class MapEditorManager {
                     created = MapRegion.builtIn("reset", "重置区域", MapRegion.Type.RESET,
                             created.region(), MapRegion.Type.RESET.defaultColor());
                 }
-                if (created.id().isBlank()) created = new MapRegion(uniqueRegionId(target),
-                        created.displayName(), created.type(), created.region(), created.visibleInMatch(),
-                        created.displayRange(), created.appearance(), created.activation(),
-                        created.activationValue(), created.color(), created.outline(), created.fill(),
-                        created.priority(), created.notes());
+                if (created.type() != MapRegion.Type.BOUNDS && created.type() != MapRegion.Type.RESET) {
+                    Set<String> usedIds = new HashSet<>();
+                    usedIds.add("bounds");
+                    usedIds.add("reset");
+                    for (MapRegion existing : target.regions()) {
+                        usedIds.add(existing.id());
+                    }
+                    created = created.withId(MapRegion.uniqueId(
+                            created.id(), created.type().id(), usedIds));
+                }
                 if (created.type() != MapRegion.Type.BOUNDS && created.type() != MapRegion.Type.RESET
                         && !target.hasBounds()) {
                     feedback(player, "请先创建地图边界，再添加玩法区域。", true);
@@ -772,13 +777,6 @@ public final class MapEditorManager {
         } catch (NumberFormatException ignored) {
             return 2;
         }
-    }
-
-    private String uniqueRegionId(MapDefinition definition) {
-        String base = "region";
-        int index = 1;
-        while (definition.region(base + "_" + index) != null) index++;
-        return base + "_" + index;
     }
 
     public void selectTool(ServerPlayer player, MapTool tool) {

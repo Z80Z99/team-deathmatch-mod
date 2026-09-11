@@ -38,12 +38,14 @@ public final class SceneHudOverlay {
         boolean forming = ClientLobbyData.dynamicReadySeconds() > 0;
         if (!status.queued() && !forming) {
             if (room == null) {
+                renderGlobalCustom(graphics, width, height);
                 return;
             }
             if (!global.backgroundFile().isBlank()) {
                 HudBackground.drawStretch(graphics, global.backgroundFile(),
                         global.backgroundOpacityPercent(), width, height);
             }
+            renderGlobalCustom(graphics, width, height);
             renderRoom(graphics, partialTick, width, height, room);
             return;
         }
@@ -51,6 +53,7 @@ public final class SceneHudOverlay {
             HudBackground.drawStretch(graphics, global.backgroundFile(),
                     global.backgroundOpacityPercent(), width, height);
         }
+        renderGlobalCustom(graphics, width, height);
         renderMatching(graphics, partialTick, width, height, status, forming, room);
     }
 
@@ -135,6 +138,11 @@ public final class SceneHudOverlay {
     private static void renderCustom(GuiGraphics graphics, Font font, int width, int height, HudContext context) {
         HudCustomRenderer.render(graphics, font, ClientHudLayout.customElements(context),
                 width, height, false, false);
+    }
+
+    private static void renderGlobalCustom(GuiGraphics graphics, int width, int height) {
+        HudCustomRenderer.render(graphics, Minecraft.getInstance().font,
+                ClientHudLayout.customElements(HudContext.GLOBAL), width, height, false, false);
     }
 
     private static Map<String, String> matchingTemplateValues(MatchmakingStatus status,

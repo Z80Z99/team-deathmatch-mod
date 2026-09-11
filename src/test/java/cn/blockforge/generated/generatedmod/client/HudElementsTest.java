@@ -11,6 +11,38 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class HudElementsTest {
+    @Test void globalHudContextHasDedicatedElementsAndAllSources() {
+        var global = ClientHudLayout.Elements.defaultsFor(HudContext.GLOBAL);
+        assertEquals(0, global.builtInMask());
+        assertTrue(HudStats.sourcesFor(HudContext.GLOBAL).stream()
+                .anyMatch(source -> source.id().equals("score_a")));
+        assertTrue(HudStats.sourcesFor(HudContext.GLOBAL).stream()
+                .anyMatch(source -> source.id().equals("room_name")));
+    }
+
+    @Test void progressAndContentEffectsSurviveJsonRoundTrip() {
+        ClientHudLayout.Placement placement = ClientHudLayout.Placement.NONE
+                .withContentAnimation("slide", 600)
+                .withProgressDirection("drain");
+        ClientHudLayout.CustomElement element = new ClientHudLayout.CustomElement(
+                "effect_test", "progress", "{round}", 25, 75, 320, 18, 90,
+                -1, true, "score_a", 120, true, true, true, placement);
+        ClientHudLayout.CustomElement restored = ClientHudLayout.CustomElement.read(element.toJson());
+        assertEquals("slide", restored.placement().contentAnimation());
+        assertEquals(600, restored.placement().contentAnimationMillis());
+        assertEquals("drain", restored.placement().progressDirection());
+    }
+
+    @Test void dataSourcesExposeThreeLevelCategories() {
+        HudStats.Source score = HudStats.byId("score_a");
+        assertEquals("得分", HudStats.primaryCategory(score));
+        assertEquals("本轮", HudStats.secondaryCategory(score));
+        assertEquals("A队", HudStats.tertiaryCategory(score));
+        HudStats.Source kills = HudStats.byId("match_kills_a");
+        assertEquals("击杀数", HudStats.primaryCategory(kills));
+        assertEquals("整场", HudStats.secondaryCategory(kills));
+    }
+
     @Test void sceneSourcesAndRespawnProgressAreConsistent() {
         assertTrue(HudStats.sourcesFor(HudContext.TEAM_DEATHMATCH).stream().noneMatch(s -> s.group() == HudStats.Group.ROOM || s.group() == HudStats.Group.MATCHING));
         assertTrue(HudStats.sourcesFor(HudContext.ROOM).stream().noneMatch(s -> s.group() == HudStats.Group.SCORE));
@@ -124,6 +156,11 @@ class HudElementsTest {
     @Test void everyBuiltInBecomesIndependentlyDeletableAndStaysDeleted() {
         var draft = draft();
         for (var context : HudContext.values()) {
+            if (context == HudContext.GLOBAL) {
+                assertEquals(0, draft.elements(context).builtInMask());
+                assertTrue(draft.customElements(context).isEmpty());
+                continue;
+            }
             HudAssemblies.splitAll(draft, context);
             assertEquals(0, draft.elements(context).builtInMask());
             assertTrue(draft.customElements(context).size() > 4);
@@ -142,6 +179,7 @@ class HudElementsTest {
 
     @Test void presetsAreAtomicRepeatableAndPreserveUserElements() {
         for (var preset : HudPreset.values()) for (var context : HudContext.values()) {
+            if (context == HudContext.GLOBAL) continue;
             var draft = draft();
             var custom = ClientHudLayout.CustomElement.text("user-owned");
             draft.addCustomElement(context, custom);

@@ -13,7 +13,9 @@ import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 public final class WeaponRepositorySyncPacket {
@@ -35,8 +37,15 @@ public final class WeaponRepositorySyncPacket {
         String message = buffer.readUtf(MAX_TEXT);
         boolean error = buffer.readBoolean();
         int requestId = Math.max(0, buffer.readVarInt());
+        boolean economyEnabled = buffer.readBoolean();
+        boolean matchActive = buffer.readBoolean();
+        boolean canManage = buffer.readBoolean();
+        int globalBalance = buffer.readVarInt();
+        int matchBalance = buffer.readVarInt();
+        Map<String, Integer> prices = readPrices(buffer);
         view = new WeaponRepositoryView(taczLoaded, categories, catalog, repository,
-                message, error, requestId);
+                message, error, requestId, economyEnabled, matchActive, canManage,
+                globalBalance, matchBalance, prices);
     }
 
     public void encode(FriendlyByteBuf buffer) {
@@ -47,6 +56,12 @@ public final class WeaponRepositorySyncPacket {
         buffer.writeUtf(view.message(), MAX_TEXT);
         buffer.writeBoolean(view.error());
         buffer.writeVarInt(view.requestId());
+        buffer.writeBoolean(view.economyEnabled());
+        buffer.writeBoolean(view.matchActive());
+        buffer.writeBoolean(view.canManage());
+        buffer.writeVarInt(Math.max(0, view.globalBalance()));
+        buffer.writeVarInt(Math.max(0, view.matchBalance()));
+        writePrices(buffer, view.prices());
     }
 
     public void handle(Supplier<NetworkEvent.Context> contextSupplier) {
@@ -135,5 +150,23 @@ public final class WeaponRepositorySyncPacket {
 
     private static int clampCount(int value, int maximum) {
         return Math.max(0, Math.min(maximum, value));
+    }
+
+    private static void writePrices(FriendlyByteBuf buffer, Map<String, Integer> values) {
+        int count = Math.min(MAX_REPOSITORY, values == null ? 0 : values.size());
+        buffer.writeVarInt(count);
+        int index = 0;
+        for (var entry : values.entrySet()) {
+            if (index++ >= count) break;
+            buffer.writeUtf(entry.getKey(), MAX_TEXT);
+            buffer.writeVarInt(Math.max(0, entry.getValue()));
+        }
+    }
+
+    private static Map<String, Integer> readPrices(FriendlyByteBuf buffer) {
+        int count = clampCount(buffer.readVarInt(), MAX_REPOSITORY);
+        Map<String, Integer> values = new LinkedHashMap<>();
+        for (int i = 0; i < count; i++) values.put(buffer.readUtf(MAX_TEXT), buffer.readVarInt());
+        return values;
     }
 }

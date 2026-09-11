@@ -181,6 +181,7 @@ public final class HudCustomRenderer {
         } else if (!element.source().isBlank()) {
             label = element.text() + "（源缺失）";
         }
+        if (!editor) ratio = HudAnimation.progressFrame(element.id(), ratio, element.placement());
         if (element.shadow()) {
             graphics.fill(rect.left() + 2, rect.top() + 2, rect.right() + 2, rect.bottom() + 2,
                     UiTheme.withAlpha(shadowColor(element), alpha));
@@ -193,16 +194,27 @@ public final class HudCustomRenderer {
         int inset = rect.height() < 6 ? 0 : 2;
         int inner = Math.max(1, rect.width() - inset * 2);
         int filled = ratio <= 0.0 ? 0 : Math.max(1, (int) Math.round(inner * Math.min(1.0, ratio)));
-        graphics.fill(rect.left() + inset, rect.top() + inset, rect.left() + inset + filled,
-                rect.bottom() - inset, color);
+        if (element.placement().progressDirection().equals("drain")) {
+            graphics.fill(rect.right() - inset - filled, rect.top() + inset, rect.right() - inset,
+                    rect.bottom() - inset, color);
+        } else {
+            graphics.fill(rect.left() + inset, rect.top() + inset, rect.left() + inset + filled,
+                    rect.bottom() - inset, color);
+        }
         if (element.border()) {
             graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(),
                     UiTheme.withAlpha(borderColor(element, UiTheme.BORDER), alpha));
         }
         if (rect.height() >= 12 && !label.isBlank()) {
             String fitted = UiTheme.fit(font, label, inner);
-            graphics.drawString(font, fitted, alignedX(element, font, fitted, rect.left() + 4, rect.right() - 4), rect.centerY() - 4,
-                    UiTheme.withAlpha(UiTheme.TEXT, alpha), false);
+            double contentAmount = editor ? 1.0D : HudAnimation.contentFrame(element.id() + ":label",
+                    fitted, element.placement());
+            graphics.pose().pushPose();
+            applyContentTransition(graphics, element, rect, contentAmount);
+            graphics.drawString(font, fitted, alignedX(element, font, fitted, rect.left() + 4, rect.right() - 4),
+                    rect.centerY() - 4, UiTheme.withAlpha(UiTheme.TEXT,
+                            (int) Math.round(alpha * contentAmount)), false);
+            graphics.pose().popPose();
         }
         glow(graphics, element, rect, alpha);
     }
@@ -219,10 +231,13 @@ public final class HudCustomRenderer {
             content = element.text() + "（源缺失）";
         }
         content = HudParameters.render(content, editor);
+        double contentAmount = editor ? 1.0D : HudAnimation.contentFrame(element.id(), content,
+                element.placement());
         float scale = Math.max(0.5F, Math.min(3.0F, element.scalePercent() / 100.0F)) * rect.scale();
         graphics.pose().pushPose();
         graphics.pose().translate(rect.centerX(), rect.centerY(), 0.0F);
         graphics.pose().scale(scale, scale, 1.0F);
+        applyContentTransition(graphics, element, rect, contentAmount);
         int halfWidth = Math.round(rect.width() / scale) / 2;
         int halfHeight = Math.round(rect.height() / scale) / 2;
         if (element.shadow()) {
@@ -246,9 +261,24 @@ public final class HudCustomRenderer {
             case "right" -> halfWidth - 4 - font.width(fitted);
             default -> -font.width(fitted) / 2;
         };
-        graphics.drawString(font, fitted, textX, -4, color, false);
+        graphics.drawString(font, fitted, textX, -4, UiTheme.withAlpha(color,
+                (int) Math.round(alpha * contentAmount)), false);
         graphics.pose().popPose();
         glow(graphics, element, rect, alpha);
+    }
+
+    private static void applyContentTransition(GuiGraphics graphics, CustomElement element,
+                                               HudGeometry.Rect rect, double amount) {
+        switch (element.placement().contentAnimation()) {
+            case "slide" -> graphics.pose().translate(0, (1 - amount) * 8, 0);
+            case "zoom" -> {
+                float scale = (float) (.9 + .1 * amount);
+                graphics.pose().translate(rect.centerX(), rect.centerY(), 0);
+                graphics.pose().scale(scale, scale, 1);
+                graphics.pose().translate(-rect.centerX(), -rect.centerY(), 0);
+            }
+            default -> { }
+        }
     }
 
     private static int backgroundColor(CustomElement element, int fallback) {

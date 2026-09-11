@@ -4,6 +4,7 @@ import cn.blockforge.generated.generatedmod.client.ClientHudLayout.Elements;
 import cn.blockforge.generated.generatedmod.client.ui.UiTheme;
 import cn.blockforge.generated.generatedmod.match.MatchState;
 import cn.blockforge.generated.generatedmod.match.Team;
+import cn.blockforge.generated.generatedmod.match.ClassicBombState;
 import cn.blockforge.generated.generatedmod.client.screen.HudLayoutScreen;
 import cn.blockforge.generated.generatedmod.client.ui.UiScreen;
 import net.minecraft.client.Minecraft;
@@ -43,10 +44,13 @@ public final class MatchHudOverlay {
                     global.backgroundOpacityPercent(), width, height);
         }
         HudContext context = HudContext.match(ClientMatchData.mode);
+        HudCustomRenderer.render(graphics, forgeGui.getMinecraft().font,
+                ClientHudLayout.customElements(HudContext.GLOBAL), width, height, false, false);
         if (elements.builtInEnabled(HudContext.BuiltIn.SCORE) && elements.scoreVisible() && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
                 HudContext.BuiltIn.SCORE, elements, width, height, partialTick)) {
             renderScore(forgeGui, graphics, width, height, elements);
         }
+        renderBombStatus(forgeGui, graphics, width);
         if (elements.builtInEnabled(HudContext.BuiltIn.FEED) && elements.feedVisible() && ClientMatchData.killFeedActive()
                 && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
                 HudContext.BuiltIn.FEED, elements, width, height, partialTick)) {
@@ -85,6 +89,37 @@ public final class MatchHudOverlay {
             graphics.drawCenteredString(font, Integer.toString((ClientMatchData.boundaryTicks + 19) / 20),
                     rect.centerX(), rect.top() + 29, 0xFFFFFFFF);
         }
+    }
+
+    private static void renderBombStatus(ForgeGui forgeGui, GuiGraphics graphics, int width) {
+        if (ClientMatchData.mode != cn.blockforge.generated.generatedmod.match.GameMode.SEARCH_DESTROY
+                || !ClientBombData.active) return;
+        String text;
+        int color;
+        switch (ClientBombData.phase) {
+            case PLANTED -> {
+                int seconds = (ClientBombData.detonationRemainingTicks + 19) / 20;
+                text = "C4 " + ClientBombData.bombSiteName + "  " + String.format(java.util.Locale.ROOT, "%.1f", seconds);
+                color = seconds <= 10 ? 0xFFFF5B5B : 0xFFFFC857;
+            }
+            case PLANTING -> {
+                text = "安装中  " + String.format(java.util.Locale.ROOT, "%.1f", ClientBombData.actionRemainingTicks / 20.0D);
+                color = 0xFFFFC857;
+            }
+            case DEFUSING -> {
+                text = "拆除中  " + String.format(java.util.Locale.ROOT, "%.1f", ClientBombData.actionRemainingTicks / 20.0D);
+                color = 0xFF70C7E8;
+            }
+            case DROPPED -> {
+                text = "C4 已掉落"; color = 0xFFFFC857;
+            }
+            case CARRIED -> {
+                text = ClientBombData.carrierName.isBlank() ? "C4 已发放" : "C4 携带者：" + ClientBombData.carrierName;
+                color = 0xFFFFD6D6;
+            }
+            default -> { return; }
+        }
+        graphics.drawCenteredString(forgeGui.getMinecraft().font, text, width / 2, 8, color);
     }
 
     private static boolean renderOverride(GuiGraphics graphics, Font font, HudContext context,

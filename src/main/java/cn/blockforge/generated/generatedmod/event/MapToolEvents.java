@@ -2,9 +2,10 @@ package cn.blockforge.generated.generatedmod.event;
 
 import cn.blockforge.generated.generatedmod.GeneratedMod;
 import cn.blockforge.generated.generatedmod.item.ModItems;
-import cn.blockforge.generated.generatedmod.match.MatchManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -18,11 +19,19 @@ public final class MapToolEvents {
     @SubscribeEvent
     public static void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
         if (event.getLevel().isClientSide() || event.getHand() != InteractionHand.MAIN_HAND
-                || !event.getItemStack().is(ModItems.MAP_BRUSH.get())) {
+                || !isEditorTool(event.getItemStack())) {
             return;
         }
-        if (event.getEntity() instanceof ServerPlayer player && MatchManager.get() != null) {
+        if (event.getEntity() instanceof ServerPlayer) {
             // The validated custom packet owns editing; vanilla events only suppress world interaction.
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onBlockBreak(BlockEvent.BreakEvent event) {
+        if (event.getPlayer() instanceof ServerPlayer player && isEditorTool(player.getMainHandItem())) {
+            // Creative-mode block breaking does not reliably pass through LeftClickBlock on every client.
             event.setCanceled(true);
         }
     }
@@ -30,10 +39,10 @@ public final class MapToolEvents {
     @SubscribeEvent
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         if (event.getLevel().isClientSide() || event.getHand() != InteractionHand.MAIN_HAND
-                || !event.getItemStack().is(ModItems.MAP_BRUSH.get())) {
+                || !isEditorTool(event.getItemStack())) {
             return;
         }
-        if (!(event.getEntity() instanceof ServerPlayer player) || MatchManager.get() == null) {
+        if (!(event.getEntity() instanceof ServerPlayer)) {
             return;
         }
         event.setCanceled(true);
@@ -42,12 +51,15 @@ public final class MapToolEvents {
     @SubscribeEvent
     public static void onRightClickItem(PlayerInteractEvent.RightClickItem event) {
         if (event.getLevel().isClientSide() || event.getHand() != InteractionHand.MAIN_HAND
-                || !event.getItemStack().is(ModItems.MAP_BRUSH.get())) {
+                || !isEditorTool(event.getItemStack())) {
             return;
         }
-        if (event.getEntity() instanceof ServerPlayer player && MatchManager.get() != null
-                && player.isShiftKeyDown()) {
+        if (event.getEntity() instanceof ServerPlayer) {
             event.setCanceled(true);
         }
+    }
+
+    private static boolean isEditorTool(ItemStack stack) {
+        return stack.is(ModItems.MAP_PLANNER.get()) || stack.is(ModItems.MAP_BRUSH.get());
     }
 }

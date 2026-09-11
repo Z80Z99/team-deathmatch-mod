@@ -51,6 +51,8 @@ public abstract class UiScreen extends Screen implements UiChoiceHost {
     private final List<Band> bands = new ArrayList<>();
     private int cursor;
     private int scroll;
+    private boolean draggingScrollbar;
+    private int scrollbarDragOffset;
 
     private record Band(AbstractWidget widget, int bandY, int bandHeight, boolean fixed,
                         BooleanSupplier extraVisible) {
@@ -58,6 +60,14 @@ public abstract class UiScreen extends Screen implements UiChoiceHost {
 
     protected UiScreen(Component title) {
         super(title);
+    }
+
+    @Override
+    protected void rebuildWidgets() {
+        int previousScroll = scroll;
+        super.rebuildWidgets();
+        scroll = clamp(previousScroll, 0, maxScroll());
+        applyScroll();
     }
 
     /** 锁定面板几何与标题 / 内容 / 状态 / 底部四个区带；preferredHeight ≤ 0 表示占满可用高度。 */
@@ -145,6 +155,11 @@ public abstract class UiScreen extends Screen implements UiChoiceHost {
         return Math.max(0, cursor - ROW_GAP - contentBottom);
     }
 
+    /** 当前内容滚动位置，供重建后恢复或测试布局稳定性。 */
+    protected final int scrollPosition() {
+        return scroll;
+    }
+
     /** 流坐标横带是否完整落在视口内（与 {@link #flowWidget} 的显隐规则一致）。 */
     protected final boolean bandFits(int bandY, int bandHeight) {
         int y = bandY - scroll;
@@ -211,7 +226,23 @@ public abstract class UiScreen extends Screen implements UiChoiceHost {
         choices.render(graphics, font, mouseX, mouseY);
     }
     @Override public boolean mouseClicked(double x, double y, int button) {
-        return choices.click(x, y, button) || super.mouseClicked(x, y, button);
+        if (choices.click(x, y, button)) return true;
+        if (button == 0 && beginScrollbarDrag(x, y)) return true;
+        return super.mouseClicked(x, y, button);
+    }
+    @Override public boolean mouseDragged(double x, double y, int button, double dragX, double dragY) {
+        if (button == 0 && draggingScrollbar) {
+            dragScrollbar(y);
+            return true;
+        }
+        return super.mouseDragged(x, y, button, dragX, dragY);
+    }
+    @Override public boolean mouseReleased(double x, double y, int button) {
+        if (button == 0 && draggingScrollbar) {
+            draggingScrollbar = false;
+            return true;
+        }
+        return super.mouseReleased(x, y, button);
     }
     @Override public boolean keyPressed(int key, int scan, int modifiers) {
         return choices.key(key) || super.keyPressed(key, scan, modifiers);
@@ -242,12 +273,13 @@ public abstract class UiScreen extends Screen implements UiChoiceHost {
         if (maximum <= 0 || trackHeight < 12) {
             return;
         }
-        int x = panelLeft + panelWidth - 6;
-        graphics.fill(x, contentTop, x + 3, contentBottom, UiTheme.BORDER_SUBTLE);
-        int thumbHeight = Math.max(10, (int) ((long) trackHeight * trackHeight / (trackHeight + maximum)));
+        int x = scrollbarX();
+        graphics.fill(x, contentTop, x + 8, contentBottom, UiTheme.BORDER_SUBTLE);
+        int thumbHeight = scrollbarThumbHeight(trackHeight, maximum);
         int range = Math.max(1, trackHeight - thumbHeight);
         int thumbTop = contentTop + (int) ((long) scroll * range / maximum);
-        graphics.fill(x, thumbTop, x + 3, thumbTop + thumbHeight, UiTheme.ACCENT);
+        graphics.fill(x + 1, thumbTop, x + 7, thumbTop + thumbHeight, UiTheme.ACCENT);
+        graphics.renderOutline(x, thumbTop, 8, thumbHeight, UiTheme.BORDER);
     }
 
     /** 固定状态条：位于内容视口与底部操作区之间，永远完整可见；界面关闭状态区带时不绘制。 */
@@ -353,5 +385,43 @@ public abstract class UiScreen extends Screen implements UiChoiceHost {
 
     protected static int clamp(int value, int minimum, int maximum) {
         return maximum < minimum ? minimum : Math.max(minimum, Math.min(maximum, value));
+    }
+
+    private boolean beginScrollbarDrag(double mouseX, double mouseY) {
+        int maximum = maxScroll();
+        if (maximum <= 0 || mouseX < scrollbarX() || mouseX > scrollbarX() + 8
+                || mouseY < contentTop || mouseY > contentBottom) return false;
+        int trackHeight = contentBottom - contentTop;
+        int thumbHeight = scrollbarThumbHeight(trackHeight, maximum);
+        int thumbTop = contentTop + (int) ((long) scroll * (trackHeight - thumbHeight) / maximum);
+        if (mouseY >= thumbTop && mouseY <= thumbTop + thumbHeight) {
+            scrollbarDragOffset = (int) mouseY - thumbTop;
+        } else {
+            scrollbarDragOffset = thumbHeight / 2;
+            dragScrollbar(mouseY);
+        }
+        draggingScrollbar = true;
+        return true;
+    }
+
+    private void dragScrollbar(double mouseY) {
+        int maximum = maxScroll();
+        int trackHeight = contentBottom - contentTop;
+        int thumbHeight = scrollbarThumbHeight(trackHeight, maximum);
+        int range = Math.max(1, trackHeight - thumbHeight);
+        int thumbTop = clamp((int) Math.round(mouseY) - scrollbarDragOffset, contentTop, contentTop + range);
+        int next = clamp((int) Math.round((thumbTop - contentTop) * (double) maximum / range), 0, maximum);
+        if (next != scroll) {
+            scroll = next;
+            applyScroll();
+        }
+    }
+
+    private int scrollbarX() {
+        return panelLeft + panelWidth - 10;
+    }
+
+    private static int scrollbarThumbHeight(int trackHeight, int maximum) {
+        return Math.max(16, (int) ((long) trackHeight * trackHeight / Math.max(1, trackHeight + maximum)));
     }
 }

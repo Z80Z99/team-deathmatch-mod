@@ -2,6 +2,7 @@
   "key.generated_mod.open_map_workbench": "Open Map Workbench",
   "key.generated_mod.open_lobby": "Open Lobby Menu",
   "key.generated_mod.open_hud": "Open HUD Config Window",
+  "key.generated_mod.open_match_shop": "Open Match Shop",
   "key.categories.generated_mod": "Team Deathmatch",
   "item.generated_mod.map_planner": "Tactical Map Tablet",
   "item.generated_mod.map_planner.tooltip": "Right-click to open planning; left-click to select the aimed region.",

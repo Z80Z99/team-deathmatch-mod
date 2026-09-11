@@ -4,6 +4,7 @@ import cn.blockforge.generated.generatedmod.item.ModItems;
 import cn.blockforge.generated.generatedmod.map.MapDefinition;
 import cn.blockforge.generated.generatedmod.map.MapRegion;
 import cn.blockforge.generated.generatedmod.network.packet.BombSyncPacket;
+import cn.blockforge.generated.generatedmod.network.FpsTdmNetwork;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -52,6 +53,10 @@ public final class ClassicBombManager {
         return activeSites;
     }
 
+    public boolean hasBombSites() {
+        return !activeBombSites().isEmpty();
+    }
+
     public boolean startRound() {
         if (match.rulesMode() != GameMode.SEARCH_DESTROY) {
             return false;
@@ -73,6 +78,7 @@ public final class ClassicBombManager {
             giveItem(defender, createRoundItem("defuse_kit"));
         }
         state.startRound(carrier.getUUID(), server.getTickCount());
+        sync();
         carrier.sendSystemMessage(Component.literal("你携带 C4：进入爆破区后按住右键安装。"));
         for (ServerPlayer defender : teamPlayers(defending)) {
             defender.sendSystemMessage(Component.literal("你获得拆弹器：C4 安装后靠近它按住右键拆除。"));
@@ -101,10 +107,12 @@ public final class ClassicBombManager {
             explode(now);
         }
         trackDroppedC4(now);
+        if (now % 10L == 0L) sync();
     }
 
     public boolean requestPlant(ServerPlayer player) {
-        if (match.rulesMode() != GameMode.SEARCH_DESTROY || player == null) {
+        if (match.rulesMode() != GameMode.SEARCH_DESTROY || match.state() != MatchState.PLAYING
+                || player == null) {
             return false;
         }
         if (state.phase() == ClassicBombState.Phase.PLANTING
@@ -132,7 +140,8 @@ public final class ClassicBombManager {
     }
 
     public boolean requestDefuse(ServerPlayer player) {
-        if (match.rulesMode() != GameMode.SEARCH_DESTROY || player == null) {
+        if (match.rulesMode() != GameMode.SEARCH_DESTROY || match.state() != MatchState.PLAYING
+                || player == null) {
             return false;
         }
         if (state.phase() == ClassicBombState.Phase.DEFUSING
@@ -209,6 +218,14 @@ public final class ClassicBombManager {
         cleanupRoundItems();
         activeSites = List.of();
         state.reset();
+        sync();
+    }
+
+    private void sync() {
+        BombSyncPacket packet = syncPacket();
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            FpsTdmNetwork.sendToPlayer(packet, player);
+        }
     }
 
     public BombSyncPacket syncPacket() {
@@ -257,6 +274,7 @@ public final class ClassicBombManager {
         player.playNotifySound(SoundEvents.TNT_PRIMED, SoundSource.BLOCKS, 1.0F, 1.0F);
         server.getPlayerList().broadcastSystemMessage(Component.literal("C4 已安装在 "
                 + site.displayName() + "，40 秒后引爆！"), false);
+        sync();
     }
 
     private void finishDefusing(ServerPlayer player) {
@@ -265,6 +283,7 @@ public final class ClassicBombManager {
         player.playNotifySound(SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.BLOCKS, 1.0F, 1.2F);
         server.getPlayerList().broadcastSystemMessage(Component.literal(player.getGameProfile().getName()
                 + " 成功拆除了 C4！"), false);
+        sync();
         match.finishRound(match.defendingTeam(), false);
     }
 
@@ -274,10 +293,11 @@ public final class ClassicBombManager {
                 : server.overworld();
         state.explode(now);
         discardPlantedC4();
+        match.finishRound(match.attackingTeam(), false);
         level.explode(null, state.x(), state.y(), state.z(), 6.0F,
                 Level.ExplosionInteraction.NONE);
         server.getPlayerList().broadcastSystemMessage(Component.literal("C4 已引爆！"), false);
-        match.finishRound(match.attackingTeam(), false);
+        sync();
     }
 
     private void validateCarrier(long now) {

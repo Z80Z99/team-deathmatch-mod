@@ -1,6 +1,8 @@
 package cn.blockforge.generated.generatedmod.weapon;
 
 import cn.blockforge.generated.generatedmod.match.GameMode;
+import cn.blockforge.generated.generatedmod.match.MatchManager;
+import cn.blockforge.generated.generatedmod.economy.EconomyManager;
 import cn.blockforge.generated.generatedmod.network.FpsTdmNetwork;
 import cn.blockforge.generated.generatedmod.network.packet.WeaponRepositorySyncPacket;
 import com.google.gson.Gson;
@@ -106,8 +108,10 @@ public final class WeaponRepositoryManager {
                 }
             }
             case ADD -> addCatalogItem(player, catalogId);
+            case ADD_HELD -> addHeldItem(player);
             case REMOVE -> removeRepositoryItem(player, entryId);
             case GIVE -> giveRepositoryItem(player, entryId);
+            case BUY -> buyRepositoryItem(player, entryId);
         }
         sendView(player, requestId);
     }
@@ -148,7 +152,36 @@ public final class WeaponRepositoryManager {
         setMessage(player, "已从仓库移除：" + removed.title() + "。", false);
     }
 
+    private void addHeldItem(ServerPlayer player) {
+        if (!player.hasPermissions(2)) {
+            setMessage(player, "只有管理员可以编辑服务器商店仓库。", true);
+            return;
+        }
+        ItemStack held = player.getMainHandItem();
+        if (held.isEmpty()) {
+            setMessage(player, "请先把要加入商店的物品拿在主手。", true);
+            return;
+        }
+        if (repository.size() >= MAX_REPOSITORY) {
+            setMessage(player, "仓库已达到 " + MAX_REPOSITORY + " 项上限。", true);
+            return;
+        }
+        WeaponSnapshot snapshot = WeaponSnapshot.from(held.copy());
+        if (!snapshot.valid()) {
+            setMessage(player, "无法保存手持物品。", true);
+            return;
+        }
+        String entryId = "w_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        repository.put(entryId, new WeaponRepositoryItem(entryId, "external", snapshot, "", true));
+        saveRepository();
+        setMessage(player, "已把手持物品加入商店仓库：" + snapshot.displayName() + "。", false);
+    }
+
     private void giveRepositoryItem(ServerPlayer player, String entryId) {
+        if (!player.hasPermissions(2)) {
+            setMessage(player, "只有管理员可以免费发放仓库物品。", true);
+            return;
+        }
         WeaponRepositoryItem item = repository.get(entryId);
         if (item == null) {
             setMessage(player, "找不到要领取的仓库物品。", true);
@@ -163,6 +196,33 @@ public final class WeaponRepositoryManager {
             player.drop(stack, false);
         }
         setMessage(player, "已发放：" + item.title() + " x" + stack.getCount() + "。", false);
+    }
+
+    private void buyRepositoryItem(ServerPlayer player, String entryId) {
+        WeaponRepositoryItem item = repository.get(entryId);
+        if (item == null) {
+            setMessage(player, "找不到要购买的仓库物品。", true);
+            return;
+        }
+        ItemStack stack = item.snapshot().stack();
+        if (stack.isEmpty()) {
+            setMessage(player, "该仓库条目已损坏或依赖模组未安装。", true);
+            return;
+        }
+        MatchManager match = MatchManager.get();
+        if (match == null) {
+            setMessage(player, "经济系统不可用。", true);
+            return;
+        }
+        boolean inMatch = match != null && match.isMatchActive();
+        EconomyManager.PurchaseResult result = match.economy().purchase(player, item.id(),
+                item.categoryId(), stack.getCount(), inMatch);
+        if (!result.success()) {
+            setMessage(player, result.message(), true);
+            return;
+        }
+        if (!player.getInventory().add(stack.copy())) player.drop(stack, false);
+        setMessage(player, result.message() + "：" + item.title() + "。", false);
     }
 
     public List<WeaponRepositoryItem> entriesForMode(GameMode mode) {
@@ -184,9 +244,18 @@ public final class WeaponRepositoryManager {
         ensureCatalog();
         String message = messages.getOrDefault(player.getUUID(), "");
         boolean error = errors.getOrDefault(player.getUUID(), false);
+        MatchManager match = MatchManager.get();
+        EconomyManager economy = match.economy();
+        Map<String, Integer> prices = new LinkedHashMap<>();
+        for (WeaponRepositoryItem item : repository.values()) {
+            prices.put(item.id(), economy.price(item.id(), item.categoryId(),
+                    Math.max(1, item.snapshot().stack().getCount())));
+        }
         FpsTdmNetwork.sendToPlayer(new WeaponRepositorySyncPacket(
                 new WeaponRepositoryView(taczLoaded, categories(), catalog(), repository(),
-                        message, error, requestId)), player);
+                        message, error, requestId, economy.enabled(), match.isMatchActive(),
+                        player.hasPermissions(2), economy.globalBalance(player.getUUID()),
+                        economy.matchBalance(player.getUUID()), prices)), player);
         messages.remove(player.getUUID());
         errors.remove(player.getUUID());
     }
@@ -199,6 +268,7 @@ public final class WeaponRepositoryManager {
         if (catalogBuilt && !force) return;
         categories.clear();
         catalog.clear();
+        categories.put("external", new WeaponCategory("external", "其他商品", WeaponKind.EQUIPMENT));
         taczLoaded = ModList.get().isLoaded("tacz");
         if (!taczLoaded) {
             catalogBuilt = true;

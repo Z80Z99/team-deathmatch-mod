@@ -447,6 +447,15 @@ public final class ClientHudLayout {
                         false, 50, 16, 100, 85,
                         true, 50, 12, 100, 85).withTemplates(null, null, null, null, null, null, null,
                         "{room_line1}", "{room_line2}");
+                case GLOBAL -> new Elements(
+                        false, 50, 2, 340, 100, 80,
+                        false, 50, 78, 220, 100, 80,
+                        false, 80, 42, 100, 85,
+                        false, 50, 30, 100, 85,
+                        "{mode} · {phase}", "A队 {score_a}", "B队 {score_b}", "{time}",
+                        "回合 {round}    目标 {target}", "{hint}", "⚔ {killer} 击杀 {victim}",
+                        "{matching_line1}", "{matching_line2}", UiTheme.ACCENT, UiTheme.ACCENT,
+                        UiTheme.ACCENT, UiTheme.ACCENT, 0);
             };
         }
 
@@ -888,7 +897,16 @@ public final class ClientHudLayout {
     public record Placement(int offsetX, int offsetY, int referenceWidth, int referenceHeight,
                             String example, String condition, String animation, int animationMillis, int progressMaximum,
                             String alignment, int backgroundColor, int borderColor, int shadowColor, int glowColor,
-                            boolean glow) {
+                            boolean glow, String contentAnimation, int contentAnimationMillis,
+                            String progressDirection) {
+        public Placement(int offsetX, int offsetY, int referenceWidth, int referenceHeight,
+                         String example, String condition, String animation, int animationMillis, int progressMaximum,
+                         String alignment, int backgroundColor, int borderColor, int shadowColor, int glowColor,
+                         boolean glow) {
+            this(offsetX, offsetY, referenceWidth, referenceHeight, example, condition, animation,
+                    animationMillis, progressMaximum, alignment, backgroundColor, borderColor,
+                    shadowColor, glowColor, glow, "none", 250, "fill");
+        }
         public Placement(int offsetX, int offsetY, int referenceWidth, int referenceHeight,
                          String example, String condition, String animation, int animationMillis) {
             this(offsetX, offsetY, referenceWidth, referenceHeight, example, condition, animation, animationMillis, 0,
@@ -907,36 +925,60 @@ public final class ClientHudLayout {
             condition = condition == null ? "" : condition;
             animation = animation == null ? "none" : animation;
             animationMillis = Math.max(50, Math.min(2000, animationMillis));
+            contentAnimation = switch (contentAnimation == null ? "none" : contentAnimation) {
+                case "fade", "slide", "zoom" -> contentAnimation;
+                default -> "none";
+            };
+            contentAnimationMillis = Math.max(50, Math.min(2000, contentAnimationMillis));
+            progressDirection = "drain".equals(progressDirection) ? "drain" : "fill";
             progressMaximum = Math.max(0, Math.min(1000000, progressMaximum));
             alignment = "left".equals(alignment) || "right".equals(alignment) ? alignment : "center";
         }
         public Placement withAnimation(String style, int millis) {
             return new Placement(offsetX, offsetY, referenceWidth, referenceHeight, example, condition, style, millis, progressMaximum,
-                    alignment, backgroundColor, borderColor, shadowColor, glowColor, glow);
+                    alignment, backgroundColor, borderColor, shadowColor, glowColor, glow,
+                    contentAnimation, contentAnimationMillis, progressDirection);
         }
         public Placement withMaximum(int maximum) {
             return new Placement(offsetX, offsetY, referenceWidth, referenceHeight, example, condition, animation, animationMillis, maximum,
-                    alignment, backgroundColor, borderColor, shadowColor, glowColor, glow);
+                    alignment, backgroundColor, borderColor, shadowColor, glowColor, glow,
+                    contentAnimation, contentAnimationMillis, progressDirection);
         }
         public Placement withCondition(String nextCondition) {
             return new Placement(offsetX, offsetY, referenceWidth, referenceHeight, example, nextCondition, animation, animationMillis, progressMaximum,
-                    alignment, backgroundColor, borderColor, shadowColor, glowColor, glow);
+                    alignment, backgroundColor, borderColor, shadowColor, glowColor, glow,
+                    contentAnimation, contentAnimationMillis, progressDirection);
         }
         public Placement withAlignment(String nextAlignment) {
             return new Placement(offsetX, offsetY, referenceWidth, referenceHeight, example, condition, animation, animationMillis, progressMaximum,
-                    nextAlignment, backgroundColor, borderColor, shadowColor, glowColor, glow);
+                    nextAlignment, backgroundColor, borderColor, shadowColor, glowColor, glow,
+                    contentAnimation, contentAnimationMillis, progressDirection);
         }
         public Placement withColors(int background, int border, int shadow, int glowValue) {
             return new Placement(offsetX, offsetY, referenceWidth, referenceHeight, example, condition, animation, animationMillis, progressMaximum,
-                    alignment, background, border, shadow, glowValue, glow);
+                    alignment, background, border, shadow, glowValue, glow,
+                    contentAnimation, contentAnimationMillis, progressDirection);
         }
         public Placement withGlow(boolean enabled) {
             return new Placement(offsetX, offsetY, referenceWidth, referenceHeight, example, condition, animation, animationMillis, progressMaximum,
-                    alignment, backgroundColor, borderColor, shadowColor, glowColor, enabled);
+                    alignment, backgroundColor, borderColor, shadowColor, glowColor, enabled,
+                    contentAnimation, contentAnimationMillis, progressDirection);
         }
         public Placement withOffset(int x, int y) {
             return new Placement(x, y, referenceWidth, referenceHeight, example, condition, animation, animationMillis, progressMaximum,
-                    alignment, backgroundColor, borderColor, shadowColor, glowColor, glow);
+                    alignment, backgroundColor, borderColor, shadowColor, glowColor, glow,
+                    contentAnimation, contentAnimationMillis, progressDirection);
+        }
+        public Placement withContentAnimation(String style, int millis) {
+            return new Placement(offsetX, offsetY, referenceWidth, referenceHeight, example, condition,
+                    animation, animationMillis, progressMaximum, alignment, backgroundColor,
+                    borderColor, shadowColor, glowColor, glow, style, millis, progressDirection);
+        }
+        public Placement withProgressDirection(String direction) {
+            return new Placement(offsetX, offsetY, referenceWidth, referenceHeight, example, condition,
+                    animation, animationMillis, progressMaximum, alignment, backgroundColor,
+                    borderColor, shadowColor, glowColor, glow, contentAnimation,
+                    contentAnimationMillis, direction);
         }
         public float fit(int width, int height) {
             return referenceWidth == 0 || referenceHeight == 0 ? 1F

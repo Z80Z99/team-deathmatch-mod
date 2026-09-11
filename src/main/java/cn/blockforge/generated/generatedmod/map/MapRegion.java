@@ -4,7 +4,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.minecraft.core.BlockPos;
 
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 
 /** 地图中可被规划器选中并编辑的任意区域。 */
 public record MapRegion(
@@ -52,6 +55,41 @@ public record MapRegion(
     public static String normalizeId(String value) {
         if (value == null) return "";
         return value.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
+    }
+
+    public MapRegion withId(String value) {
+        return new MapRegion(value, displayName, type, region, visibleInMatch, displayRange,
+                appearance, activation, activationValue, color, outline, fill, priority, notes);
+    }
+
+    /**
+     * 为区域分配一个不冲突的稳定 ID。
+     *
+     * <p>空 ID、保留 ID 和重复 ID 会使用类型作为基础名，再追加递增后缀。
+     * 调用方传入的已用集合应包含地图边界和重置区域。</p>
+     */
+    public static String uniqueId(String preferred, String fallbackBase, Collection<String> usedIds) {
+        Set<String> used = new HashSet<>(usedIds == null ? Set.of() : usedIds);
+        String base = normalizeId(preferred);
+        if (base.isBlank() || isReservedId(base)) {
+            base = normalizeId(fallbackBase);
+        }
+        if (base.isBlank() || isReservedId(base)) {
+            base = "region";
+        }
+        if (!used.contains(base)) {
+            return base;
+        }
+        int index = 1;
+        String candidate;
+        do {
+            candidate = base + "_" + index++;
+        } while (used.contains(candidate));
+        return candidate;
+    }
+
+    private static boolean isReservedId(String id) {
+        return "bounds".equals(id) || "reset".equals(id);
     }
 
     public JsonObject toJson() {

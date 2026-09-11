@@ -520,7 +520,7 @@ public final class RoomRulesScreen extends UiScreen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 0 && rulesMaxScroll > 0 && mouseX >= scrollbarX() - 2 && mouseX <= scrollbarX() + 6
+        if (button == 0 && rulesMaxScroll > 0 && mouseX >= scrollbarX() - 1 && mouseX <= scrollbarX() + 9
                 && mouseY >= rulesViewportTop && mouseY <= rulesViewportBottom) {
             int thumbTop = scrollbarThumbTop();
             int thumbHeight = scrollbarThumbHeight();
@@ -556,7 +556,7 @@ public final class RoomRulesScreen extends UiScreen {
     }
 
     private int scrollbarX() {
-        return innerLeft + innerWidth - 4;
+        return innerLeft + innerWidth - 10;
     }
 
     private int scrollbarThumbHeight() {
@@ -618,12 +618,13 @@ public final class RoomRulesScreen extends UiScreen {
         if (rulesMaxScroll > 0) {
             int trackTop = rulesViewportTop;
             int trackBottom = rulesViewportBottom;
-            graphics.fill(scrollbarX(), trackTop, scrollbarX() + 3,
+            graphics.fill(scrollbarX(), trackTop, scrollbarX() + 8,
                     trackBottom, UiTheme.BORDER_SUBTLE);
             int thumbHeight = scrollbarThumbHeight();
             int thumbTop = scrollbarThumbTop();
-            graphics.fill(scrollbarX(), thumbTop, scrollbarX() + 3,
+            graphics.fill(scrollbarX() + 1, thumbTop, scrollbarX() + 7,
                     thumbTop + thumbHeight, UiTheme.ACCENT);
+            graphics.renderOutline(scrollbarX(), thumbTop, 8, thumbHeight, UiTheme.BORDER);
         }
         renderStatus(graphics, status, statusColor);
         super.render(graphics, mouseX, mouseY, partialTick);

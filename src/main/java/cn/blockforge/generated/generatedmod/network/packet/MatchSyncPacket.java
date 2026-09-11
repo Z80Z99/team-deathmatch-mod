@@ -19,6 +19,9 @@ public final class MatchSyncPacket {
     private boolean awaitingRespawn;
     private String deathLabel = "";
     private java.util.Set<java.util.UUID> downedPlayerIds = java.util.Set.of();
+    private boolean economyEnabled;
+    private int globalBalance;
+    private int matchBalance;
     public boolean awaitingRespawn() { return awaitingRespawn; }
     public String deathLabel() { return deathLabel; }
     public java.util.Set<java.util.UUID> downedPlayerIds() { return downedPlayerIds; }
@@ -31,6 +34,15 @@ public final class MatchSyncPacket {
         downedPlayerIds = java.util.Set.copyOf(playerIds);
         return this;
     }
+    public MatchSyncPacket withEconomy(boolean enabled, int global, int match) {
+        economyEnabled = enabled;
+        globalBalance = Math.max(0, global);
+        matchBalance = Math.max(0, match);
+        return this;
+    }
+    public boolean economyEnabled() { return economyEnabled; }
+    public int globalBalance() { return globalBalance; }
+    public int matchBalance() { return matchBalance; }
     private int boundaryTicks;
     private int respawnTotalTicks;
     private boolean boundaryOutside;
@@ -192,6 +204,9 @@ public final class MatchSyncPacket {
         java.util.HashSet<java.util.UUID> downed = new java.util.HashSet<>();
         for (int i = 0; i < downedCount; i++) downed.add(buffer.readUUID());
         downedPlayerIds = java.util.Set.copyOf(downed);
+        economyEnabled = buffer.readBoolean();
+        globalBalance = buffer.readVarInt();
+        matchBalance = buffer.readVarInt();
     }
 
     public void encode(FriendlyByteBuf buffer) {
@@ -241,6 +256,9 @@ public final class MatchSyncPacket {
         buffer.writeUtf(deathLabel, 128);
         buffer.writeVarInt(downedPlayerIds.size());
         for (java.util.UUID playerId : downedPlayerIds) buffer.writeUUID(playerId);
+        buffer.writeBoolean(economyEnabled);
+        buffer.writeVarInt(globalBalance);
+        buffer.writeVarInt(matchBalance);
     }
 
     public void handle(Supplier<NetworkEvent.Context> contextSupplier) {

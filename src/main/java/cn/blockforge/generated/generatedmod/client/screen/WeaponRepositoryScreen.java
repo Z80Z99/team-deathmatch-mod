@@ -25,13 +25,15 @@ public final class WeaponRepositoryScreen extends UiListScreen<WeaponRepositoryS
     private static final List<String> CATEGORY_OPTIONS = List.of(
             "", "gun_pistol", "gun_rifle", "gun_sniper", "gun_shotgun", "gun_smg",
             "gun_rpg", "gun_mg", "attachment_scope", "attachment_muzzle", "attachment_stock",
-            "attachment_grip", "attachment_extended_mag", "attachment_laser", "ammo", "other");
+            "attachment_grip", "attachment_extended_mag", "attachment_laser", "ammo", "other", "external");
 
     private final Screen parent;
     private UiCycleButton<Boolean> modeCycle;
     private UiCycleButton<String> categoryCycle;
     private UiButton addButton;
+    private UiButton heldButton;
     private UiButton removeButton;
+    private UiButton buyButton;
     private UiButton giveButton;
     private boolean showingRepository;
     private String selectedCategory = "";
@@ -72,13 +74,17 @@ public final class WeaponRepositoryScreen extends UiListScreen<WeaponRepositoryS
                 "按创造模式分类筛选。", UiButton.Kind.SECONDARY), filterY);
         addSearch("搜索名称、ID 或分类");
         addList();
-        addButton = footerButton("加入仓库", 0, 4, 0, this::addSelected,
+        addButton = footerButton("目录加入", 0, 6, 0, this::addSelected,
                 "把当前目录物品保存为仓库条目。", UiButton.Kind.PRIMARY);
-        removeButton = footerButton("移除条目", 1, 4, 0, this::removeSelected,
+        heldButton = footerButton("手持加入", 1, 6, 0, this::addHeld,
+                "管理员把主手物品作为通用商品加入仓库。", UiButton.Kind.SECONDARY);
+        removeButton = footerButton("移除条目", 2, 6, 0, this::removeSelected,
                 "从仓库移除当前条目。", UiButton.Kind.DANGER);
-        giveButton = footerButton("领取物品", 2, 4, 0, this::giveSelected,
-                "把仓库物品发给自己。", UiButton.Kind.PRIMARY);
-        footerButton("返回", 3, 4, 0, this::onClose, null, UiButton.Kind.SECONDARY);
+        buyButton = footerButton("购买物品", 3, 6, 0, this::buySelected,
+                "比赛中扣除比赛资金；比赛外扣除账户余额。", UiButton.Kind.PRIMARY);
+        giveButton = footerButton("管理员发放", 4, 6, 0, this::giveSelected,
+                "管理员免费发放，不影响经济系统。", UiButton.Kind.SECONDARY);
+        footerButton("返回", 5, 6, 0, this::onClose, null, UiButton.Kind.SECONDARY);
         updateButtons();
     }
 
@@ -92,9 +98,18 @@ public final class WeaponRepositoryScreen extends UiListScreen<WeaponRepositoryS
         if (row != null && showingRepository) send(WeaponRepositoryAction.REMOVE, "", row.id());
     }
 
+    private void addHeld() {
+        send(WeaponRepositoryAction.ADD_HELD, "", "");
+    }
+
     private void giveSelected() {
         Row row = selectedEntry();
         if (row != null && showingRepository) send(WeaponRepositoryAction.GIVE, "", row.id());
+    }
+
+    private void buySelected() {
+        Row row = selectedEntry();
+        if (row != null && showingRepository) send(WeaponRepositoryAction.BUY, "", row.id());
     }
 
     private static void send(WeaponRepositoryAction action, String catalogId, String entryId) {
@@ -170,15 +185,23 @@ public final class WeaponRepositoryScreen extends UiListScreen<WeaponRepositoryS
     private void updateButtons() {
         Row row = selectedEntry();
         if (addButton != null) addButton.active = row != null && !showingRepository;
+        if (heldButton != null) heldButton.active = ClientWeaponRepositoryData.view().canManage();
         if (removeButton != null) removeButton.active = row != null && showingRepository;
-        if (giveButton != null) giveButton.active = row != null && showingRepository;
+        WeaponRepositoryView view = ClientWeaponRepositoryData.view();
+        if (buyButton != null) buyButton.active = row != null && showingRepository;
+        if (giveButton != null) {
+            giveButton.active = row != null && showingRepository && view.canManage();
+        }
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         WeaponRepositoryView view = ClientWeaponRepositoryData.view();
-        String subtitle = showingRepository ? resultCount() + " 个仓库条目"
-                : resultCount() + " 个目录物品" + (view.taczLoaded() ? " · TACZ 已检测" : "");
+        String ledger = view.matchActive()
+                ? "比赛资金 $" + view.matchBalance() : "账户 $" + view.globalBalance();
+        String subtitle = (showingRepository ? resultCount() + " 个仓库条目"
+                : resultCount() + " 个目录物品") + " · " + ledger
+                + (view.taczLoaded() ? " · TACZ 已检测" : "");
         renderShell(graphics, subtitle);
         renderList(graphics, mouseX, mouseY, showingRepository ? "仓库暂无条目" : "未检测到武器目录");
         renderStatus(graphics, view.message(), view.error() ? UiTheme.ERROR : UiTheme.INFO);
@@ -213,6 +236,7 @@ public final class WeaponRepositoryScreen extends UiListScreen<WeaponRepositoryS
             case "attachment_laser" -> "镭射/战术灯";
             case "ammo" -> "弹药";
             case "other" -> "其他装备";
+            case "external" -> "其他商品";
             default -> id;
         };
     }
@@ -233,10 +257,14 @@ public final class WeaponRepositoryScreen extends UiListScreen<WeaponRepositoryS
 
         static Row repository(WeaponRepositoryItem item) {
             ItemStack stack = item.snapshot().stack();
+            int price = ClientWeaponRepositoryData.view().prices()
+                    .getOrDefault(item.id(), 0);
             String title = item.title();
             String detail = categoryName(ClientWeaponRepositoryData.view(), item.categoryId())
                     + " · " + item.snapshot().itemId();
-            String badge = item.enabled() ? "x" + stack.getCount() : "停用";
+            String badge = !item.enabled() ? "停用"
+                    : (ClientWeaponRepositoryData.view().economyEnabled()
+                    ? "$" + price : "免费");
             return new Row(item.id(), title, detail, badge, true);
         }
     }

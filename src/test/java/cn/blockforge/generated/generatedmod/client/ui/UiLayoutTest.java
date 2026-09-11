@@ -5,6 +5,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import java.lang.reflect.Field;
@@ -15,6 +16,20 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class UiLayoutTest {
+    @Test void rebuildingScrollingContentKeepsCurrentScrollPosition() {
+        ScrollTestScreen screen = new ScrollTestScreen();
+        screen.width = 320;
+        screen.height = 240;
+        screen.rebuildWidgets();
+
+        screen.mouseScrolled(160, 120, -5);
+        int before = screen.scrollPosition();
+        assertTrue(before > 0);
+
+        screen.rebuildWidgets();
+        assertEquals(before, screen.scrollPosition());
+    }
+
     @Test void builtInPresetsAreValidAndRepeatableForEveryScene() {
         for (var context : cn.blockforge.generated.generatedmod.client.HudContext.values()) {
             for (var preset : cn.blockforge.generated.generatedmod.client.HudPreset.values()) {
@@ -234,5 +249,20 @@ class UiLayoutTest {
     }
     private static void set(Class<?> type, Object target, String name, Object value) throws Exception {
         Field field = type.getDeclaredField(name); field.setAccessible(true); field.set(target, value);
+    }
+
+    private static final class ScrollTestScreen extends UiScreen {
+        private ScrollTestScreen() {
+            super(Component.literal("滚动测试"));
+        }
+
+        @Override
+        protected void init() {
+            beginLayout(240, 0, BUTTON_HEIGHT, false, true);
+            for (int index = 0; index < 30; index++) {
+                int y = flowRow(BUTTON_HEIGHT);
+                flowWidget(uiButton("行 " + index, innerLeft, y, innerWidth, () -> { }, null), y);
+            }
+        }
     }
 }

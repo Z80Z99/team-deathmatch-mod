@@ -23,13 +23,17 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /** 规划器菜单：按用途分组展示区域，并持续显示当前目标与下一步。 */
 public final class MapPlannerScreen extends UiScreen {
     private static final int MENU_WIDTH = 360;
     private List<MapRegion> regions;
-    private int lastRevision = -1;
+    private final List<String> priorityRegionIds;
+    private int lastContentRevision = -1;
     private final List<RegionButton> buttons = new ArrayList<>();
     private final List<SectionLabel> sections = new ArrayList<>();
     private final List<EmptyLabel> emptyLabels = new ArrayList<>();
@@ -46,8 +50,14 @@ public final class MapPlannerScreen extends UiScreen {
     private int ticks;
 
     public MapPlannerScreen(List<MapRegion> regions) {
+        this(regions, List.of());
+    }
+
+    public MapPlannerScreen(List<MapRegion> regions, List<MapRegion> priorityRegions) {
         super(Component.literal("地图规划器"));
-        this.regions = List.copyOf(regions == null ? List.of() : regions);
+        this.priorityRegionIds = List.copyOf((priorityRegions == null ? List.<MapRegion>of() : priorityRegions)
+                .stream().map(MapRegion::id).toList());
+        this.regions = orderRegions(regions, priorityRegionIds);
         this.previousCameraType = Minecraft.getInstance().options.getCameraType();
         MapTool selectedTool = ClientMapEditorData.view().selectedTool();
         this.spawnTool = selectedTool.kind() == MapTool.Kind.POINT ? selectedTool : MapTool.SPAWN_A;
@@ -60,14 +70,14 @@ public final class MapPlannerScreen extends UiScreen {
         }
         MapEditorView view = ClientMapEditorData.view();
         List<MapRegion> hits = MapRegionPicker.pick(minecraft, view, 128.0D);
-        MapPlannerScreen screen = new MapPlannerScreen(hits.isEmpty() ? view.regions() : hits);
+        MapPlannerScreen screen = new MapPlannerScreen(view.regions(), hits);
         minecraft.setScreen(screen);
         screen.request(MapEditorAction.REQUEST, "");
     }
 
     @Override
     protected void init() {
-        lastRevision = ClientMapEditorData.revision();
+        lastContentRevision = ClientMapEditorData.contentRevision();
         buttons.clear();
         sections.clear();
         emptyLabels.clear();
@@ -263,7 +273,8 @@ public final class MapPlannerScreen extends UiScreen {
         if (Minecraft.getInstance().player == null) return;
         MapDefinition.Region bounds = new MapDefinition.Region(
                 Minecraft.getInstance().player.blockPosition(), Minecraft.getInstance().player.blockPosition());
-        MapRegion region = MapRegion.custom("", "自定义区域", MapRegion.Type.CUSTOM, bounds);
+        String id = MapRegion.uniqueId("", MapRegion.Type.CUSTOM.id(), usedRegionIds(regions));
+        MapRegion region = MapRegion.custom(id, "自定义区域", MapRegion.Type.CUSTOM, bounds);
         FpsTdmNetwork.sendToServer(new MapRegionPacket(MapRegionAction.CREATE, region, 0));
         onClose();
     }
@@ -387,8 +398,9 @@ public final class MapPlannerScreen extends UiScreen {
         if (ticks % 20 == 0) {
             request(MapEditorAction.POLL, "");
         }
-        if (lastRevision != ClientMapEditorData.revision()) {
-            regions = ClientMapEditorData.view().regions();
+        if (lastContentRevision != ClientMapEditorData.contentRevision()) {
+            lastContentRevision = ClientMapEditorData.contentRevision();
+            regions = orderRegions(ClientMapEditorData.view().regions(), priorityRegionIds);
             rebuildWidgets();
         }
     }
@@ -469,6 +481,27 @@ public final class MapPlannerScreen extends UiScreen {
 
     private static String dash(String value) {
         return value == null || value.isBlank() ? "—" : value;
+    }
+
+    private static Set<String> usedRegionIds(List<MapRegion> regions) {
+        Set<String> used = new HashSet<>();
+        used.add("bounds");
+        used.add("reset");
+        if (regions != null) {
+            for (MapRegion region : regions) {
+                if (region != null) used.add(region.id());
+            }
+        }
+        return used;
+    }
+
+    private static List<MapRegion> orderRegions(List<MapRegion> regions, List<String> priorityIds) {
+        List<MapRegion> ordered = new ArrayList<>(regions == null ? List.of() : regions);
+        ordered.sort(Comparator.comparingInt(region -> {
+            int index = priorityIds.indexOf(region.id());
+            return index < 0 ? Integer.MAX_VALUE : index;
+        }));
+        return List.copyOf(ordered);
     }
 
     @Override

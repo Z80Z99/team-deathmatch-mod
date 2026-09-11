@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -40,7 +41,8 @@ class WeaponRepositoryTest {
         WeaponCatalogItem catalog = new WeaponCatalogItem("tacz:gun_rifle#0", "gun_rifle", snapshot);
         WeaponRepositoryItem item = new WeaponRepositoryItem("w_test", "gun_rifle", snapshot, "测试步枪", true);
         WeaponRepositoryView view = new WeaponRepositoryView(true, List.of(category),
-                List.of(catalog), List.of(item), "ok", false, 7);
+                List.of(catalog), List.of(item), "ok", false, 7,
+                true, true, true, 1200, 800, Map.of("w_test", 2700));
 
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
@@ -54,6 +56,9 @@ class WeaponRepositoryTest {
             assertEquals("tacz:scope_x4",
                     decoded.repository().get(0).snapshot().stack().getOrCreateTag().getString("attachmentId"));
             assertEquals(7, decoded.requestId());
+            assertEquals(1200, decoded.globalBalance());
+            assertEquals(800, decoded.matchBalance());
+            assertEquals(2700, decoded.prices().get("w_test"));
         } finally {
             buffer.release();
         }

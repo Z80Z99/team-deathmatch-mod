@@ -35,7 +35,7 @@ public final class IntegrationManager {
             LOGGER.info("未检测到 TACZ，模组不会创建替代枪械系统");
         }
         if (gd656Loaded) {
-            LOGGER.info("已检测到 GD656Killicon；未绑定未经确认的私有计分接口，比赛进度使用 Forge 死亡事件作为兼容兜底");
+            LOGGER.info("已检测到 GD656Killicon；金钱系统将通过公开 PlayerDataManager 读取 Score 增量");
         } else {
             LOGGER.info("未检测到 GD656Killicon，比赛进度使用 Forge 原生死亡事件");
         }
@@ -51,7 +51,7 @@ public final class IntegrationManager {
 
     public static String statusText() {
         String tacz = taczLoaded ? "TACZ=已检测" : "TACZ=未检测";
-        String gd = gd656Loaded ? "GD656Killicon=已检测，Forge事件兜底" : "GD656Killicon=未检测，Forge事件";
+        String gd = gd656Loaded ? "GD656Killicon=已检测，Score 增量适配" : "GD656Killicon=未检测，Forge事件";
         return tacz + "，" + gd;
     }
 }

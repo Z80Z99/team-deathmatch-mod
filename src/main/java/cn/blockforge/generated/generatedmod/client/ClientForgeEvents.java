@@ -11,6 +11,7 @@ import cn.blockforge.generated.generatedmod.client.screen.RoomMapSelectScreen;
 import cn.blockforge.generated.generatedmod.client.screen.RoomRulesScreen;
 import cn.blockforge.generated.generatedmod.client.screen.RoomScreen;
 import cn.blockforge.generated.generatedmod.client.screen.WeaponRepositoryScreen;
+import cn.blockforge.generated.generatedmod.client.screen.MatchShopScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
@@ -76,6 +77,11 @@ public final class ClientForgeEvents {
         while (ClientEvents.OPEN_HUD_KEY.consumeClick()) {
             if (available && minecraft.screen == null) {
                 minecraft.setScreen(new HudLayoutScreen(null));
+            }
+        }
+        while (ClientEvents.OPEN_MATCH_SHOP_KEY.consumeClick()) {
+            if (available && minecraft.screen == null && ClientMatchData.inMatch()) {
+                MatchShopScreen.open(null);
             }
         }
     }

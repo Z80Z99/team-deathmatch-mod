@@ -2,6 +2,7 @@
   "key.generated_mod.open_map_workbench": "打开地图工作台",
   "key.generated_mod.open_lobby": "打开游戏大厅菜单",
   "key.generated_mod.open_hud": "打开 HUD 配置窗",
+  "key.generated_mod.open_match_shop": "打开对局商店",
   "key.categories.generated_mod": "团队死斗",
   "item.generated_mod.map_planner": "战术地图平板",
   "item.generated_mod.map_planner.tooltip": "右键打开规划终端；左键选定准星所指区域。",

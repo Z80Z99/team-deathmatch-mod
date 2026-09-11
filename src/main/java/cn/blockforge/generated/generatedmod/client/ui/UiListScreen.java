@@ -16,6 +16,8 @@ public abstract class UiListScreen<T> extends UiScreen {
     private int listY;
     private int listHeight;
     private int offset;
+    private boolean draggingScrollbar;
+    private int scrollbarDragOffset;
 
     protected UiListScreen(Component title) { super(title); }
     protected abstract List<T> entries();
@@ -77,14 +79,17 @@ public abstract class UiListScreen<T> extends UiScreen {
             });
         }
         if (shown.size() > visibleRows()) paintBand(graphics, listY, listHeight, () -> {
-            int thumb = Math.max(10, listHeight * visibleRows() / shown.size());
+            int x = listScrollbarX();
+            graphics.fill(x, listY, x + 8, listY + listHeight, UiTheme.BORDER_SUBTLE);
+            int thumb = Math.max(16, listHeight * visibleRows() / shown.size());
             int top = listY + (listHeight - thumb) * offset / (shown.size() - visibleRows());
-            graphics.fill(innerLeft + innerWidth - 3, listY, innerLeft + innerWidth - 1, listY + listHeight, UiTheme.BORDER_SUBTLE);
-            graphics.fill(innerLeft + innerWidth - 3, top, innerLeft + innerWidth - 1, top + thumb, UiTheme.ACCENT);
+            graphics.fill(x + 1, top, x + 7, top + thumb, UiTheme.ACCENT);
+            graphics.renderOutline(x, top, 8, thumb, UiTheme.BORDER);
         });
     }
 
     @Override public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 0 && beginListScrollbarDrag(mouseX, mouseY)) return true;
         int top = bandScreenY(listY);
         if (button == 0 && mouseX >= innerLeft && mouseX < innerLeft + innerWidth
                 && mouseY >= Math.max(top, contentTop) && mouseY < Math.min(top + listHeight, contentBottom)) {
@@ -95,6 +100,20 @@ public abstract class UiListScreen<T> extends UiScreen {
             }
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+    @Override public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (button == 0 && draggingScrollbar) {
+            dragListScrollbar(mouseY);
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+    @Override public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0 && draggingScrollbar) {
+            draggingScrollbar = false;
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
     }
     @Override public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
         int top = bandScreenY(listY);
@@ -114,4 +133,34 @@ public abstract class UiListScreen<T> extends UiScreen {
     }
     @Override public void tick() { super.tick(); if (search != null) search.tick(); }
     @Override public boolean isPauseScreen() { return false; }
+
+    private boolean beginListScrollbarDrag(double mouseX, double mouseY) {
+        if (shown.size() <= visibleRows() || mouseX < listScrollbarX() || mouseX > listScrollbarX() + 8) return false;
+        int top = bandScreenY(listY);
+        if (mouseY < top || mouseY > top + listHeight) return false;
+        int thumb = Math.max(16, listHeight * visibleRows() / shown.size());
+        int thumbTop = top + (listHeight - thumb) * offset / Math.max(1, shown.size() - visibleRows());
+        if (mouseY >= thumbTop && mouseY <= thumbTop + thumb) {
+            scrollbarDragOffset = (int) mouseY - thumbTop;
+        } else {
+            scrollbarDragOffset = thumb / 2;
+            dragListScrollbar(mouseY);
+        }
+        draggingScrollbar = true;
+        return true;
+    }
+
+    private void dragListScrollbar(double mouseY) {
+        int rows = visibleRows();
+        int maximum = Math.max(0, shown.size() - rows);
+        int top = bandScreenY(listY);
+        int thumb = Math.max(16, listHeight * rows / Math.max(1, shown.size()));
+        int range = Math.max(1, listHeight - thumb);
+        int thumbTop = clamp((int) Math.round(mouseY) - scrollbarDragOffset, top, top + range);
+        offset = clamp((int) Math.round((thumbTop - top) * (double) maximum / range), 0, maximum);
+    }
+
+    private int listScrollbarX() {
+        return innerLeft + innerWidth - 10;
+    }
 }

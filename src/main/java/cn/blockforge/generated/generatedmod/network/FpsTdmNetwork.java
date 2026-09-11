@@ -19,6 +19,9 @@ import cn.blockforge.generated.generatedmod.network.packet.RoomSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.RespawnRequestPacket;
 import cn.blockforge.generated.generatedmod.network.packet.WeaponRepositoryActionPacket;
 import cn.blockforge.generated.generatedmod.network.packet.WeaponRepositorySyncPacket;
+import cn.blockforge.generated.generatedmod.network.packet.MatchShopActionPacket;
+import cn.blockforge.generated.generatedmod.network.packet.MatchShopSyncPacket;
+import cn.blockforge.generated.generatedmod.network.packet.BombSyncPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkDirection;
@@ -27,7 +30,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class FpsTdmNetwork {
-    private static final String PROTOCOL_VERSION = "19";
+    private static final String PROTOCOL_VERSION = "22";
     private static SimpleChannel channel;
     private static int nextId;
 
@@ -132,6 +135,21 @@ public final class FpsTdmNetwork {
                 .encoder(WeaponRepositorySyncPacket::encode)
                 .decoder(WeaponRepositorySyncPacket::new)
                 .consumerMainThread(WeaponRepositorySyncPacket::handle)
+                .add();
+        channel.messageBuilder(MatchShopActionPacket.class, nextId(), NetworkDirection.PLAY_TO_SERVER)
+                .encoder(MatchShopActionPacket::encode)
+                .decoder(MatchShopActionPacket::new)
+                .consumerMainThread(MatchShopActionPacket::handle)
+                .add();
+        channel.messageBuilder(MatchShopSyncPacket.class, nextId(), NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(MatchShopSyncPacket::encode)
+                .decoder(MatchShopSyncPacket::new)
+                .consumerMainThread(MatchShopSyncPacket::handle)
+                .add();
+        channel.messageBuilder(BombSyncPacket.class, nextId(), NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(BombSyncPacket::encode)
+                .decoder(BombSyncPacket::new)
+                .consumerMainThread(BombSyncPacket::handle)
                 .add();
     }
 

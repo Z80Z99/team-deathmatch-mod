@@ -705,6 +705,7 @@ public final class RoomManager {
             case MAP_NOT_READY -> "地图快照不可用";
             case NO_TEAM_SPAWNS -> "每支启用队伍都需要出生点";
             case NO_SAFE_RANDOM_SPAWN -> "地图内未找到安全随机出生位置";
+            case NO_BOMB_SITES -> "爆破模式至少需要一个激活的爆破区";
             case MAP_BUSY -> "地图正在恢复";
         };
     }

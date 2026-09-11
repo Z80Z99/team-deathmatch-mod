@@ -10,8 +10,10 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /** 一张地图的 JSON 定义；建筑由世界本身提供，本类不生成建筑。 */
 public final class MapDefinition {
@@ -343,7 +345,21 @@ public final class MapDefinition {
     }
 
     private static List<MapRegion> copyRegions(List<MapRegion> regions) {
-        return List.copyOf(regions == null ? List.of() : regions);
+        List<MapRegion> source = regions == null ? List.of() : regions;
+        Set<String> usedIds = new HashSet<>();
+        usedIds.add("bounds");
+        usedIds.add("reset");
+        List<MapRegion> normalized = new ArrayList<>(source.size());
+        for (MapRegion region : source) {
+            if (region == null) {
+                continue;
+            }
+            String id = MapRegion.uniqueId(region.id(), region.type().id(), usedIds);
+            MapRegion normalizedRegion = id.equals(region.id()) ? region : region.withId(id);
+            usedIds.add(normalizedRegion.id());
+            normalized.add(normalizedRegion);
+        }
+        return List.copyOf(normalized);
     }
 
     private static List<MapRegion> parseRegions(JsonElement element) {
