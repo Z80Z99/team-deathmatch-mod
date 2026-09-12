@@ -383,6 +383,11 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         return customById(selected.substring("custom:".length()));
     }
 
+    private String selectedCustomId() {
+        ClientHudLayout.CustomElement element = selectedCustom();
+        return element == null ? "" : element.id();
+    }
+
     private ClientHudLayout.CustomElement customById(String id) {
         if (id == null || id.isBlank()) {
             return null;
@@ -2126,7 +2131,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         ClientHudLayout.CustomElement chosen = selectedCustom();
         if (globalTab) {
             HudCustomRenderer.render(graphics, font, draft.customElements(HudContext.GLOBAL),
-                    width, height, true, true, "", HudContext.GLOBAL);
+                    width, height, true, true, "", HudContext.GLOBAL, selectedCustomId());
             if (chosen != null && chosen.visible()
                     && HudParameters.visible(chosen.placement().condition(), true)) {
                 HudGeometry.Rect rect = HudGeometry.custom(chosen, width, height);
@@ -2136,7 +2141,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             return;
         }
         HudCustomRenderer.render(graphics, font, draft.customElements(activeContext),
-                width, height, true, true, "", activeContext);
+                width, height, true, true, "", activeContext, selectedCustomId());
         if (values.builtInMask() != 0) {
         if (activeContext.isMatch()) {
             HudGeometry.Rect score = HudGeometry.score(values, width, height);

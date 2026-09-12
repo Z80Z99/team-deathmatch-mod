@@ -55,14 +55,38 @@ public final class HudCustomRenderer {
     public static void render(GuiGraphics graphics, Font font, List<CustomElement> elements,
                               int screenWidth, int screenHeight, boolean showHidden, boolean editor,
                               String skipId, HudContext context) {
+        render(graphics, font, elements, screenWidth, screenHeight, showHidden, editor, skipId,
+                context, "");
+    }
+
+    /**
+     * Editor rendering variant with an explicit selected module.
+     * Condition-hidden modules stay readable in the editor: unselected ones use reduced
+     * opacity, while the selected one is rendered at full opacity.
+     */
+    public static void render(GuiGraphics graphics, Font font, List<CustomElement> elements,
+                              int screenWidth, int screenHeight, boolean showHidden, boolean editor,
+                              String skipId, HudContext context, String selectedId) {
         for (CustomElement element : elements) {
             if (skipId != null && !skipId.isBlank() && skipId.equals(element.id())) {
                 continue;
             }
             HudGeometry.Rect rect = HudGeometry.custom(element, screenWidth, screenHeight);
             boolean visible = HudConditions.visible(element, elements, editor, context);
-            double amount = editor ? (visible ? 1 : 0) : HudAnimation.frame(
-                    HudAnimation.key(element.id()), visible, element.placement());
+            boolean conditionHidden = editor && element.visible() && !visible;
+            double amount;
+            if (editor) {
+                if (!element.visible()) {
+                    amount = 0;
+                } else if (conditionHidden) {
+                    amount = element.id().equals(selectedId) ? 1.0D : 0.38D;
+                } else {
+                    amount = 1.0D;
+                }
+            } else {
+                amount = HudAnimation.frame(HudAnimation.key(element.id()), visible,
+                        element.placement());
+            }
             if (amount > 0) {
                 graphics.pose().pushPose();
                 if (element.placement().animation().equals("slide")) graphics.pose().translate(0, (1 - amount) * 16, 0);
