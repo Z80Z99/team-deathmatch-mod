@@ -15,6 +15,7 @@ class RoomRulesTest {
             assertEquals(mode != GameMode.SEARCH_DESTROY, rules.keepInventoryOnDeath());
             assertTrue(rules.suppressDeathMessages());
             assertFalse(rules.requireBothTeams());
+            assertTrue(rules.autoReset());
             assertEquals(30, rules.warmupDurationSeconds());
             assertEquals(2, rules.minPlayersToStart());
             assertEquals(SpawnSelectionStrategy.RANDOM, rules.spawnSelectionStrategy());

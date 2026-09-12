@@ -55,7 +55,6 @@ public final class RoomRulesScreen extends UiScreen {
     private UiEditBox matchEndDelayBox;
     private UiCycleButton<Boolean> keepInventoryToggle;
     private UiCycleButton<Boolean> suppressDeathToggle;
-    private UiCycleButton<Boolean> autoResetToggle;
     private UiCycleButton<Boolean> requireBothToggle;
     private UiCycleButton<TeamChangePolicy> teamChangeCycle;
     private UiCycleButton<AutoBalanceMode> balanceCycle;
@@ -188,7 +187,6 @@ public final class RoomRulesScreen extends UiScreen {
                 "整场比赛结束后结算画面的停留时间。");
         keepInventoryToggle = bool(6, 0, "死亡保留背包", current.keepInventoryOnDeath(), editable);
         suppressDeathToggle = bool(6, 1, "隐藏死亡消息", current.suppressDeathMessages(), editable);
-        autoResetToggle = bool(7, 0, "赛后自动复位地图", current.autoReset(), editable);
         requireBothToggle = bool(7, 1, "各队至少一人", true, false);
 
         teamChangeCycle = cycle(8, 0, "换队政策", List.of(TeamChangePolicy.values()),
@@ -275,8 +273,8 @@ public final class RoomRulesScreen extends UiScreen {
             rowSections[row] = null;
         }
         int[] order = mode == GameMode.SEARCH_DESTROY
-                ? new int[]{0, 1, 2, 12, 13, 14, 4, 5, 7, 8, 9, 10, 11, 6}
-                : new int[]{0, 1, 3, 4, 7, 8, 9, 10, 2, 5, 11, 6, 12, 13, 14};
+                ? new int[]{0, 1, 2, 12, 13, 14, 4, 5, 8, 9, 10, 11, 6}
+                : new int[]{0, 1, 3, 4, 8, 9, 10, 2, 5, 11, 6, 12, 13, 14};
         String currentSection = "";
         for (int row : order) {
             if (!rowVisible(mode, row)) {
@@ -300,6 +298,7 @@ public final class RoomRulesScreen extends UiScreen {
     }
 
     private boolean rowVisible(GameMode mode, int row) {
+        if (row == 7) return false;
         if (row == 2) {
             return mode == GameMode.SEARCH_DESTROY || unavailableOpen;
         }
@@ -325,7 +324,7 @@ public final class RoomRulesScreen extends UiScreen {
             return draft == null || draft.mode() == GameMode.SEARCH_DESTROY
                     ? "爆破模式" : "目前不可用设置";
         }
-        if (row == 7 || row == 8 || row == 9) return "高级";
+        if (row == 8 || row == 9) return "高级";
         if (row == 10 || row == 6 || row == 11) return "目前不可用设置";
         if (row == 2 || row == 5) return "目前不可用设置";
         return null;
@@ -351,7 +350,6 @@ public final class RoomRulesScreen extends UiScreen {
         setRowY(matchEndDelayBox, 5);
         setRowY(keepInventoryToggle, 6);
         setRowY(suppressDeathToggle, 6);
-        setRowY(autoResetToggle, 7);
         setRowY(requireBothToggle, 7, false);
         setRowY(teamChangeCycle, 8);
         setRowY(balanceCycle, 8);
@@ -399,8 +397,7 @@ public final class RoomRulesScreen extends UiScreen {
             bombDefuseResumeToggle.visible = mode == GameMode.SEARCH_DESTROY;
             bombDefuseResumeToggle.active = editable() && mode == GameMode.SEARCH_DESTROY;
         }
-        setBombSettingVisibility(terrainRestoreToggle,
-                mode == GameMode.SEARCH_DESTROY && multiTeamRoom());
+        setBombSettingVisibility(terrainRestoreToggle, mode == GameMode.SEARCH_DESTROY);
         durationBox.setMessage(Component.literal(durationLabel(mode)));
         if (modeCycle != null) modeCycle.setValue(mode);
         applyRuleScroll();
@@ -418,7 +415,7 @@ public final class RoomRulesScreen extends UiScreen {
         if (bombDetonationSecondsBox != null) bombDetonationSecondsBox.setEditable(bombEditable);
         if (bombDefuseSecondsBox != null) bombDefuseSecondsBox.setEditable(bombEditable);
         if (terrainRestoreToggle != null) {
-            terrainRestoreToggle.active = bombEditable && multiTeamRoom();
+            terrainRestoreToggle.active = bombEditable;
         }
         if (perspectiveCycle != null) perspectiveCycle.active = editable();
         if (allowViewSwitchToggle != null) allowViewSwitchToggle.active = editable();
@@ -487,7 +484,7 @@ public final class RoomRulesScreen extends UiScreen {
                 parse(roundEndDelayBox, draft.roundEndDelaySeconds()),
                 parse(matchEndDelayBox, draft.matchEndDelaySeconds()),
                 keepInventoryToggle.getValue(), suppressDeathToggle.getValue(),
-                autoResetToggle.getValue(), requireBothToggle.getValue(),
+                true, requireBothToggle.getValue(),
                 teamChangeCycle.getValue(), balanceCycle.getValue(),
                 spawnCycle.getValue(), parse(imbalanceBox, draft.maxTeamImbalance()),
                 parse(respawnProtectionSecondsBox, draft.respawnProtectionSeconds()),
@@ -752,7 +749,7 @@ public final class RoomRulesScreen extends UiScreen {
             return column == 0 ? "死亡保留背包" : "隐藏死亡消息";
         }
         if (row == 7) {
-            return column == 0 ? "赛后自动复位" : null;
+            return null;
         }
         if (row == 10) {
             return null;
@@ -767,7 +764,7 @@ public final class RoomRulesScreen extends UiScreen {
             return column == 0 ? "C4 引爆/秒" : "C4 拆除/秒";
         }
         if (row == 14) {
-            if (column == 0) return multiTeamRoom() ? "回合后恢复地形" : null;
+            if (column == 0) return mode == GameMode.SEARCH_DESTROY ? "回合后恢复地形" : null;
             return mode == GameMode.SEARCH_DESTROY ? "拆除可续拆" : null;
         }
         if (row == 15) {

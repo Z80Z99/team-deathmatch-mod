@@ -190,7 +190,7 @@ public record RoomRules(GameMode mode,
                 clamp(minPlayersToStart, 2, 32),
                 clamp(roundEndDelaySeconds, 1, 600),
                 clamp(matchEndDelaySeconds, 1, 600),
-                mode != GameMode.SEARCH_DESTROY, true, autoReset, false,
+                mode != GameMode.SEARCH_DESTROY, true, true, false,
                 teamChangePolicy, autoBalanceMode, spawnSelectionStrategy == SpawnSelectionStrategy.FARTHEST_FROM_ENEMIES
                         ? SpawnSelectionStrategy.RANDOM : spawnSelectionStrategy,
                 clamp(maxTeamImbalance, 0, 8),
@@ -247,8 +247,9 @@ public record RoomRules(GameMode mode,
                     .append(" · C4 ").append(bombPlantSeconds).append("/")
                     .append(bombDetonationSeconds).append("/").append(bombDefuseSeconds).append("s")
                     .append(bombDefuseResume ? " · 可续拆" : " · 中断重置")
-                    .append(teamCount > 2 ? " · 各队独立出生区 · 回合后地形恢复"
-                            + (restoreTerrainAfterRound ? "开" : "关") : " · 每 " + switchSideEvery + " 回合换边");
+                    .append(" · 回合后地形恢复").append(restoreTerrainAfterRound ? "开" : "关")
+                    .append(teamCount > 2 ? " · 各队独立出生区"
+                            : " · 每 " + switchSideEvery + " 回合换边");
             case LAST_STANDING -> text.append(" · 总时长 ")
                     .append(formatSeconds(matchDurationSeconds)).append(" · 阵亡不复活");
         }

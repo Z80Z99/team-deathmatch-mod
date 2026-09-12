@@ -394,11 +394,11 @@ public final class MatchManager {
     }
 
     public boolean rulesAutoReset() {
-        return roomRules != null ? roomRules.autoReset() : FpsTdmConfig.COMMON.autoReset.get();
+        return true;
     }
 
     public boolean rulesRestoreTerrainAfterRound() {
-        return activeTeams().size() <= 2 || roomRules == null || roomRules.restoreTerrainAfterRound();
+        return roomRules == null || roomRules.restoreTerrainAfterRound();
     }
 
     public PlayerPerspective rulesPerspective() {
