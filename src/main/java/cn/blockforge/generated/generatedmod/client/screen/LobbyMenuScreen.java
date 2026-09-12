@@ -12,16 +12,13 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/** 大厅入口：房间、匹配和创作工具，以及当前连接状态。 */
+/** 大厅入口：只负责房间和匹配，地图、HUD 与仓库统一放在外层菜单。 */
 public final class LobbyMenuScreen extends UiScreen {
     private static final int ENTRY_HEIGHT = 34;
 
     private final Screen parent;
     private UiButton roomButton;
     private UiButton matchButton;
-    private UiButton mapButton;
-    private UiButton hudButton;
-    private UiButton weaponButton;
     private int roomRowY;
     private int matchRowY;
     private int ticks;
@@ -45,24 +42,12 @@ public final class LobbyMenuScreen extends UiScreen {
         beginLayout(460, 270, BUTTON_HEIGHT, true, true);
         roomRowY = flowRow(ENTRY_HEIGHT);
         matchRowY = flowRow(ENTRY_HEIGHT);
-        int mapRowY = flowRow(ENTRY_HEIGHT);
-        int hudRowY = flowRow(ENTRY_HEIGHT);
-        int weaponRowY = flowRow(ENTRY_HEIGHT);
 
         roomButton = flowWidget(entryButton("房间大厅", roomRowY, this::openRooms,
                 "创建、浏览和加入房间；已在房间时直接打开“我的房间”。"), roomRowY);
         matchButton = flowWidget(entryButton("快速匹配", matchRowY,
                 () -> MatchmakingScreen.open(this),
                 "进入独立的匹配界面：排队、看序位与取消都在那里完成，和房间大厅互不混用。"), matchRowY);
-        mapButton = flowWidget(entryButton("地图工作台", mapRowY,
-                () -> MapLibraryScreen.open(this),
-                "制作、导入并编辑属于自己的地图。"), mapRowY);
-        hudButton = flowWidget(entryButton("HUD 编辑器", hudRowY,
-                () -> minecraft.setScreen(new HudLayoutScreen(this)),
-                "调整场景 HUD、组件属性、数据源和显示条件。"), hudRowY);
-        weaponButton = flowWidget(entryButton("武器仓库", weaponRowY,
-                () -> WeaponRepositoryScreen.open(this),
-                "浏览武器 MOD 目录并维护服务器仓库。"), weaponRowY);
 
         footerButton("返回游戏", 0, 1, 0, this::onClose, null, UiButton.Kind.SECONDARY);
         updateButtons();
@@ -118,9 +103,6 @@ public final class LobbyMenuScreen extends UiScreen {
             matchButton.setSelected(ClientLobbyData.matchmaking().queued() || forming);
             matchButton.active = connected;
         }
-        if (mapButton != null) mapButton.active = connected;
-        if (hudButton != null) hudButton.active = connected;
-        if (weaponButton != null) weaponButton.active = connected;
     }
 
     @Override
