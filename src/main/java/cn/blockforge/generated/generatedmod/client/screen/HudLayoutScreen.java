@@ -425,7 +425,6 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         }
         rows.add(Row.header("添加组件示例"));
         for (HudContext.BuiltIn component : HudContext.BuiltIn.values()) {
-            if (component == HudContext.BuiltIn.TEXT) continue;
             if (activeContext.isMatch() == (component == HudContext.BuiltIn.BANNER)) continue;
             UiButton sample = new UiButton(0, 0, 10, CONTROL, Component.literal("+ " + component.displayName()), ignored -> {
                 editDiscrete(() -> {
@@ -1799,10 +1798,20 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                 ClientHudLayout.CustomElement live = customById(dragCustomId);
                 if (live != null) {
                     if (live.placement().referenceWidth() > 0) {
+                        HudGeometry.Rect rect = HudGeometry.custom(live, width, height);
                         var p = live.placement();
                         float fit = p.fit(width, height);
-                        int offsetX = Math.round((float) (mouseX - grabX - width * live.xPercent() / 100F) / fit);
-                        int offsetY = Math.round((float) (mouseY - grabY - height * live.yPercent() / 100F) / fit);
+                        float alignmentShift = "left".equals(p.alignment()) ? rect.width() / 2F
+                                : "right".equals(p.alignment()) ? -rect.width() / 2F : 0F;
+                        int halfWidth = (rect.width() + 1) / 2;
+                        int halfHeight = (rect.height() + 1) / 2;
+                        int targetCenterX = clamp((int) Math.round(mouseX - grabX),
+                                8 + rect.width() / 2, width - 8 - halfWidth);
+                        int targetCenterY = clamp((int) Math.round(mouseY - grabY),
+                                8 + rect.height() / 2, height - 8 - halfHeight);
+                        int offsetX = Math.round((float) (targetCenterX - width * live.xPercent() / 100F
+                                - alignmentShift) / fit);
+                        int offsetY = Math.round((float) (targetCenterY - height * live.yPercent() / 100F) / fit);
                         replace(live, e -> e.placement = p.withOffset(offsetX, offsetY));
                         return true;
                     }
@@ -1927,7 +1936,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             if (keyCode == 90) undo(); else redo();
             return true;
         }
-        if ((modifiers & 2) != 0 && (keyCode == 19 || keyCode == 83)) {
+        if ((modifiers & 2) != 0 && keyCode == 83) {
             if (saveDraft()) {
                 setStatus("已保存（Ctrl+S）。", UiTheme.SUCCESS);
             }

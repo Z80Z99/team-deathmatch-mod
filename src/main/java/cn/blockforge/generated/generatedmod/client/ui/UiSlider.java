@@ -21,18 +21,28 @@ public final class UiSlider extends AbstractWidget {
     private final int maximum;
     private final IntSupplier valueSource;
     private final Consumer<Integer> onValueChange;
+    private final Consumer<Integer> onValueCommit;
     private final String name;
     private final String unit;
     private boolean dragging;
 
     public UiSlider(Font font, int x, int y, int width, int height, int minimum, int maximum,
                     IntSupplier valueSource, Consumer<Integer> onValueChange, String name, String unit) {
+        this(font, x, y, width, height, minimum, maximum, valueSource,
+                onValueChange, null, name, unit);
+    }
+
+    /** 拖动时只回调本地值，松开或键盘微调时才回调提交值。 */
+    public UiSlider(Font font, int x, int y, int width, int height, int minimum, int maximum,
+                    IntSupplier valueSource, Consumer<Integer> onValueChange,
+                    Consumer<Integer> onValueCommit, String name, String unit) {
         super(x, y, width, height, Component.literal(name));
         this.labelFont = font;
         this.minimum = minimum;
         this.maximum = Math.max(minimum, maximum);
         this.valueSource = valueSource;
         this.onValueChange = onValueChange;
+        this.onValueCommit = onValueCommit;
         this.name = name;
         this.unit = unit == null ? "" : unit;
     }
@@ -58,7 +68,7 @@ public final class UiSlider extends AbstractWidget {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (active && visible && isMouseOver(mouseX, mouseY) && button == 0) {
             dragging = true;
-            setAndNotify(clampValue(positionToValue((int) mouseX)));
+            setLocal(clampValue(positionToValue((int) mouseX)));
             return true;
         }
         return super.mouseClicked(mouseX, mouseY, button);
@@ -67,7 +77,7 @@ public final class UiSlider extends AbstractWidget {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (dragging && button == 0) {
-            setAndNotify(clampValue(positionToValue((int) mouseX)));
+            setLocal(clampValue(positionToValue((int) mouseX)));
             return true;
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -77,6 +87,7 @@ public final class UiSlider extends AbstractWidget {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (dragging && button == 0) {
             dragging = false;
+            commitLocal();
         }
         return super.mouseReleased(mouseX, mouseY, button);
     }
@@ -85,18 +96,28 @@ public final class UiSlider extends AbstractWidget {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         int step = Math.max(1, (maximum - minimum) / 40);
         if (keyCode == 263 || keyCode == 262) {
-            setAndNotify(clampValue(valueSource.getAsInt() + (keyCode == 262 ? step : -step)));
+            setAndCommit(clampValue(valueSource.getAsInt() + (keyCode == 262 ? step : -step)));
             return true;
         }
         if (keyCode == 264 || keyCode == 265) {
-            setAndNotify(clampValue(valueSource.getAsInt() + (keyCode == 265 ? step : -step)));
+            setAndCommit(clampValue(valueSource.getAsInt() + (keyCode == 265 ? step : -step)));
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
-    private void setAndNotify(int value) {
+    private void setLocal(int value) {
+        if (value == clampValue(valueSource.getAsInt())) return;
         onValueChange.accept(value);
+    }
+
+    private void setAndCommit(int value) {
+        setLocal(value);
+        commitLocal();
+    }
+
+    private void commitLocal() {
+        if (onValueCommit != null) onValueCommit.accept(clampValue(valueSource.getAsInt()));
     }
 
     @Override

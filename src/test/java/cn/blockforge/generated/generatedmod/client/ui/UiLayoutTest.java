@@ -253,6 +253,38 @@ class UiLayoutTest {
         }
     }
 
+    @Test void teamDeathmatchRuleLabelsMatchTheirControls() throws Exception {
+        Screen screen = rulesScreen();
+        Method label = RoomRulesScreen.class.getDeclaredMethod("rowLabel", int.class, int.class);
+        label.setAccessible(true);
+        assertEquals("重生减伤时长/秒", label.invoke(screen, 3, 1));
+        assertEquals("重生初始减伤 %", label.invoke(screen, 4, 0));
+        assertEquals("友军伤害", label.invoke(screen, 4, 1));
+    }
+
+    @Test void sliderUpdatesWhileDraggingButCommitsOnlyOnRelease() {
+        Font font = mock(Font.class);
+        var value = new java.util.concurrent.atomic.AtomicInteger(2);
+        var changes = new java.util.concurrent.atomic.AtomicInteger();
+        var commits = new java.util.concurrent.atomic.AtomicInteger();
+        UiSlider slider = new UiSlider(font, 10, 10, 100, 12, 1, 64,
+                value::get, next -> {
+                    value.set(next);
+                    changes.incrementAndGet();
+                }, ignored -> commits.incrementAndGet(), "空气距离", " 格");
+        slider.active = true;
+
+        assertTrue(slider.mouseClicked(109, 15, 0));
+        assertEquals(64, value.get());
+        assertEquals(1, changes.get());
+        assertTrue(slider.mouseDragged(59, 15, 0, 0, 0));
+        assertEquals(32, value.get());
+        assertEquals(2, changes.get());
+        assertEquals(0, commits.get());
+        assertTrue(slider.mouseReleased(59, 15, 0));
+        assertEquals(1, commits.get());
+    }
+
     @Test void optionMenuCancelsAndCommitsExactlyOneSelection() {
         var changed = new java.util.concurrent.atomic.AtomicInteger(-1);
         var menu = new UiChoicePopup();

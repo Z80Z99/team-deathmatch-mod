@@ -194,7 +194,9 @@ public final class MapRegionEditScreen extends UiScreen {
                 "不会在对局 HUD 中显示。"), notesY);
 
         footerButton("保存", 0, 3, 0, this::save, "保存这个区域的属性。", UiButton.Kind.PRIMARY);
-        footerButton("删除", 1, 3, 0, this::delete, "删除这个自定义区域。", UiButton.Kind.DANGER);
+        footerButton("删除", 1, 3, 0, () -> confirmAction("删除自定义区域",
+                        "删除后需要重新绘制区域范围，保存的属性不会保留。", this::delete),
+                "删除前需要确认。", UiButton.Kind.DANGER);
         footerButton("关闭", 2, 3, 0, this::onClose, "不保存并返回。", UiButton.Kind.SECONDARY);
     }
 

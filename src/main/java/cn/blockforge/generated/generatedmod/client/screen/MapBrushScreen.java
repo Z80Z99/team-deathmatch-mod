@@ -27,6 +27,7 @@ public final class MapBrushScreen extends UiScreen {
     private int nextY;
     private UiCycleButton<MapBrushMode> modeControl;
     private int rangeValue;
+    private int committedRangeValue;
     private int pendingRangeRequest;
     private UiButton targetControl;
 
@@ -70,13 +71,14 @@ public final class MapBrushScreen extends UiScreen {
 
         int rangeY = flowRow(BUTTON_HEIGHT + 12) + 12;
         rangeValue = ClientMapEditorData.view().brushRange();
+        committedRangeValue = rangeValue;
         flowWidget(uiButton("-", innerLeft, rangeY, 22,
-                () -> setRange(rangeValue - 1), "距离减少 1 格", UiButton.Kind.SECONDARY), rangeY);
+                () -> requestRange(rangeValue - 1), "距离减少 1 格", UiButton.Kind.SECONDARY), rangeY);
         flowWidget(new cn.blockforge.generated.generatedmod.client.ui.UiSlider(font,
                 innerLeft + 26, rangeY, controlWidth - 52, BUTTON_HEIGHT, 1, 64,
-                () -> rangeValue, this::setRange, "空气距离", " 格"), rangeY);
+                () -> rangeValue, this::previewRange, this::commitRange, "空气距离", " 格"), rangeY);
         flowWidget(uiButton("+", innerLeft + controlWidth - 22, rangeY, 22,
-                () -> setRange(rangeValue + 1), "距离增加 1 格", UiButton.Kind.SECONDARY), rangeY);
+                () -> requestRange(rangeValue + 1), "距离增加 1 格", UiButton.Kind.SECONDARY), rangeY);
         flowWidget(helpButton(helpX, rangeY,
                 "左右键都能在空气位置取点，默认距离前方 2 格。",
                 "如果中间有方块，会优先停在方块位置。",
@@ -99,8 +101,18 @@ public final class MapBrushScreen extends UiScreen {
         FpsTdmNetwork.sendToServer(new MapEditorActionPacket(MapEditorAction.SET_BRUSH_MODE, mode.id()));
     }
 
-    private void setRange(int range) {
+    private void previewRange(int range) {
         rangeValue = Math.max(1, Math.min(64, range));
+    }
+
+    private void commitRange(int range) {
+        previewRange(range);
+        if (rangeValue != committedRangeValue) requestRange(rangeValue);
+    }
+
+    private void requestRange(int range) {
+        previewRange(range);
+        committedRangeValue = rangeValue;
         MapEditorActionPacket packet = new MapEditorActionPacket(MapEditorAction.SET_BRUSH_RANGE,
                 Integer.toString(rangeValue));
         pendingRangeRequest = packet.requestId();
@@ -145,6 +157,7 @@ public final class MapBrushScreen extends UiScreen {
         modeControl.setValue(view.brushMode());
         if (pendingRangeRequest == 0 || view.responseRequestId() >= pendingRangeRequest) {
             rangeValue = view.brushRange();
+            committedRangeValue = rangeValue;
             pendingRangeRequest = 0;
         }
         targetControl.setMessage(Component.literal(targetButtonLabel()));
@@ -226,6 +239,7 @@ public final class MapBrushScreen extends UiScreen {
 
     @Override
     public void onClose() {
+        commitRange(rangeValue);
         net.minecraft.client.Minecraft.getInstance().setScreen(null);
     }
 

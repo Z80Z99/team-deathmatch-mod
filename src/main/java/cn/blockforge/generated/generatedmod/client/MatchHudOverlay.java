@@ -13,6 +13,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraftforge.client.gui.overlay.ForgeGui;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -43,6 +44,7 @@ public final class MatchHudOverlay {
             HudBackground.drawStretch(graphics, global.backgroundFile(),
                     global.backgroundOpacityPercent(), width, height);
         }
+        renderBoundaryFilters(graphics, width, height);
         HudContext context = HudContext.match(ClientMatchData.mode);
         HudCustomRenderer.render(graphics, forgeGui.getMinecraft().font,
                 ClientHudLayout.customElements(HudContext.GLOBAL), width, height, false, false);
@@ -50,7 +52,6 @@ public final class MatchHudOverlay {
                 HudContext.BuiltIn.SCORE, elements, width, height, partialTick)) {
             renderScore(forgeGui, graphics, width, height, elements);
         }
-        renderBombStatus(forgeGui, graphics, width);
         if (elements.builtInEnabled(HudContext.BuiltIn.FEED) && elements.feedVisible() && ClientMatchData.killFeedActive()
                 && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
                 HudContext.BuiltIn.FEED, elements, width, height, partialTick)) {
@@ -62,64 +63,48 @@ public final class MatchHudOverlay {
         }
         renderCustom(graphics, forgeGui.getMinecraft().font, width, height,
                 HudContext.match(ClientMatchData.mode));
-        if (ClientMatchData.boundaryOutside && ClientMatchData.boundaryTicks > 0) {
-            ClientHudLayout.CustomElement warning = ClientHudLayout.customElements(context).stream()
-                    .filter(element -> element.type().equals("boundary") && element.visible()
-                            && HudConditions.visible(element, ClientHudLayout.customElements(context), false))
-                    .findFirst().orElse(null);
-            if (warning == null) return;
-            HudGeometry.Rect rect = HudGeometry.custom(warning, width, height);
-            float opacity = Math.max(0, Math.min(100, warning.opacityPercent())) / 100.0F;
-            int redAlpha = Math.round(255 * BoundaryEffects.redOpacity(ClientMatchData.boundaryTicks) * opacity);
-            int blackAlpha = Math.round(255 * BoundaryEffects.blackOpacity(ClientMatchData.boundaryTicks) * opacity);
-            int neutralAlpha = Math.round(255 * 0.10F * BoundaryEffects.finalPhase(ClientMatchData.boundaryTicks) * opacity);
-            graphics.fill(0, 0, width, height, (redAlpha << 24) | 0xC41624);
-            if (blackAlpha > 0) graphics.fill(0, 0, width, height, blackAlpha << 24);
-            if (neutralAlpha > 0) graphics.fill(0, 0, width, height, (neutralAlpha << 24) | 0xAEB3B5);
-            Font font = forgeGui.getMinecraft().font;
-            if (warning.background()) graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
-                    UiTheme.withAlpha(warning.placement().backgroundColor() == 0 ? UiTheme.PANEL_RAISED
-                            : warning.placement().backgroundColor(), warning.opacityPercent()));
-            if (warning.border()) graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(),
-                    UiTheme.withAlpha(warning.placement().borderColor() == 0 ? warning.color()
-                            : warning.placement().borderColor(), warning.opacityPercent()));
-            String label = HudParameters.render(warning.text(), false);
-            graphics.drawCenteredString(font, UiTheme.fit(font, label.isBlank() ? "返回作战区域" : label,
-                    Math.max(20, rect.width() - 12)), rect.centerX(), rect.top() + 9, 0xFFFFD6D6);
-            graphics.drawCenteredString(font, Integer.toString((ClientMatchData.boundaryTicks + 19) / 20),
-                    rect.centerX(), rect.top() + 29, 0xFFFFFFFF);
-        }
+        renderBoundaryWarning(graphics, forgeGui.getMinecraft().font, width, height, context);
     }
 
-    private static void renderBombStatus(ForgeGui forgeGui, GuiGraphics graphics, int width) {
-        if (ClientMatchData.mode != cn.blockforge.generated.generatedmod.match.GameMode.SEARCH_DESTROY
-                || !ClientBombData.active) return;
-        String text;
-        int color;
-        switch (ClientBombData.phase) {
-            case PLANTED -> {
-                int seconds = (ClientBombData.detonationRemainingTicks + 19) / 20;
-                text = "C4 " + ClientBombData.bombSiteName + "  " + String.format(java.util.Locale.ROOT, "%.1f", seconds);
-                color = seconds <= 10 ? 0xFFFF5B5B : 0xFFFFC857;
-            }
-            case PLANTING -> {
-                text = "安装中  " + String.format(java.util.Locale.ROOT, "%.1f", ClientBombData.actionRemainingTicks / 20.0D);
-                color = 0xFFFFC857;
-            }
-            case DEFUSING -> {
-                text = "拆除中  " + String.format(java.util.Locale.ROOT, "%.1f", ClientBombData.actionRemainingTicks / 20.0D);
-                color = 0xFF70C7E8;
-            }
-            case DROPPED -> {
-                text = "C4 已掉落"; color = 0xFFFFC857;
-            }
-            case CARRIED -> {
-                text = ClientBombData.carrierName.isBlank() ? "C4 已发放" : "C4 携带者：" + ClientBombData.carrierName;
-                color = 0xFFFFD6D6;
-            }
-            default -> { return; }
-        }
-        graphics.drawCenteredString(forgeGui.getMinecraft().font, text, width / 2, 8, color);
+    private static void renderBoundaryFilters(GuiGraphics graphics, int width, int height) {
+        if (!ClientMatchData.boundaryOutside || ClientMatchData.boundaryTicks <= 0) return;
+        HudContext context = HudContext.match(ClientMatchData.mode);
+        List<ClientHudLayout.CustomElement> elements = ClientHudLayout.customElements(context);
+        ClientHudLayout.CustomElement warning = elements.stream()
+                .filter(element -> element.type().equals("boundary") && element.visible()
+                        && HudConditions.visible(element, elements, false))
+                .findFirst().orElse(null);
+        if (warning == null) return;
+        float opacity = Math.max(0, Math.min(100, warning.opacityPercent())) / 100.0F;
+        int redAlpha = Math.round(255 * BoundaryEffects.redOpacity(ClientMatchData.boundaryTicks) * opacity);
+        int blackAlpha = Math.round(255 * BoundaryEffects.blackOpacity(ClientMatchData.boundaryTicks) * opacity);
+        int neutralAlpha = Math.round(255 * 0.10F * BoundaryEffects.finalPhase(ClientMatchData.boundaryTicks) * opacity);
+        graphics.fill(0, 0, width, height, (redAlpha << 24) | 0xC41624);
+        if (blackAlpha > 0) graphics.fill(0, 0, width, height, blackAlpha << 24);
+        if (neutralAlpha > 0) graphics.fill(0, 0, width, height, (neutralAlpha << 24) | 0xAEB3B5);
+    }
+
+    private static void renderBoundaryWarning(GuiGraphics graphics, Font font, int width, int height,
+                                              HudContext context) {
+        if (!ClientMatchData.boundaryOutside || ClientMatchData.boundaryTicks <= 0) return;
+        List<ClientHudLayout.CustomElement> elements = ClientHudLayout.customElements(context);
+        ClientHudLayout.CustomElement warning = elements.stream()
+                .filter(element -> element.type().equals("boundary") && element.visible()
+                        && HudConditions.visible(element, elements, false))
+                .findFirst().orElse(null);
+        if (warning == null) return;
+        HudGeometry.Rect rect = HudGeometry.custom(warning, width, height);
+        if (warning.background()) graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
+                UiTheme.withAlpha(warning.placement().backgroundColor() == 0 ? UiTheme.PANEL_RAISED
+                        : warning.placement().backgroundColor(), warning.opacityPercent()));
+        if (warning.border()) graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(),
+                UiTheme.withAlpha(warning.placement().borderColor() == 0 ? warning.color()
+                        : warning.placement().borderColor(), warning.opacityPercent()));
+        String label = HudParameters.render(warning.text(), false);
+        graphics.drawCenteredString(font, UiTheme.fit(font, label.isBlank() ? "返回作战区域" : label,
+                Math.max(20, rect.width() - 12)), rect.centerX(), rect.top() + 9, 0xFFFFD6D6);
+        graphics.drawCenteredString(font, Integer.toString((ClientMatchData.boundaryTicks + 19) / 20),
+                rect.centerX(), rect.top() + 29, 0xFFFFFFFF);
     }
 
     private static boolean renderOverride(GuiGraphics graphics, Font font, HudContext context,
@@ -168,7 +153,8 @@ public final class MatchHudOverlay {
         Font font = forgeGui.getMinecraft().font;
         String hint = HudStats.resolveTemplate(elements.textTemplate(), Map.of(
                 "team", ClientMatchData.myTeam.displayName(), "sizes", ClientMatchData.teamSizesText(),
-                "hint", hintText(), "mode", ClientMatchData.modeText(), "phase", ClientMatchData.phaseText()));
+                "hint", hintText(), "mode", ClientMatchData.modeText(), "phase", ClientMatchData.phaseText(),
+                "bomb_status", bombStatusText() == null ? "" : bombStatusText()));
         HudGeometry.Rect panel = HudGeometry.text(elements, width, height, elements.textWidth());
         drawPanel(graphics, font, panel, HudGeometry.TEXT_BASE_HEIGHT, hint, "", elements.textColor(), elements.textOpacityPercent());
     }
@@ -198,6 +184,8 @@ public final class MatchHudOverlay {
 
     /** 底部状态文字的内容与配色（编辑器预览复用）。 */
     public static String hintText() {
+        String bombStatus = bombStatusText();
+        if (bombStatus != null) return bombStatus;
         if (ClientMatchData.state == MatchState.MATCH_END) {
             return ClientMatchData.winner == null ? "比赛平局" : ClientMatchData.winner.displayName() + " 获胜";
         }
@@ -221,6 +209,23 @@ public final class MatchHudOverlay {
                     + ClientMatchData.phaseTimerText();
         }
         return "队伍：" + ClientMatchData.myTeam.displayName() + "  ·  " + ClientMatchData.teamSizesText();
+    }
+
+    private static String bombStatusText() {
+        if (ClientMatchData.mode != cn.blockforge.generated.generatedmod.match.GameMode.SEARCH_DESTROY
+                || !ClientBombData.active) return null;
+        return switch (ClientBombData.phase) {
+            case PLANTED -> "C4 " + ClientBombData.bombSiteName + "  " + String.format(java.util.Locale.ROOT,
+                    "%.1f", ClientBombData.detonationRemainingTicks / 20.0D);
+            case PLANTING -> "安装中  " + String.format(java.util.Locale.ROOT, "%.1f",
+                    ClientBombData.actionRemainingTicks / 20.0D);
+            case DEFUSING -> "拆除中  " + String.format(java.util.Locale.ROOT, "%.1f",
+                    ClientBombData.actionRemainingTicks / 20.0D);
+            case DROPPED -> "C4 已掉落";
+            case CARRIED -> ClientBombData.carrierName.isBlank() ? "C4 已发放"
+                    : "C4 携带者：" + ClientBombData.carrierName;
+            default -> null;
+        };
     }
 
     private static int hintColor() {
@@ -274,6 +279,8 @@ public final class MatchHudOverlay {
         values.put("team", ClientMatchData.myTeam.displayName());
         values.put("sizes", ClientMatchData.teamSizesText());
         values.put("hint", hintText());
+        String bombStatus = bombStatusText();
+        values.put("bomb_status", bombStatus == null ? "" : bombStatus);
         values.put("killer", ClientMatchData.killFeedKiller());
         values.put("victim", ClientMatchData.killFeedVictim());
         values.put("feed", ClientMatchData.killFeedText());

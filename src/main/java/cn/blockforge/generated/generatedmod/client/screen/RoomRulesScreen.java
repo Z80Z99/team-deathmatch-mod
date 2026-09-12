@@ -194,7 +194,7 @@ public final class RoomRulesScreen extends UiScreen {
                 "按所选时机平衡所有队伍的人数。", editable);
         spawnCycle = cycle(9, 0, "复活策略", List.of(SpawnSelectionStrategy.SEQUENTIAL, SpawnSelectionStrategy.RANDOM),
                 current.spawnSelectionStrategy(), RoomRulesScreen::spawnName, null, null, editable);
-        imbalanceBox = integer(9, 1, "队伍最大人数差", current.maxTeamImbalance(), 1, editable,
+        imbalanceBox = integer(9, 1, "队伍最大人数差", current.maxTeamImbalance(), 2, editable,
                 "比赛中换队或补位时的最大队伍人数差；房间内手动选队不受此值限制。");
         buyPhaseBox = integer(12, 0, "购买阶段/秒", current.buyPhaseSeconds(), 3, editable,
                 "爆破模式回合开始后，只允许在出生区购买和准备的时长（0～120）。");
@@ -710,13 +710,14 @@ public final class RoomRulesScreen extends UiScreen {
             if (column == 0) {
                 return mode.respawnRules() ? "阵亡恢复/秒" : null;
             }
-            return column == 1 && mode == GameMode.TEAM_DEATHMATCH ? "友军伤害" : null;
+            return mode.respawnRules() ? "重生减伤时长/秒" : null;
         }
         if (row == 4) {
             if (column == 0) {
+                if (mode.respawnRules()) return "重生初始减伤 %";
                 return mode.roundSwapping() ? "换边间隔/回合" : null;
             }
-            return mode == GameMode.TEAM_DEATHMATCH ? null : "友军伤害";
+            return "友军伤害";
         }
         if (row == 5) {
             return column == 0 ? "回合结算间隔/秒" : "结算画面/秒";

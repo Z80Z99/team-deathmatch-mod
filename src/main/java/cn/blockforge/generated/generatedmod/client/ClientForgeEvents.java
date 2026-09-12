@@ -55,6 +55,7 @@ public final class ClientForgeEvents {
             minecraft.player.setDeltaMovement(0.0D, 0.0D, 0.0D);
         }
         ClientMatchData.tick();
+        ClientBombData.tick();
         RespawnOverlay.tick();
         ClientLobbyData.tick();
         MapPreview.tick(minecraft);

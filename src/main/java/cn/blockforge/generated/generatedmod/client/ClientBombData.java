@@ -37,4 +37,16 @@ public final class ClientBombData {
     }
 
     public static int revision() { return revision; }
+
+    /** 两个服务器同步包之间平滑推进显示用倒计时，不改变服务器判定。 */
+    public static void tick() {
+        if (!active) return;
+        if (phase == ClassicBombState.Phase.PLANTED && detonationRemainingTicks > 0) {
+            detonationRemainingTicks--;
+        }
+        if ((phase == ClassicBombState.Phase.PLANTING || phase == ClassicBombState.Phase.DEFUSING)
+                && actionRemainingTicks > 0) {
+            actionRemainingTicks--;
+        }
+    }
 }

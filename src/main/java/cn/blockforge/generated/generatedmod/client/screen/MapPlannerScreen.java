@@ -424,6 +424,9 @@ public final class MapPlannerScreen extends UiScreen {
                 MapToolClientState.setHoveredRegion(entry.region().id());
             }
         }
+        if (buttons.stream().noneMatch(entry -> entry.button().isHoveredOrFocused())) {
+            MapToolClientState.setHoveredRegion("");
+        }
         if (!helpLines.isEmpty()) {
             int y = helpY + 4;
             for (String line : helpLines) {

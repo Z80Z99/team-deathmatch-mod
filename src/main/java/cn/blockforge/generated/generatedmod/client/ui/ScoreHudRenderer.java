@@ -48,22 +48,25 @@ public final class ScoreHudRenderer {
         graphics.pose().translate(rect.centerX(), rect.top(), 0);
         graphics.pose().scale(rect.scale(), rect.scale(), 1);
         graphics.fill(-w / 2, 0, w / 2, h, UiTheme.withAlpha(UiTheme.PANEL, opacity));
+        int heading = UiTheme.withAlpha(UiTheme.TEXT, opacity);
+        int details = UiTheme.withAlpha(UiTheme.MUTED, opacity);
         graphics.drawString(font, resolve(font, elements.scoreHeaderTemplate(), values, w - 82),
-                -w / 2 + 6, 5, UiTheme.TEXT, false);
+                -w / 2 + 6, 5, heading, false);
         graphics.drawString(font, resolve(font, elements.scoreTimerTemplate(), values, 64),
-                w / 2 - 70, 5, UiTheme.TEXT, false);
+                w / 2 - 70, 5, heading, false);
         for (int i = 0; i < teams.size(); i++) {
             var team = teams.get(i);
             int left = -w / 2 + w * i / teams.size(), right = -w / 2 + w * (i + 1) / teams.size();
             String suffix = team.key().substring(5);
-            graphics.fill(left + 3, 19, right - 3, 21, team.hudColor());
+            int teamColor = UiTheme.withAlpha(team.hudColor(), opacity);
+            graphics.fill(left + 3, 19, right - 3, 21, teamColor);
             graphics.drawCenteredString(font, UiTheme.fit(font, team.displayName() + " " + values.getOrDefault("score_" + suffix, "0"),
-                    right - left - 8), (left + right) / 2, 26, team.hudColor());
+                    right - left - 8), (left + right) / 2, 26, teamColor);
             graphics.drawCenteredString(font, UiTheme.fit(font, "胜 " + values.getOrDefault("wins_" + suffix, "0"),
-                    right - left - 8), (left + right) / 2, 39, UiTheme.MUTED);
+                    right - left - 8), (left + right) / 2, 39, details);
         }
         graphics.drawCenteredString(font, resolve(font, elements.scoreDetailsTemplate(), values, w - 16),
-                0, h - 12, UiTheme.MUTED);
+                0, h - 12, details);
         graphics.pose().popPose();
     }
     private static String resolve(Font font, String template, Map<String, String> values, int width) {

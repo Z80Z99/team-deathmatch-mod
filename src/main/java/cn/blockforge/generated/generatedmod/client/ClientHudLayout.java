@@ -34,7 +34,7 @@ import java.util.Map;
 public final class ClientHudLayout {
     private static final Logger LOGGER = LoggerFactory.getLogger("generated_mod_hud_layout");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int VERSION = 8;
+    private static final int VERSION = 9;
     private static final int SCORE_BIT = 1;
     private static final int TEXT_BIT = 1 << 1;
     private static final int FEED_BIT = 1 << 2;
@@ -174,6 +174,7 @@ public final class ClientHudLayout {
             } else {
                 migrateVersion1(object);
             }
+            if (sourceVersion < 9) restoreTextBuiltIns();
             if (sourceVersion < 7) installStatusEffectDefaults();
         } catch (Exception error) {
             LOGGER.warn("读取客户端 HUD 配置失败，将使用默认值：{}", file, error);
@@ -191,6 +192,16 @@ public final class ClientHudLayout {
             if (elements.stream().noneMatch(element -> element.type().equals("boundary"))) {
                 elements.add(CustomElement.boundary("boundary_warning"));
             }
+        }
+    }
+
+    /** v8 误把状态文字作为不可编辑内置项关闭；v9 恢复为示例元素。 */
+    private static void restoreTextBuiltIns() {
+        for (HudContext context : HudContext.values()) {
+            if (!context.isMatch()) continue;
+            Mutable elements = CONTEXTS.get(context).mutable();
+            elements.setBuiltInEnabled(HudContext.BuiltIn.TEXT, true);
+            CONTEXTS.put(context, elements.build());
         }
     }
 

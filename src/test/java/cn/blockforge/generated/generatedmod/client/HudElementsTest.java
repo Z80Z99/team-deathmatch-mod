@@ -60,6 +60,40 @@ class HudElementsTest {
         assertTrue(HudParameters.visible("team_d", true));
     }
 
+    @Test void timeSourcesHaveUsableProgressMaximaAndBombTicksSmoothly() {
+        ClientMatchData.state = cn.blockforge.generated.generatedmod.match.MatchState.PLAYING;
+        ClientMatchData.mode = cn.blockforge.generated.generatedmod.match.GameMode.SEARCH_DESTROY;
+        ClientMatchData.respawnTotalTicks = 200;
+        ClientMatchData.respawnRemainingTicks = 80;
+        ClientMatchData.phaseRemainingTicks = 45 * 20;
+        ClientMatchData.boundaryTicks = 160;
+        ClientBombData.active = true;
+        ClientBombData.phase = cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.PLANTED;
+        ClientBombData.bombSiteName = "A";
+        ClientBombData.detonationRemainingTicks = 200;
+        try {
+            assertEquals(800, HudStats.byId("bomb_countdown").maximum(false));
+            assertEquals(.25, HudStats.byId("bomb_countdown").ratio(false), .0001);
+            assertEquals(4500, HudStats.byId("phase_remaining").maximum(false));
+            assertEquals(.2, HudStats.byId("phase_remaining").ratio(false), .0001);
+            assertEquals(200, HudStats.byId("boundary_remaining").maximum(false));
+            assertEquals(.8, HudStats.byId("boundary_remaining").ratio(false), .0001);
+            assertTrue(MatchHudOverlay.hintText().contains("10.0"), MatchHudOverlay.hintText());
+            ClientBombData.tick();
+            ClientBombData.tick();
+            ClientBombData.tick();
+            assertEquals(197, ClientBombData.detonationRemainingTicks);
+        } finally {
+            ClientBombData.clear();
+            ClientMatchData.state = cn.blockforge.generated.generatedmod.match.MatchState.WAITING;
+            ClientMatchData.mode = cn.blockforge.generated.generatedmod.match.GameMode.TEAM_DEATHMATCH;
+            ClientMatchData.respawnTotalTicks = 0;
+            ClientMatchData.respawnRemainingTicks = 0;
+            ClientMatchData.phaseRemainingTicks = 0;
+            ClientMatchData.boundaryTicks = 0;
+        }
+    }
+
     private ClientHudLayout.CustomElement conditional(String id, String condition) {
         return new ClientHudLayout.CustomElement(id, "text", "test", 50, 50, 100, 20, 100, -1, true,
                 "", 100, false, false, false, new ClientHudLayout.Placement(0, 0, 0, 0, "", condition));

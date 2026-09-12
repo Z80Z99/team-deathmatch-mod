@@ -692,8 +692,9 @@ public final class HudStats {
     private static void time(String id, String name, Group group, IntSupplier ticks,
                              BooleanSupplier live, int demoTicks) {
         SOURCES.add(new Source(id, name, group, Kind.TIME, () -> ticks.getAsInt(),
-                () -> id.equals("respawn_left") ? Math.max(1, ClientMatchData.respawnTotalTicks) : 0,
-                () -> "", live, demoTicks, id.equals("respawn_left") ? Math.max(1, demoTicks) : 0, ""));
+                () -> id.equals("respawn_left") ? Math.max(1, ClientMatchData.respawnTotalTicks)
+                        : Math.max(1, demoTicks),
+                () -> "", live, demoTicks, Math.max(1, demoTicks), ""));
     }
 
     private static void text(String id, String name, Group group, Supplier<String> text,
