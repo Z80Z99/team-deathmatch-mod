@@ -8,6 +8,8 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.entity.living.LivingHurtEvent;
+import net.minecraftforge.event.entity.living.LivingKnockBackEvent;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
@@ -107,6 +109,10 @@ public final class MatchEvents {
         if (manager == null) {
             return;
         }
+        if (manager.isDowned(player)) {
+            event.setCanceled(true);
+            return;
+        }
         // Preserve lethal damage so vanilla death listeners receive the real event.
         float adjusted = manager.applyRespawnProtection(player, event.getAmount());
         event.setAmount(adjusted);
@@ -122,8 +128,35 @@ public final class MatchEvents {
             return;
         }
         MatchManager manager = MatchManager.get();
+        if (manager != null && event.getTarget() instanceof ServerPlayer target
+                && manager.isDowned(target)) {
+            event.setCanceled(true);
+            return;
+        }
         if (manager != null && (manager.shouldCancelInteraction(player)
                 || manager.bomb().shouldCaptureInteraction(player))) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onLivingHurt(LivingHurtEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        MatchManager manager = MatchManager.get();
+        if (manager != null && manager.isDowned(player)) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onLivingKnockBack(LivingKnockBackEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        MatchManager manager = MatchManager.get();
+        if (manager != null && manager.isDowned(player)) {
             event.setCanceled(true);
         }
     }

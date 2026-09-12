@@ -15,8 +15,14 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.ItemStack;
+import com.mojang.math.Transformation;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
+import java.lang.reflect.Method;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -41,7 +47,7 @@ public final class ClassicBombManager {
     private final Random random = new Random();
     private List<MapRegion> activeSites = List.of();
     private ItemEntity droppedC4;
-    private ItemEntity plantedC4;
+    private Entity plantedC4;
     private UUID previewRecipient;
 
     ClassicBombManager(MatchManager match) {
@@ -358,7 +364,7 @@ public final class ClassicBombManager {
         }
         state.finishPlanting(now, site.id(), site.displayName(), match.rulesBombDetonationTicks());
         plantedC4 = createDisplayC4(player.serverLevel());
-        if (state.plantedGlowing()) plantedC4.setGlowingTag(true);
+        if (state.plantedGlowing() && plantedC4 != null) plantedC4.setGlowingTag(true);
         player.playNotifySound(SoundEvents.TNT_PRIMED, SoundSource.BLOCKS, 1.0F, 1.0F);
         match.recordEvent("C4 已安装在 " + site.displayName() + "，"
                 + (match.rulesBombDetonationTicks() / 20) + " 秒后引爆！");
@@ -461,13 +467,36 @@ public final class ClassicBombManager {
         return entity;
     }
 
-    private ItemEntity createDisplayC4(ServerLevel level) {
+    private Entity createDisplayC4(ServerLevel level) {
         Direction face = state.plantFace();
         Vec3 normal = Vec3.atLowerCornerOf(face.getNormal());
+        Display.ItemDisplay entity = new Display.ItemDisplay(EntityType.ITEM_DISPLAY, level);
+        boolean configured = invoke(entity, "setItemStack|m_269362_", createRoundItem("c4"))
+                && invoke(entity, "setItemTransform|m_269028_",
+                net.minecraft.world.item.ItemDisplayContext.FIXED)
+                && invoke(entity, "setBillboardConstraints|m_269423_",
+                Display.BillboardConstraints.FIXED)
+                && invoke(entity, "setTransformation|m_269214_", new Transformation(new Vector3f(),
+                new Quaternionf(), new Vector3f(1.35F, 1.35F, 1.35F), new Quaternionf()));
+        if (!configured) {
+            entity.discard();
+            return createLegacyItemEntity(level, face, normal);
+        }
+        entity.moveTo(state.x() + normal.x * 0.35D,
+                state.y() + normal.y * 0.35D,
+                state.z() + normal.z * 0.35D,
+                faceYaw(face, state.plantYaw()), facePitch(face, state.plantPitch()));
+        entity.setNoGravity(true);
+        entity.setInvulnerable(true);
+        level.addFreshEntity(entity);
+        return entity;
+    }
+
+    private Entity createLegacyItemEntity(ServerLevel level, Direction face, Vec3 normal) {
         ItemEntity entity = new ItemEntity(level,
-                state.x() + normal.x * 0.14D,
-                state.y() + normal.y * 0.14D,
-                state.z() + normal.z * 0.14D, createRoundItem("c4"));
+                state.x() + normal.x * 0.22D,
+                state.y() + normal.y * 0.22D,
+                state.z() + normal.z * 0.22D, createRoundItem("c4"));
         entity.setNoGravity(true);
         entity.setInvulnerable(true);
         entity.setPickUpDelay(Integer.MAX_VALUE);
@@ -476,6 +505,29 @@ public final class ClassicBombManager {
         entity.setXRot(facePitch(face, state.plantPitch()));
         level.addFreshEntity(entity);
         return entity;
+    }
+
+    private static boolean invoke(Object target, String methodName, Object... args) {
+        Class<?>[] types = new Class<?>[args.length];
+        for (int index = 0; index < args.length; index++) {
+            types[index] = args[index].getClass();
+        }
+        for (String candidate : methodName.split("\\|")) {
+            Class<?> type = target.getClass();
+            while (type != null) {
+                try {
+                    Method method = type.getDeclaredMethod(candidate, types);
+                    method.setAccessible(true);
+                    method.invoke(target, args);
+                    return true;
+                } catch (NoSuchMethodException ignored) {
+                    type = type.getSuperclass();
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    return false;
+                }
+            }
+        }
+        return false;
     }
 
     private void discardPlantedC4() {

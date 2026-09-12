@@ -549,9 +549,7 @@ public final class MatchManager {
         }
         scores.resetMatch();
         matchStartTick = server.getTickCount();
-        downedPlayers.clear();
-        readyRespawnRequests.clear();
-        respawnProtectionEnds.clear();
+        releaseAllDowned();
         regionReturnTicks.clear();
         buySpawnAnchors.clear();
         buyAreaNoticeSent.clear();
@@ -639,9 +637,7 @@ public final class MatchManager {
         restoreRules();
         scores.resetMatch();
         matchStartTick = 0L;
-        downedPlayers.clear();
-        readyRespawnRequests.clear();
-        respawnProtectionEnds.clear();
+        releaseAllDowned();
         regionReturnTicks.clear();
         buySpawnAnchors.clear();
         buyAreaNoticeSent.clear();
@@ -950,8 +946,7 @@ public final class MatchManager {
         Team team = teams.getTeam(player);
         if (state == MatchState.PLAYING && isDowned(player)) {
             DownedEntry entry = downedPlayers.get(player.getUUID());
-            player.setGameMode(GameType.SPECTATOR);
-            player.setInvulnerable(true);
+            markDownedBody(player);
             if (entry != null) {
                 player.teleportTo(entry.x(), entry.y(), entry.z());
                 player.setYRot(entry.yaw());
@@ -961,6 +956,7 @@ public final class MatchManager {
             return;
         }
         downedPlayers.remove(player.getUUID());
+        restoreBody(player);
         readyRespawnRequests.remove(player.getUUID());
         respawnProtectionEnds.remove(player.getUUID());
         if (state == MatchState.PLAYING && team.isPlayable() && !teams.isPending(player)
@@ -1244,9 +1240,7 @@ public final class MatchManager {
         }
         scores.resetRound();
         if (bomb != null) bomb.cleanupRound();
-        downedPlayers.clear();
-        readyRespawnRequests.clear();
-        respawnProtectionEnds.clear();
+        releaseAllDowned();
         state = MatchState.WARMUP;
         roundWinner = null;
         phaseEndTick = 0L;
@@ -1501,9 +1495,7 @@ public final class MatchManager {
         terrainRestoreAfterWarmup = afterWarmup;
         state = MatchState.TERRAIN_RESTORING;
         phaseEndTick = 0L;
-        downedPlayers.clear();
-        readyRespawnRequests.clear();
-        respawnProtectionEnds.clear();
+        releaseAllDowned();
         if (!terrainRestoreStarted) {
             frozenPositions.clear();
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -1726,12 +1718,11 @@ public final class MatchManager {
                     || teams.getTeam(player) != entry.team() || !entry.team().isPlayable()) {
                 downedPlayers.remove(entry.playerId());
                 readyRespawnRequests.remove(entry.playerId());
+                if (player != null) restoreBody(player);
                 continue;
             }
             if (!player.isAlive() || player.connection.player != player) continue;
-            player.setGameMode(GameType.SPECTATOR);
-            player.setInvulnerable(true);
-            player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+            markDownedBody(player);
             boolean observationFinished = now >= entry.cameraUnlockTick();
             boolean requested = readyRespawnRequests.remove(entry.playerId());
             if (rulesElimination()) {
@@ -1757,6 +1748,7 @@ public final class MatchManager {
                 continue;
             }
             downedPlayers.remove(entry.playerId());
+            restoreBody(player);
             player.setCamera(player);
             player.setGameMode(GameType.SURVIVAL);
             player.setInvulnerable(false);
@@ -1791,11 +1783,27 @@ public final class MatchManager {
         respawnProtectionEnds.clear();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             clearSpectatorCamera(player);
+            restoreBody(player);
             if (teams.getTeam(player).isPlayable()) {
                 player.setInvulnerable(false);
             }
         }
         if (spectateTargets != null) spectateTargets.clear();
+    }
+
+    private static void markDownedBody(ServerPlayer player) {
+        player.setGameMode(GameType.SPECTATOR);
+        player.setInvulnerable(true);
+        player.setInvisible(true);
+        player.setSilent(true);
+        player.noPhysics = true;
+        player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+    }
+
+    private static void restoreBody(ServerPlayer player) {
+        player.setInvisible(false);
+        player.setSilent(false);
+        player.noPhysics = false;
     }
 
     private void enforceArenaRules() {

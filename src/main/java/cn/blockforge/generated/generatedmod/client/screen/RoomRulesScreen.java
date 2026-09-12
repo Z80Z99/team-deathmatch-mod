@@ -273,8 +273,8 @@ public final class RoomRulesScreen extends UiScreen {
             rowSections[row] = null;
         }
         int[] order = mode == GameMode.SEARCH_DESTROY
-                ? new int[]{0, 1, 2, 12, 13, 14, 4, 5, 8, 9, 10, 11, 6}
-                : new int[]{0, 1, 3, 4, 8, 9, 10, 2, 5, 11, 6, 12, 13, 14};
+                ? new int[]{0, 1, 2, 12, 13, 14, 4, 5, 8, 9, 10, 11, 6, 15}
+                : new int[]{0, 1, 3, 4, 8, 9, 10, 2, 5, 11, 6, 12, 13, 14, 15};
         String currentSection = "";
         for (int row : order) {
             if (!rowVisible(mode, row)) {
@@ -320,6 +320,7 @@ public final class RoomRulesScreen extends UiScreen {
         if (row == 2 && (draft == null || draft.mode() == GameMode.SEARCH_DESTROY)) return "比赛";
         if (row == 5 && (draft == null || draft.mode() != GameMode.TEAM_DEATHMATCH)) return "比赛";
         if (row == 3 || row == 4) return "玩家";
+        if (row == 15) return "视角";
         if (row == 12 || row == 13 || row == 14) {
             return draft == null || draft.mode() == GameMode.SEARCH_DESTROY
                     ? "爆破模式" : "目前不可用设置";

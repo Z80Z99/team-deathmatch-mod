@@ -5,10 +5,12 @@ import cn.blockforge.generated.generatedmod.item.ModItems;
 import cn.blockforge.generated.generatedmod.match.MatchManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.event.entity.item.ItemTossEvent;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -28,23 +30,24 @@ public final class BombEvents {
 
     @SubscribeEvent
     public static void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
-        capture(event);
+        interact(event);
     }
 
     @SubscribeEvent
     public static void onLeftClickEmpty(PlayerInteractEvent.LeftClickEmpty event) {
-        capture(event);
+        interact(event);
     }
 
     private static void interact(PlayerInteractEvent event) {
-        if (event.getLevel().isClientSide() || event.getHand() != InteractionHand.MAIN_HAND
+        if (event.getLevel().isClientSide()
                 || !(event.getEntity() instanceof ServerPlayer player)) return;
         MatchManager manager = MatchManager.get();
         if (manager == null) return;
-        if (event.getItemStack().is(ModItems.C4.get())) {
+        ItemStack stack = event.getItemStack();
+        if (stack.is(ModItems.C4.get())) {
             manager.bomb().requestPlant(player);
             event.setCanceled(true);
-        } else if (event.getItemStack().is(ModItems.JAMMER_TABLET.get())) {
+        } else if (stack.is(ModItems.JAMMER_TABLET.get())) {
             manager.bomb().requestDefuse(player);
             event.setCanceled(true);
         }
@@ -64,6 +67,18 @@ public final class BombEvents {
         if (!(event.getEntity() instanceof ServerPlayer player) || event.getAmount() <= 0) return;
         MatchManager manager = MatchManager.get();
         if (manager != null) manager.bomb().interruptIfOperator(player);
+    }
+
+    @SubscribeEvent
+    public static void onBlockBreak(BlockEvent.BreakEvent event) {
+        if (!(event.getPlayer() instanceof ServerPlayer player)) return;
+        if (isBombTool(player.getMainHandItem()) || isBombTool(player.getOffhandItem())) {
+            event.setCanceled(true);
+        }
+    }
+
+    private static boolean isBombTool(ItemStack stack) {
+        return stack.is(ModItems.C4.get()) || stack.is(ModItems.JAMMER_TABLET.get());
     }
 
     @SubscribeEvent
