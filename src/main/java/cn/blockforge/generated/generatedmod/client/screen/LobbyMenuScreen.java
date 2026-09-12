@@ -12,7 +12,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/** 大厅入口：只负责房间和匹配，地图、HUD 与仓库统一放在外层菜单。 */
+/** 大厅入口：房间、匹配和创作工具，以及当前连接状态。 */
 public final class LobbyMenuScreen extends UiScreen {
     private static final int ENTRY_HEIGHT = 34;
 
