@@ -52,6 +52,7 @@ public final class MapRegionPacket {
 
     public MapRegion region() { return region; }
     public MapRegionAction action() { return action; }
+    public int requestId() { return requestId; }
 
     public static void writeRegion(FriendlyByteBuf buffer, MapRegion region) {
         buffer.writeUtf(region.id(), MAX_TEXT);

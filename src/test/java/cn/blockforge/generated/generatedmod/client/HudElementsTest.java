@@ -48,10 +48,16 @@ class HudElementsTest {
 
     @Test void sceneSourcesAndRespawnProgressAreConsistent() {
         assertTrue(HudStats.sourcesFor(HudContext.TEAM_DEATHMATCH).stream().noneMatch(s -> s.group() == HudStats.Group.ROOM || s.group() == HudStats.Group.MATCHING));
+        assertTrue(HudStats.sourcesFor(HudContext.TEAM_DEATHMATCH).stream()
+                .noneMatch(s -> s.id().equals("bomb_countdown")));
+        assertTrue(HudStats.sourcesFor(HudContext.SEARCH_DESTROY).stream()
+                .anyMatch(s -> s.id().equals("bomb_countdown")));
         assertTrue(HudStats.sourcesFor(HudContext.ROOM).stream().noneMatch(s -> s.group() == HudStats.Group.SCORE));
         ClientMatchData.state = cn.blockforge.generated.generatedmod.match.MatchState.PLAYING;
         ClientMatchData.respawnTotalTicks = 200;
         ClientMatchData.respawnRemainingTicks = 80;
+        ClientMatchData.phaseTotalTicks = 600 * 20;
+        ClientMatchData.matchTotalTicks = 600 * 20;
         ClientMatchData.boundaryTicks = 160;
         assertEquals(.4, HudStats.byId("respawn_left").ratio(false), .0001);
         assertEquals("00:08", HudStats.byId("boundary_remaining").display(false));
@@ -66,16 +72,19 @@ class HudElementsTest {
         ClientMatchData.respawnTotalTicks = 200;
         ClientMatchData.respawnRemainingTicks = 80;
         ClientMatchData.phaseRemainingTicks = 45 * 20;
+        ClientMatchData.phaseTotalTicks = 600 * 20;
+        ClientMatchData.matchTotalTicks = 600 * 20;
         ClientMatchData.boundaryTicks = 160;
         ClientBombData.active = true;
         ClientBombData.phase = cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.PLANTED;
-        ClientBombData.bombSiteName = "A";
-        ClientBombData.detonationRemainingTicks = 200;
-        try {
-            assertEquals(800, HudStats.byId("bomb_countdown").maximum(false));
-            assertEquals(.25, HudStats.byId("bomb_countdown").ratio(false), .0001);
-            assertEquals(4500, HudStats.byId("phase_remaining").maximum(false));
-            assertEquals(.2, HudStats.byId("phase_remaining").ratio(false), .0001);
+            ClientBombData.bombSiteName = "A";
+            ClientBombData.detonationRemainingTicks = 200;
+            ClientBombData.detonationTotalTicks = 800;
+            try {
+                assertEquals(800, HudStats.byId("bomb_countdown").maximum(false));
+                assertEquals(.25, HudStats.byId("bomb_countdown").ratio(false), .0001);
+            assertEquals(12000, HudStats.byId("phase_remaining").maximum(false));
+            assertEquals(.075, HudStats.byId("phase_remaining").ratio(false), .0001);
             assertEquals(200, HudStats.byId("boundary_remaining").maximum(false));
             assertEquals(.8, HudStats.byId("boundary_remaining").ratio(false), .0001);
             assertTrue(MatchHudOverlay.hintText().contains("10.0"), MatchHudOverlay.hintText());
@@ -162,6 +171,24 @@ class HudElementsTest {
             ClientHudEventData.clear();
             ClientMatchData.matchBalance = previousMoney;
             ClientMatchData.myMatchKills = 0;
+        }
+    }
+
+    @Test void externalEventsRegisterSourcesAndConditions() {
+        HudApi.registerEvent("test:objective", "目标推进", "进入目标区域", 80, 70);
+        try {
+            assertTrue(ClientHudEventData.descriptors().stream()
+                    .anyMatch(descriptor -> descriptor.id().equals("test:objective")));
+            assertTrue(HudStats.sourcesFor(HudContext.TEAM_DEATHMATCH).stream()
+                    .anyMatch(source -> source.id().equals("event:test:objective:title")));
+            ClientHudEventData.apply(new cn.blockforge.generated.generatedmod.network.packet
+                    .HudEventPacket("test:objective", "目标推进", "进入目标区域", 80, 70));
+            assertTrue(HudParameters.visible("event:test:objective", false));
+            assertEquals("目标推进",
+                    HudStats.byId("event:test:objective:title").display(false));
+        } finally {
+            ClientHudEventData.unregister("test:objective");
+            ClientHudEventData.clear();
         }
     }
 

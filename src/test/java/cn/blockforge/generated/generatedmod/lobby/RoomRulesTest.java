@@ -34,7 +34,7 @@ class RoomRulesTest {
         assertEquals(4, bomb.bombPlantSeconds());
         assertEquals(40, bomb.bombDetonationSeconds());
         assertEquals(5, bomb.bombDefuseSeconds());
-        assertFalse(bomb.bombDefuseResume());
+        assertTrue(bomb.bombDefuseResume());
         assertTrue(bomb.restoreTerrainAfterRound());
         RoomRules noRoundRestore = new RoomRules(GameMode.SEARCH_DESTROY, 0, 110, 3, 30,
                 0, false, false, 1, 2, 5, 15, false, true, true, false,

@@ -88,6 +88,10 @@ public final class MapToolHud {
     private static void drawPanel(GuiGraphics graphics, Font font, List<String> lines,
                                   int x, int y, int width, int accent) {
         int height = lines.size() * LINE_HEIGHT + 10;
+        int screenWidth = Minecraft.getInstance().getWindow().getGuiScaledWidth();
+        int screenHeight = Minecraft.getInstance().getWindow().getGuiScaledHeight();
+        x = Math.max(8, Math.min(x, Math.max(8, screenWidth - width - 8)));
+        y = Math.max(8, Math.min(y, Math.max(8, screenHeight - height - 8)));
         graphics.fill(x, y, x + width, y + height, 0xB0101113);
         graphics.fill(x, y, x + 2, y + height, accent);
         graphics.renderOutline(x, y, width, height, UiTheme.BORDER_SUBTLE);

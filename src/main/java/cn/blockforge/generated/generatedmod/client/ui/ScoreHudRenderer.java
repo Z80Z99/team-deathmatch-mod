@@ -13,7 +13,8 @@ public final class ScoreHudRenderer {
 
     public static void draw(GuiGraphics graphics, Font font, HudGeometry.Rect rect,
                             ClientHudLayout.Elements elements, Map<String, String> values, boolean pulse) {
-        if ("3".equals(values.get("team_count")) || "4".equals(values.get("team_count"))) {
+        int teamCount = parseTeamCount(values.get("team_count"));
+        if (teamCount >= 3) {
             drawMultiple(graphics, font, rect, elements, values);
             return;
         }
@@ -42,14 +43,15 @@ public final class ScoreHudRenderer {
     }
     private static void drawMultiple(GuiGraphics graphics, Font font, HudGeometry.Rect rect,
                                      ClientHudLayout.Elements elements, Map<String, String> values) {
-        var teams = cn.blockforge.generated.generatedmod.match.Team.playing(Integer.parseInt(values.get("team_count")));
+        var teams = cn.blockforge.generated.generatedmod.match.Team.playing(
+                parseTeamCount(values.get("team_count")));
         int w = rect.baseWidth(), h = rect.baseHeight(), opacity = elements.scoreOpacityPercent();
         graphics.pose().pushPose();
         graphics.pose().translate(rect.centerX(), rect.top(), 0);
         graphics.pose().scale(rect.scale(), rect.scale(), 1);
         graphics.fill(-w / 2, 0, w / 2, h, UiTheme.withAlpha(UiTheme.PANEL, opacity));
-        int heading = UiTheme.withAlpha(UiTheme.TEXT, opacity);
-        int details = UiTheme.withAlpha(UiTheme.MUTED, opacity);
+        int heading = UiTheme.withAlpha(elements.scoreColor(), opacity);
+        int details = UiTheme.withAlpha(elements.scoreColor(), Math.max(20, opacity / 2));
         graphics.drawString(font, resolve(font, elements.scoreHeaderTemplate(), values, w - 82),
                 -w / 2 + 6, 5, heading, false);
         graphics.drawString(font, resolve(font, elements.scoreTimerTemplate(), values, 64),
@@ -71,5 +73,13 @@ public final class ScoreHudRenderer {
     }
     private static String resolve(Font font, String template, Map<String, String> values, int width) {
         return UiTheme.fit(font, HudStats.resolveTemplate(template, values), width);
+    }
+
+    private static int parseTeamCount(String value) {
+        try {
+            return Math.max(2, Math.min(4, Integer.parseInt(value)));
+        } catch (RuntimeException error) {
+            return 2;
+        }
     }
 }

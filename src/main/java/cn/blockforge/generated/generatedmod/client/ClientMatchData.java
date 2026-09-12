@@ -27,12 +27,14 @@ public final class ClientMatchData {
     public static int roundNumber;
     public static int targetKills;
     public static int phaseRemainingTicks;
+    public static int phaseTotalTicks;
     public static int respawnRemainingTicks;
     public static int boundaryTicks;
     public static boolean boundaryOutside;
     public static boolean boundaryBoxPresent;
     public static int boundaryMinX, boundaryMinY, boundaryMinZ, boundaryMaxX, boundaryMaxY, boundaryMaxZ;
     public static int respawnTotalTicks;
+    public static int matchTotalTicks;
     public static boolean awaitingRespawn;
     public static String deathLabel = "";
     public static java.util.Set<java.util.UUID> downedPlayerIds = java.util.Set.of();
@@ -123,6 +125,7 @@ public final class ClientMatchData {
         roundNumber = packet.roundNumber();
         targetKills = packet.targetKills();
         phaseRemainingTicks = Math.max(0, packet.phaseRemainingTicks());
+        phaseTotalTicks = Math.max(0, packet.phaseTotalTicks());
         respawnRemainingTicks = Math.max(0, packet.respawnRemainingTicks());
         boundaryTicks = Math.max(0, packet.boundaryTicks());
         boundaryOutside = packet.boundaryOutside();
@@ -130,6 +133,7 @@ public final class ClientMatchData {
         boundaryMinX = packet.boundaryMinX(); boundaryMinY = packet.boundaryMinY(); boundaryMinZ = packet.boundaryMinZ();
         boundaryMaxX = packet.boundaryMaxX(); boundaryMaxY = packet.boundaryMaxY(); boundaryMaxZ = packet.boundaryMaxZ();
         respawnTotalTicks = Math.max(0, packet.respawnTotalTicks());
+        matchTotalTicks = Math.max(0, packet.matchTotalTicks());
         myTeam = packet.myTeam();
         teamASize = packet.teamASize();
         teamBSize = packet.teamBSize();
@@ -223,12 +227,14 @@ public final class ClientMatchData {
         elapsedBaseTicks = 0;
         elapsedSnapshotTick = 0L;
         phaseRemainingTicks = 0;
+        phaseTotalTicks = 0;
         respawnRemainingTicks = 0;
         boundaryTicks = 0;
         boundaryOutside = false;
         boundaryBoxPresent = false;
         boundaryMinX = boundaryMinY = boundaryMinZ = boundaryMaxX = boundaryMaxY = boundaryMaxZ = 0;
         respawnTotalTicks = 0;
+        matchTotalTicks = 0;
         myTeam = Team.SPECTATOR;
         teamASize = 0;
         teamBSize = 0;

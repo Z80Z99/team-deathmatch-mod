@@ -35,24 +35,31 @@ public final class HudStatStore {
     }
 
     public synchronized void set(String id, String label, int value, int maximum) {
-        Entry existing = entries.get(id);
-        String resolvedLabel = label == null || label.isBlank()
-                ? (existing != null ? existing.label() : id) : label;
-        entries.put(id, new Entry(id, resolvedLabel, value, Math.max(0, maximum)));
+        String safeId = safeId(id);
+        Entry existing = entries.get(safeId);
+        if (existing == null && entries.size() >= 1024) {
+            throw new IllegalArgumentException("HUD stat count limit reached");
+        }
+        String safeLabel = cleanLabel(label);
+        String resolvedLabel = safeLabel.isBlank()
+                ? (existing != null ? existing.label() : safeId) : safeLabel;
+        entries.put(safeId, new Entry(safeId, resolvedLabel, value, Math.max(0, maximum)));
     }
 
     /** 仅改显示名；标识不存在时返回 false。 */
     public synchronized boolean rename(String id, String label) {
-        Entry existing = entries.get(id);
-        if (existing == null || label == null || label.isBlank()) {
+        String safeId = safeId(id);
+        Entry existing = entries.get(safeId);
+        String safeLabel = cleanLabel(label);
+        if (existing == null || safeLabel.isBlank()) {
             return false;
         }
-        entries.put(id, new Entry(id, label, existing.value(), existing.maximum()));
+        entries.put(safeId, new Entry(safeId, safeLabel, existing.value(), existing.maximum()));
         return true;
     }
 
     public synchronized boolean remove(String id) {
-        return entries.remove(id) != null;
+        return entries.remove(safeId(id)) != null;
     }
 
     public synchronized List<Entry> snapshot() {
@@ -83,5 +90,18 @@ public final class HudStatStore {
                     + "\u0001" + entry.maximum());
         }
         return new HudStatSyncPacket(lines);
+    }
+
+    private static String safeId(String id) {
+        String value = id == null ? "" : id.trim();
+        if (value.isBlank()) throw new IllegalArgumentException("HUD stat id is required");
+        value = value.replace('\u0001', '_');
+        return value.length() > 96 ? value.substring(0, 96) : value;
+    }
+
+    private static String cleanLabel(String label) {
+        String value = label == null ? "" : label.trim();
+        value = value.replace('\u0001', ' ');
+        return value.length() > 96 ? value.substring(0, 96) : value;
     }
 }

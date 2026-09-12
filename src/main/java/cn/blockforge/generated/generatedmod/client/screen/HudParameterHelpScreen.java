@@ -57,7 +57,7 @@ public final class HudParameterHelpScreen extends UiScreen {
             String key = source.id();
             String meaning = source.name();
             if (!(key + " " + meaning).toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT))) continue;
-            add(meaning, "{" + key + "}    预览：" + source.display(true));
+            add(meaning, "{" + key + "}    预览：" + source.display(true, context));
         }
         if (entries.isEmpty()) add("没有找到", "换一个词试试，例如：击杀、倒计时、伤害、人数。");
         footerButton("返回编辑", 0, 1, 0, this::onClose, "返回 HUD 编辑器，保留未保存改动。", UiButton.Kind.PRIMARY);

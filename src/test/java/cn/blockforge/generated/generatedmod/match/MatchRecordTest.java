@@ -32,6 +32,20 @@ class MatchRecordTest {
         buffer.release();
     }
 
+    @Test void externalEventPacketUsesStableStringIds() {
+        HudEventPacket original = new HudEventPacket("mod:objective", "目标推进",
+                "A 点已被占领", 80, 70);
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        original.encode(buffer);
+        HudEventPacket decoded = new HudEventPacket(buffer);
+        assertEquals("mod:objective", decoded.id());
+        assertEquals("目标推进", decoded.title());
+        assertEquals("A 点已被占领", decoded.detail());
+        assertEquals(80, decoded.durationTicks());
+        assertEquals(70, decoded.priority());
+        buffer.release();
+    }
+
     @Test void bookPaginationHonoursPageLimitAndPointsToFullFile() {
         List<String> lines = java.util.stream.IntStream.range(0, 120)
                 .mapToObj(index -> "第 " + index + " 条比赛记录，用于验证书面书分页不会无限增长。")

@@ -19,20 +19,29 @@ public final class HudConditions {
     }
     public static boolean visible(ClientHudLayout.CustomElement element,
                                   List<ClientHudLayout.CustomElement> elements, boolean editor) {
-        return Boolean.TRUE.equals(evaluate(element, elements, editor, new HashSet<>()));
+        return visible(element, elements, editor, HudContext.GLOBAL);
+    }
+
+    public static boolean visible(ClientHudLayout.CustomElement element,
+                                  List<ClientHudLayout.CustomElement> elements, boolean editor,
+                                  HudContext context) {
+        return Boolean.TRUE.equals(evaluate(element, elements, editor, context, new HashSet<>()));
     }
     private static Boolean evaluate(ClientHudLayout.CustomElement element,
-                                   List<ClientHudLayout.CustomElement> elements, boolean editor, Set<String> path) {
-        if (editor) return element.visible();
+                                   List<ClientHudLayout.CustomElement> elements, boolean editor,
+                                   HudContext context, Set<String> path) {
         if (!path.add(element.id())) return null;
         if (!element.visible()) return false;
         String condition = element.placement().condition();
-        if (!condition.startsWith("hidden:")) return HudParameters.visible(condition, false);
+        if (!condition.startsWith("hidden:")) {
+            return HudParameters.visible(condition, false, context);
+        }
+        if (editor) return true;
         String targetId = condition.substring(7);
         if (path.contains(targetId)) return null;
         var target = elements.stream().filter(e -> e.id().equals(targetId)).findFirst();
         if (target.isEmpty()) return true;
-        Boolean showing = evaluate(target.get(), elements, false, path);
+        Boolean showing = evaluate(target.get(), elements, false, context, path);
         if (showing == null) return null;
         return !showing && HudAnimation.disappeared(targetId);
     }

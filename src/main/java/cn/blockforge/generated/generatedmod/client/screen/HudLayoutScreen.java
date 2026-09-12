@@ -164,12 +164,14 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     private int marqueeTicks;
 
     private UiEditBox activeEditor;
+    private UiEditBox conditionEditor;
     private UiButton colorToggle;
     private UiButton closeButton;
 
     private final List<Row> rows = new ArrayList<>();
     private final List<AbstractWidget> widgets = new ArrayList<>();
     private final List<UiButton> footerButtons = new ArrayList<>();
+    private final List<UiEditBox> editors = new ArrayList<>();
 
     public HudLayoutScreen(Screen parent) {
         super(Component.literal("HUD 配置窗"));
@@ -197,8 +199,10 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         rows.clear();
         widgets.clear();
         footerButtons.clear();
+        editors.clear();
         nextLayoutLine = 0;
         activeEditor = null;
+        conditionEditor = null;
         colorToggle = null;
         closeButton = null;
         int defaultWidth = Math.max(DOCK_MIN_WIDTH, Math.min(DOCK_MAX_WIDTH, width * 2 / 5));
@@ -235,7 +239,6 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         }
         if (globalTab && !propertyTab) addGlobalControls();
         if (propertyTab) addPropertyControls(); else addComponentList();
-        rows.removeIf(row -> row.kind() == RowKind.NOTE && !row.text().startsWith("示例由"));
         addFooter();
         clampScroll();
         layoutRows();
@@ -453,6 +456,24 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                         "仅在事件 " + event.id() + " 有效时显示；可改位置、文字、颜色、动画和条件。")));
                 register(eventButton, CONTROL);
             }
+            for (var descriptor :
+                    cn.blockforge.generated.generatedmod.client.ClientHudEventData.descriptors()) {
+                if (activeContext != HudContext.GLOBAL
+                        && !descriptor.contexts().contains(activeContext)) continue;
+                UiButton eventButton = new UiButton(0, 0, 10, CONTROL,
+                        Component.literal("+ " + descriptor.title()), ignored -> {
+                    editDiscrete(() -> cn.blockforge.generated.generatedmod.client.HudAssemblies
+                            .addEventComponent(draft, activeContext, descriptor.id(),
+                                    descriptor.title()));
+                    selected = defaultSelection();
+                    rebuildWidgets();
+                    setStatus("已添加事件组件“" + descriptor.title() + "”，可单独编辑和删除。",
+                            UiTheme.SUCCESS);
+                }, UiButton.Kind.SECONDARY);
+                eventButton.setTooltip(Tooltip.create(Component.literal(
+                        "仅在事件 " + descriptor.id() + " 有效时显示；可改位置、文字、颜色、动画和条件。")));
+                register(eventButton, CONTROL);
+            }
         }
     }
 
@@ -644,20 +665,45 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         addSlider("不透明度 %", 0, 100,
                 () -> intOf(id, ClientHudLayout.CustomElement::opacityPercent, 85),
                 value -> replaceById(id, e -> e.opacityPercent = value));
-        List<String> conditions = new ArrayList<>(List.of("", "feed", "notice", "notice_urgent",
-                "event_active", "c4_active", "c4_carried", "c4_dropped", "c4_planting", "c4_planted",
-                "c4_defusing", "c4_exploded", "c4_defused",
-                "team_c", "team_d", "forming", "queued",
-                "death", "respawning", "respawn_waiting", "respawn_ready", "returned",
-                "alive", "playing", "warmup", "warmup_waiting", "warmup_countdown",
-                "buying", "frozen", "round_end", "terrain_restoring", "map_resetting", "match_end",
-                "outside", "spectator",
-                "round_odd", "round_even", "team_leading", "team_trailing", "score_tied",
-                "health_below:50", "armor_below:10", "money_below:1000",
-                "kills_at_least:10", "deaths_at_least:5",
-                "phase_remaining_below:10", "boundary_below:5"));
+        boolean global = activeContext == HudContext.GLOBAL;
+        boolean match = activeContext.isMatch() || global;
+        boolean search = activeContext == HudContext.SEARCH_DESTROY || global;
+        boolean teamDeathmatch = activeContext == HudContext.TEAM_DEATHMATCH || global;
+        boolean matching = activeContext == HudContext.MATCHING || global;
+        List<String> conditions = new ArrayList<>();
+        conditions.add("");
+        if (match) {
+            conditions.addAll(List.of("feed", "notice", "notice_urgent", "event_active",
+                    "team_c", "team_d", "death", "respawning", "respawn_waiting", "respawn_ready",
+                    "returned", "alive", "playing", "warmup", "warmup_waiting", "warmup_countdown",
+                    "frozen", "round_end", "terrain_restoring", "map_resetting", "match_end",
+                    "outside", "spectator", "round_odd", "round_even", "team_leading",
+                    "team_trailing", "score_tied", "health_below:50", "health_above:50",
+                    "armor_below:10", "kills_at_least:10", "deaths_at_least:5",
+                    "phase_remaining_below:10", "boundary_below:5"));
+        }
+        if (search) {
+            conditions.addAll(List.of("buying", "money_below:1000", "money_at_least:1000",
+                    "c4_active", "c4_carried", "c4_dropped", "c4_planting", "c4_planted",
+                    "c4_defusing", "c4_exploded", "c4_defused"));
+        } else if (teamDeathmatch) {
+            conditions.add("health_below:50");
+        }
+        if (matching) {
+            conditions.addAll(List.of("forming", "queued"));
+        }
+        conditions = conditions.stream().distinct().toList();
+        conditions = new ArrayList<>(conditions);
         for (var event : cn.blockforge.generated.generatedmod.match.MatchHudEventType.values()) {
-            conditions.add("event:" + event.id());
+            if (match && (search || !isBombEvent(event))) conditions.add("event:" + event.id());
+        }
+        if (match) {
+            for (var descriptor :
+                    cn.blockforge.generated.generatedmod.client.ClientHudEventData.descriptors()) {
+                if (activeContext != HudContext.GLOBAL
+                        && !descriptor.contexts().contains(activeContext)) continue;
+                conditions.add("event:" + descriptor.id());
+            }
         }
         for (var other : draft.customElements(activeContext)) if (!other.id().equals(id)) conditions.add("hidden:" + other.id());
         conditions.addAll(cn.blockforge.generated.generatedmod.client.HudConditions.ids());
@@ -690,6 +736,20 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                 }, value -> replaceByIdDiscrete(id, e -> e.placement = e.placement.withCondition(value)),
                 "条件不满足时不绘制此元素；选择始终可取消条件。", UiButton.Kind.SECONDARY);
         register(condition, CONTROL);
+        UiEditBox customCondition = new UiEditBox(font, 0, 0, 10, CONTROL,
+                Component.literal("自定义条件"));
+        customCondition.setMaxLength(128);
+        customCondition.setValue(chosen.placement().condition());
+        customCondition.setTooltip(Tooltip.create(Component.literal(
+                "可直接输入 health_below:25、money_at_least:800、event:... 或 API 条件。")));
+        customCondition.setResponder(value -> {
+            ClientHudLayout.CustomElement live = customById(id);
+            if (live != null && !live.placement().condition().equals(value)) {
+                replace(live, e -> e.placement = e.placement.withCondition(value));
+            }
+        });
+        conditionEditor = register(customCondition, CONTROL);
+        editors.add(customCondition);
         rows.add(Row.header("出现 / 消失动画"));
         register(new UiCycleButton<>(0, 0, 10, CONTROL, List.of("none", "fade", "slide", "zoom"),
                 chosen.placement().animation(), value -> switch (value) {
@@ -937,6 +997,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         });
         editor.setTooltip(Tooltip.create(Component.literal(tooltip)));
         register(editor, CONTROL);
+        editors.add(editor);
     }
 
     private void addBuiltInColor(String label, IntSupplier getter, IntConsumer setter) {
@@ -977,6 +1038,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         });
         editor.setTooltip(Tooltip.create(Component.literal("输入：回合 {round}，显示：回合 1。固定文字不追加数值；点 ? 查看参数。")));
         activeEditor = register(editor, CONTROL);
+        editors.add(editor);
     }
 
     private void addImageFileCycle(ClientHudLayout.CustomElement chosen) {
@@ -1997,8 +2059,8 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         if (historyPending && System.currentTimeMillis() - lastHistoryChange >= HISTORY_IDLE_MILLIS) {
             commitHistoryEdit();
         }
-        if (activeEditor != null) {
-            activeEditor.tick();
+        for (UiEditBox editor : editors) {
+            editor.tick();
         }
     }
 
@@ -2064,7 +2126,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         ClientHudLayout.CustomElement chosen = selectedCustom();
         if (globalTab) {
             HudCustomRenderer.render(graphics, font, draft.customElements(HudContext.GLOBAL),
-                    width, height, true, true);
+                    width, height, true, true, "", HudContext.GLOBAL);
             if (chosen != null && chosen.visible()
                     && HudParameters.visible(chosen.placement().condition(), true)) {
                 HudGeometry.Rect rect = HudGeometry.custom(chosen, width, height);
@@ -2074,7 +2136,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             return;
         }
         HudCustomRenderer.render(graphics, font, draft.customElements(activeContext),
-                width, height, true, true);
+                width, height, true, true, "", activeContext);
         if (values.builtInMask() != 0) {
         if (activeContext.isMatch()) {
             HudGeometry.Rect score = HudGeometry.score(values, width, height);
@@ -2390,9 +2452,12 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         if (value == null || value.isBlank()) return "始终";
         if (value.startsWith("hidden:")) return value.substring(7) + " 隐藏后";
         if (value.startsWith("event:")) {
-            var event = cn.blockforge.generated.generatedmod.match.MatchHudEventType
-                    .byId(value.substring("event:".length()));
-            return event == null ? value : "事件 · " + event.displayName();
+            String id = value.substring("event:".length());
+            var event = cn.blockforge.generated.generatedmod.match.MatchHudEventType.byId(id);
+            if (event != null) return "事件 · " + event.displayName();
+            var descriptor = cn.blockforge.generated.generatedmod.client.ClientHudEventData
+                    .descriptor(id);
+            return descriptor == null ? value : "事件 · " + descriptor.title();
         }
         String[] parts = value.split(":", 2);
         if (parts.length != 2) return value;
@@ -2407,6 +2472,15 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             case "phase_remaining_below" -> "阶段剩余低于 " + parts[1] + " 秒";
             case "boundary_below" -> "出界剩余低于 " + parts[1] + " 秒";
             default -> value;
+        };
+    }
+
+    private static boolean isBombEvent(
+            cn.blockforge.generated.generatedmod.match.MatchHudEventType type) {
+        return switch (type) {
+            case BOMB_SITE_REQUIRED, BOMB_PLANTING, BOMB_DEFUSING, BOMB_ACTION_INTERRUPTED,
+                    BUY_PHASE_START, BUY_AREA_ONLY -> true;
+            default -> false;
         };
     }
 

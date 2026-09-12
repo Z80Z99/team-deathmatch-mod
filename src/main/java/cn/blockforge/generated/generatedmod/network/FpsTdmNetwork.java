@@ -34,7 +34,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class FpsTdmNetwork {
-    private static final String PROTOCOL_VERSION = "27";
+    private static final String PROTOCOL_VERSION = "29";
     private static SimpleChannel channel;
     private static int nextId;
 

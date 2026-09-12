@@ -20,8 +20,10 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 客户端 HUD 配置：每名玩家独立保存在本机 config/fpsmod/client-hud.json，
@@ -791,7 +793,7 @@ public final class ClientHudLayout {
                                 Placement placement) {
         public CustomElement {
             id = id == null || id.isBlank() ? "element" : id;
-            type = type == null ? "text" : type;
+            type = type == null ? "text" : type.trim().toLowerCase(java.util.Locale.ROOT);
             text = text == null ? "自定义元素" : text;
             source = source == null ? "" : source;
             scalePercent = Math.max(50, Math.min(300, scalePercent));
@@ -874,6 +876,16 @@ public final class ClientHudLayout {
         }
 
         public String validationError() {
+            if (id.isBlank() || id.length() > 128 || id.chars().anyMatch(Character::isISOControl)) {
+                return "自定义 HUD 模块 ID 无效。";
+            }
+            String normalizedType = type == null ? "" : type.trim().toLowerCase(java.util.Locale.ROOT);
+            boolean builtInType = normalizedType.equals("text") || normalizedType.equals("block")
+                    || normalizedType.equals("progress") || normalizedType.equals("image")
+                    || normalizedType.equals("respawn") || normalizedType.equals("boundary");
+            if (!builtInType && !HudCustomRenderer.externalRenderers().containsKey(normalizedType)) {
+                return "未知的自定义 HUD 模块类型：" + type;
+            }
             if (xPercent < 0 || xPercent > 100 || yPercent < 0 || yPercent > 100) {
                 return "自定义 HUD 位置必须在 0% 到 100% 之间。";
             }
@@ -1048,9 +1060,13 @@ public final class ClientHudLayout {
                 if (error != null) return error;
             }
             for (List<CustomElement> modules : customElements.values()) {
+                Set<String> ids = new HashSet<>();
                 for (CustomElement module : modules) {
                     error = module.validationError();
                     if (error != null) return error;
+                    if (!ids.add(module.id())) {
+                        return "HUD 场景中存在重复模块 ID：" + module.id();
+                    }
                 }
             }
             return null;
@@ -1093,6 +1109,7 @@ public final class ClientHudLayout {
             for (int index = 0; index < list.size(); index++) {
                 if (list.get(index).id().equals(replacement.id())) { list.set(index, replacement); return; }
             }
+            list.add(replacement);
         }
         public Snapshot build() {
             EnumMap<HudContext, Elements> built = new EnumMap<>(HudContext.class);

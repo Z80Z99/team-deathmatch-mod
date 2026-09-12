@@ -98,13 +98,22 @@ public final class HudAssemblies {
     public static void addEventComponent(Draft draft, HudContext context,
                                          cn.blockforge.generated.generatedmod.match.MatchHudEventType type) {
         if (draft == null || context == null || type == null || !context.isMatch()) return;
+        addEventComponent(draft, context, type.id(), type.displayName());
+    }
+
+    public static void addEventComponent(Draft draft, HudContext context,
+                                         String eventId, String displayName) {
+        if (draft == null || context == null || eventId == null || eventId.isBlank()
+                || !context.isMatch()) return;
+        String typeId = eventId;
+        String typeName = displayName == null || displayName.isBlank() ? typeId : displayName;
         long existing = draft.customElements(context).stream()
-                .filter(element -> element.placement().example().equals("事件·" + type.displayName()))
+                .filter(element -> element.placement().example().equals("事件·" + typeName))
                 .count();
         int anchorY = 20 + (int) (existing % 4) * 9;
-        String prefix = "event:" + type.id();
-        Builder b = new Builder(draft, context, "事件·" + type.displayName(), 50, anchorY);
-        b.condition = "event:" + type.id();
+        String prefix = "event:" + typeId;
+        Builder b = new Builder(draft, context, "事件·" + typeName, 50, anchorY);
+        b.condition = "event:" + typeId;
         b.opacity = 88;
         b.block("事件底板", 0, 0, 300, 46, 0xFF11161B);
         b.block("事件强调线", 0, -23, 300, 2, 0xFF78D6A5);

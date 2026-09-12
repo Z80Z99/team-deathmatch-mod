@@ -46,6 +46,11 @@ public final class HeldWeaponHudData {
         return held != null && !held.isEmpty();
     }
 
+    public static boolean hasGun() {
+        ItemStack held = held();
+        return held != null && !held.isEmpty() && gun(held) != null;
+    }
+
     private static ItemStack held() {
         var player = Minecraft.getInstance().player;
         return player == null ? null : player.getMainHandItem();

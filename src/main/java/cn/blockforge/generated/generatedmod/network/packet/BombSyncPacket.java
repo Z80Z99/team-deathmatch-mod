@@ -26,9 +26,21 @@ public record BombSyncPacket(
         int actionProgress,
         int actionRemainingTicks,
         int detonationRemainingTicks,
+        int detonationTotalTicks,
         double x,
         double y,
         double z) {
+
+    /** Compatibility constructor for older callers; unknown total falls back to remaining. */
+    public BombSyncPacket(boolean active, ClassicBombState.Phase phase, Team attackingTeam,
+                          Team defendingTeam, UUID carrierId, String carrierName, UUID operatorId,
+                          String operatorName, String bombSiteId, String bombSiteName,
+                          int actionProgress, int actionRemainingTicks, int detonationRemainingTicks,
+                          double x, double y, double z) {
+        this(active, phase, attackingTeam, defendingTeam, carrierId, carrierName, operatorId,
+                operatorName, bombSiteId, bombSiteName, actionProgress, actionRemainingTicks,
+                detonationRemainingTicks, detonationRemainingTicks, x, y, z);
+    }
 
     public BombSyncPacket(FriendlyByteBuf buffer) {
         this(buffer.readBoolean(),
@@ -38,7 +50,7 @@ public record BombSyncPacket(
                 readUuid(buffer), buffer.readUtf(64),
                 readUuid(buffer), buffer.readUtf(64),
                 buffer.readUtf(96), buffer.readUtf(96),
-                buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(),
+                buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(),
                 buffer.readDouble(), buffer.readDouble(), buffer.readDouble());
     }
 
@@ -56,6 +68,7 @@ public record BombSyncPacket(
         buffer.writeVarInt(actionProgress);
         buffer.writeVarInt(actionRemainingTicks);
         buffer.writeVarInt(detonationRemainingTicks);
+        buffer.writeVarInt(detonationTotalTicks);
         buffer.writeDouble(x);
         buffer.writeDouble(y);
         buffer.writeDouble(z);

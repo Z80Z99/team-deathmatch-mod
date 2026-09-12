@@ -10,6 +10,7 @@ public final class ClientBombData {
     public static String operatorName = "";
     public static String bombSiteName = "";
     public static int detonationRemainingTicks;
+    public static int detonationTotalTicks;
     public static int actionRemainingTicks;
     public static double x, y, z;
     private static int revision;
@@ -23,6 +24,7 @@ public final class ClientBombData {
         operatorName = packet.operatorName();
         bombSiteName = packet.bombSiteName();
         detonationRemainingTicks = packet.detonationRemainingTicks();
+        detonationTotalTicks = packet.detonationTotalTicks();
         actionRemainingTicks = packet.actionRemainingTicks();
         x = packet.x(); y = packet.y(); z = packet.z();
         revision++;
@@ -32,7 +34,7 @@ public final class ClientBombData {
         active = false;
         phase = ClassicBombState.Phase.INACTIVE;
         carrierName = operatorName = bombSiteName = "";
-        detonationRemainingTicks = actionRemainingTicks = 0;
+        detonationRemainingTicks = detonationTotalTicks = actionRemainingTicks = 0;
         revision++;
     }
 

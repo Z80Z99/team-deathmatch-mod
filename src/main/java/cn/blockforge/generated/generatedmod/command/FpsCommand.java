@@ -670,8 +670,13 @@ public final class FpsCommand {
         String id = StringArgumentType.getString(context, "id");
         int value = IntegerArgumentType.getInteger(context, "value");
         int maximum = IntegerArgumentType.getInteger(context, "maximum");
-        cn.blockforge.generated.generatedmod.match.HudStatStore.get()
-                .set(id, null, value, maximum);
+        try {
+            cn.blockforge.generated.generatedmod.match.HudStatStore.get()
+                    .set(id, null, value, maximum);
+        } catch (IllegalArgumentException error) {
+            failure(context, error.getMessage());
+            return 0;
+        }
         cn.blockforge.generated.generatedmod.match.HudStatStore.get()
                 .broadcast(context.getSource().getServer());
         success(context, "自定义统计 " + id + " = " + value

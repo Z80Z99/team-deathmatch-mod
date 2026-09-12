@@ -8,11 +8,13 @@ import cn.blockforge.generated.generatedmod.match.Team;
 import net.minecraft.client.Minecraft;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Collections;
+import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.IntSupplier;
@@ -55,17 +57,45 @@ public final class HudStats {
     /** 一个可调用的统计接口。 */
     public record Source(String id, String name, Group group, Kind kind,
                          DoubleSupplier value, IntSupplier maximum, Supplier<String> text,
-                         BooleanSupplier live, double demo, int demoMaximum, String demoText) {
+                         BooleanSupplier live, double demo, int demoMaximum, String demoText,
+                         Set<HudContext> contexts) {
+
+        /** Compatibility constructor for callers that do not need scene restrictions. */
+        public Source(String id, String name, Group group, Kind kind,
+                      DoubleSupplier value, IntSupplier maximum, Supplier<String> text,
+                      BooleanSupplier live, double demo, int demoMaximum, String demoText) {
+            this(id, name, group, kind, value, maximum, text, live, demo, demoMaximum, demoText,
+                    allContexts());
+        }
+
+        public Source {
+            contexts = contexts == null || contexts.isEmpty()
+                    ? allContexts() : Set.copyOf(contexts);
+        }
+
+        /** Whether this source is meaningful in the given scene. */
+        public boolean availableIn(HudContext context) {
+            return context == null || context == HudContext.GLOBAL || contexts.contains(context);
+        }
+
+        /** Whether the source should be drawn or used in editor/live rendering. */
+        public boolean usable(HudContext context, boolean editor) {
+            return availableIn(context) && (editor || isLive());
+        }
 
         /** 配置窗里是否拿得到真实数据（拿不到时编辑器回退示例值）。 */
         public boolean isLive() {
-            return live.getAsBoolean();
+            try {
+                return live.getAsBoolean();
+            } catch (RuntimeException error) {
+                return false;
+            }
         }
 
         /** 原始数值（时间类返回 tick 数；文本类返回 0）。 */
-        public double number(boolean editor) {
-            if (editor && !isLive()) {
-                return demo;
+        public double number(boolean editor, HudContext context) {
+            if (!usable(context, editor)) {
+                return editor ? demo : 0;
             }
             try {
                 return kind == Kind.TEXT ? 0 : value.getAsDouble();
@@ -75,12 +105,12 @@ public final class HudStats {
         }
 
         /** 进度上限；无上限（普通数值）返回 0。 */
-        public int maximum(boolean editor) {
+        public int maximum(boolean editor, HudContext context) {
             if (kind != Kind.PROGRESS && kind != Kind.TIME) {
                 return 0;
             }
-            if (editor && !isLive()) {
-                return Math.max(kind == Kind.TIME ? 0 : 1, demoMaximum);
+            if (!usable(context, editor)) {
+                return editor ? Math.max(kind == Kind.TIME ? 0 : 1, demoMaximum) : 0;
             }
             try {
                 return Math.max(kind == Kind.TIME ? 0 : 1, maximum.getAsInt());
@@ -90,20 +120,27 @@ public final class HudStats {
         }
 
         /** 0..1 的进度比例；普通数值按“百分数”解释。 */
-        public double ratio(boolean editor) {
+        public double ratio(boolean editor, HudContext context) {
             if (kind == Kind.TEXT) {
                 return 0;
             }
             if (kind == Kind.PROGRESS || kind == Kind.TIME) {
-                return maximum(editor) <= 0 ? 0 : clamp01(number(editor) / maximum(editor));
+                int maximum = maximum(editor, context);
+                return maximum <= 0 ? 0 : clamp01(number(editor, context) / maximum);
             }
-            return clamp01(number(editor) / 100.0);
+            return clamp01(number(editor, context) / 100.0);
         }
 
         /** 已格式化好的展示文本（数字取整、时间 mm:ss、进度显示 x/y）。 */
-        public String display(boolean editor) {
+        public String display(boolean editor, HudContext context) {
+            if (!editor && !isLive()) {
+                return "";
+            }
             switch (kind) {
                 case TEXT: {
+                    if (!availableIn(context)) {
+                        return editor ? demoText : "";
+                    }
                     if (editor && !isLive()) {
                         return demoText;
                     }
@@ -117,14 +154,31 @@ public final class HudStats {
                             ? (editor ? demoText : "") : resolved;
                 }
                 case TIME:
-                    return UiTheme.formatTicks((int) number(editor));
+                    return UiTheme.formatTicks((int) number(editor, context));
                 case DECIMAL:
-                    return String.format(Locale.ROOT, "%.1f", number(editor));
+                    return String.format(Locale.ROOT, "%.1f", number(editor, context));
                 case PROGRESS:
-                    return Long.toString(Math.round(number(editor))) + "/" + maximum(editor);
+                    return Long.toString(Math.round(number(editor, context))) + "/" + maximum(editor, context);
                 default:
-                    return Long.toString(Math.round(number(editor)));
+                    return Long.toString(Math.round(number(editor, context)));
             }
+        }
+
+        /** Compatibility overload for older integrations that have no scene context. */
+        public double number(boolean editor) {
+            return number(editor, HudContext.GLOBAL);
+        }
+
+        public int maximum(boolean editor) {
+            return maximum(editor, HudContext.GLOBAL);
+        }
+
+        public double ratio(boolean editor) {
+            return ratio(editor, HudContext.GLOBAL);
+        }
+
+        public String display(boolean editor) {
+            return display(editor, HudContext.GLOBAL);
         }
 
         /** 编辑器下拉里展示的名字。 */
@@ -158,18 +212,14 @@ public final class HudStats {
         List<Source> all = new ArrayList<>(SOURCES);
         all.addAll(EXTERNAL_SOURCES.values());
         all.addAll(dynamicSources());
+        all.addAll(externalEventSources());
         return all;
     }
 
     public static List<Source> sourcesFor(HudContext context) {
-        if (context == HudContext.GLOBAL) return sourcesWithDynamic();
-        return sourcesWithDynamic().stream().filter(source -> switch (source.group()) {
-            case SYSTEM, DYNAMIC, STATUS -> true;
-            case ROOM -> context == HudContext.ROOM;
-            case MATCHING -> context == HudContext.MATCHING;
-            default -> context.isMatch() && (!source.id().equals("respawn_left")
-                    || context == HudContext.TEAM_DEATHMATCH);
-        }).toList();
+        List<Source> all = sourcesWithDynamic();
+        if (context == null || context == HudContext.GLOBAL) return all;
+        return all.stream().filter(source -> source.availableIn(context)).toList();
     }
 
     public static String primaryCategory(Source source) {
@@ -179,6 +229,10 @@ public final class HudStats {
         if (source.group() == Group.MATCHING) return "匹配";
         if (source.group() == Group.ROOM) return "房间";
         if (source.group() == Group.DYNAMIC) return "自定义";
+        if (source.group() == Group.NOTICE) return "公告";
+        if (source.group() == Group.STATUS) return "玩家状态";
+        if (source.group() == Group.SYSTEM) return "系统";
+        if (source.group() == Group.TEXT) return "比赛信息";
         if (id.contains("bomb") || name.contains("C4")) return "爆破";
         if (id.contains("money") || name.contains("资金") || name.contains("账户")) return "金钱";
         if (name.contains("得分") || name.contains("比分")) return "得分";
@@ -195,6 +249,8 @@ public final class HudStats {
         if (name.contains("模式") || name.contains("阶段") || name.contains("回合")) return "比赛信息";
         if (source.group() == Group.TEAM) return "队伍";
         if (source.group() == Group.SELF) return "个人";
+        if (source.group() == Group.SCORE) return "比赛信息";
+        if (source.group() == Group.PROGRESS) return "进度";
         return "其他";
     }
 
@@ -223,6 +279,10 @@ public final class HudStats {
         if (name.contains("敌方")) return "敌方";
         if (name.contains("双方")) return "双方";
         if (name.contains("我的") || name.contains("自己")) return "自己";
+        if (source.group() == Group.NOTICE) return "公告";
+        if (source.group() == Group.MATCHING) return "队列";
+        if (source.group() == Group.ROOM) return "房间";
+        if (source.group() == Group.SYSTEM) return "全局";
         return name;
     }
 
@@ -230,10 +290,21 @@ public final class HudStats {
     public static synchronized void register(Source source) {
         if (source == null || source.id() == null || source.id().isBlank()
                 || source.id().startsWith("dyn:") || source.value() == null || source.maximum() == null
-                || source.text() == null || source.live() == null) {
+                || source.text() == null || source.live() == null
+                || source.name() == null || source.name().isBlank()
+                || source.group() == null || source.kind() == null) {
             throw new IllegalArgumentException("HUD 数据源参数无效");
         }
         ensureBuilt();
+        if (BY_ID.containsKey(source.id())) {
+            throw new IllegalArgumentException("HUD 数据源 ID 与内置接口冲突：" + source.id());
+        }
+        if (externalEventSources().stream().anyMatch(existing -> existing.id().equals(source.id()))) {
+            throw new IllegalArgumentException("HUD 数据源 ID 与事件接口冲突：" + source.id());
+        }
+        if (!EXTERNAL_SOURCES.containsKey(source.id()) && EXTERNAL_SOURCES.size() >= 512) {
+            throw new IllegalArgumentException("HUD 数据源数量已达上限");
+        }
         EXTERNAL_SOURCES.put(source.id(), source);
     }
 
@@ -262,7 +333,11 @@ public final class HudStats {
             return null;
         }
         Source external = EXTERNAL_SOURCES.get(id);
-        return external == null ? BY_ID.get(id) : external;
+        if (external != null) return external;
+        for (Source source : externalEventSources()) {
+            if (source.id().equals(id)) return source;
+        }
+        return BY_ID.get(id);
     }
 
     /** 自定义通道（/fps hudstat）推来的动态源。 */
@@ -284,6 +359,35 @@ public final class HudStats {
                     () -> Long.toString(Math.round(liveValue.getAsDouble())), live,
                     Math.min(entry.value(), demoMax), demoMax,
                     entry.label() + " 60"));
+        }
+        return list;
+    }
+
+    private static List<Source> externalEventSources() {
+        List<Source> list = new ArrayList<>();
+        for (ClientHudEventData.Descriptor descriptor : ClientHudEventData.descriptors()) {
+            String prefix = "event:" + descriptor.id();
+            list.add(new Source(prefix + ":title", descriptor.title() + " · 标题",
+                    Group.NOTICE, Kind.TEXT, () -> 0, () -> 0,
+                    () -> eventText(descriptor.id(), true),
+                    () -> ClientHudEventData.active(descriptor.id()), 0, 0,
+                    descriptor.title(), descriptor.contexts()));
+            list.add(new Source(prefix + ":detail", descriptor.title() + " · 说明",
+                    Group.NOTICE, Kind.TEXT, () -> 0, () -> 0,
+                    () -> eventText(descriptor.id(), false),
+                    () -> ClientHudEventData.active(descriptor.id()), 0, 0,
+                    descriptor.defaultDetail(), descriptor.contexts()));
+            list.add(new Source(prefix + ":timer", descriptor.title() + " · 剩余时间",
+                    Group.NOTICE, Kind.TEXT, () -> 0, () -> 0,
+                    () -> eventTimer(descriptor.id()),
+                    () -> ClientHudEventData.active(descriptor.id()), 0, 0, "2.0 秒",
+                    descriptor.contexts()));
+            list.add(new Source(prefix + ":progress", descriptor.title() + " · 进度",
+                    Group.NOTICE, Kind.PROGRESS, () -> eventRemaining(descriptor.id()),
+                    () -> eventDuration(descriptor.id()),
+                    () -> "",
+                    () -> ClientHudEventData.active(descriptor.id()), 60, 100,
+                    "", descriptor.contexts()));
         }
         return list;
     }
@@ -374,11 +478,23 @@ public final class HudStats {
                                     boolean title) {
         var event = ClientHudEventData.get(type.id());
         if (event == null) return "";
-        return title ? event.type().displayName() : event.detail();
+        return title ? event.title() : event.detail();
+    }
+
+    private static String eventText(String id, boolean title) {
+        var event = ClientHudEventData.get(id);
+        if (event == null) return "";
+        return title ? event.title() : event.detail();
     }
 
     private static String eventTimer(cn.blockforge.generated.generatedmod.match.MatchHudEventType type) {
         var event = ClientHudEventData.get(type.id());
+        return event == null ? "" : String.format(Locale.ROOT, "%.1f 秒",
+                event.remainingTicks() / 20.0D);
+    }
+
+    private static String eventTimer(String id) {
+        var event = ClientHudEventData.get(id);
         return event == null ? "" : String.format(Locale.ROOT, "%.1f 秒",
                 event.remainingTicks() / 20.0D);
     }
@@ -388,8 +504,18 @@ public final class HudStats {
         return event == null ? 0 : event.remainingTicks();
     }
 
+    private static int eventRemaining(String id) {
+        var event = ClientHudEventData.get(id);
+        return event == null ? 0 : event.remainingTicks();
+    }
+
     private static int eventDuration(cn.blockforge.generated.generatedmod.match.MatchHudEventType type) {
         var event = ClientHudEventData.get(type.id());
+        return event == null ? 1 : Math.max(1, event.totalTicks());
+    }
+
+    private static int eventDuration(String id) {
+        var event = ClientHudEventData.get(id);
         return event == null ? 1 : Math.max(1, event.totalTicks());
     }
 
@@ -410,7 +536,9 @@ public final class HudStats {
             number("match_kills_" + key, team.displayName() + "整场击杀", Group.TEAM, () -> ClientMatchData.stats(team).kills(), HudStats::inMatch, 12);
             number("team_" + key + "_damage", team.displayName() + "造成伤害", Group.TEAM, () -> ClientMatchData.stats(team).damage(), HudStats::inMatch, 600);
             progress("team_" + key + "_progress", team.displayName() + "击杀进度", Group.PROGRESS,
-                    () -> ClientMatchData.stats(team).score(), () -> Math.max(1, ClientMatchData.targetKills), HudStats::inMatch, 8, 25);
+                    () -> ClientMatchData.stats(team).score(),
+                    () -> Math.max(1, ClientMatchData.targetKills), HudStats::inMatch, 8, 25,
+                    Set.of(HudContext.TEAM_DEATHMATCH));
         }
         number("score_sum", "双方本轮总分", Group.SCORE,
                 () -> allStats().mapToInt(value -> value.score()).sum(), HudStats::inMatch, 21);
@@ -436,10 +564,10 @@ public final class HudStats {
         text("notice_timer", "阶段公告倒计时", Group.NOTICE, MatchHudNotice::timer,
                 HudStats::inMatch, "00:10");
         text("event_id", "HUD 事件 ID", Group.NOTICE,
-                () -> primaryEvent() == null ? "" : primaryEvent().type().id(),
+                () -> primaryEvent() == null ? "" : primaryEvent().id(),
                 HudStats::inMatch, "bomb_planting");
         text("event_title", "HUD 事件标题", Group.NOTICE,
-                () -> primaryEvent() == null ? "" : primaryEvent().type().displayName(),
+                () -> primaryEvent() == null ? "" : primaryEvent().title(),
                 HudStats::inMatch, "正在安装 C4");
         text("event_detail", "HUD 事件说明", Group.NOTICE,
                 () -> primaryEvent() == null ? "" : primaryEvent().detail(),
@@ -466,7 +594,7 @@ public final class HudStats {
                     () -> eventTimer(type), () -> ClientHudEventData.active(type.id()), "2.0 秒");
             progress(prefix + ":progress", type.displayName() + " · 进度", Group.NOTICE,
                     () -> eventRemaining(type), () -> eventDuration(type),
-                    () -> ClientHudEventData.active(type.id()), 60, 100);
+                    () -> ClientHudEventData.active(type.id()), 60, 100, eventContexts(type));
         }
 
         // ---- 我的统计（整场累计，服务器同步）
@@ -480,18 +608,20 @@ public final class HudStats {
                         : ClientMatchData.myMatchKills / (double) ClientMatchData.myMatchDeaths,
                 HudStats::inMatch, 1.8);
         time("respawn_left", "我的恢复倒计时", Group.SELF,
-                () -> ClientMatchData.respawnRemainingTicks, HudStats::inMatch, 5 * 20);
+                () -> ClientMatchData.respawnRemainingTicks,
+                () -> Math.max(1, ClientMatchData.respawnTotalTicks),
+                HudStats::inMatch, 5 * 20, Set.of(HudContext.TEAM_DEATHMATCH));
         text("my_match_money", "局内资金（比赛钱包）", Group.SELF,
                 () -> "$" + ClientMatchData.matchBalance, HudStats::inMatch, "$800");
         text("my_global_money", "局外资金（大厅账户）", Group.SELF,
-                () -> "$" + ClientMatchData.globalBalance, () -> true, "$1000");
+                () -> "$" + ClientMatchData.globalBalance, () -> true, "$1000", allContexts());
         text("held_weapon", "手持武器名称", Group.STATUS, HeldWeaponHudData::name,
                 HeldWeaponHudData::hasWeapon, "AK-47");
         text("held_ammo", "手持武器弹药", Group.STATUS, HeldWeaponHudData::ammoText,
-                HeldWeaponHudData::hasWeapon, "30 / 120");
+                HeldWeaponHudData::hasGun, "30 / 120");
         progress("held_durability", "手持武器耐久", Group.STATUS,
                 HeldWeaponHudData::durabilityPercent, () -> 100,
-                HeldWeaponHudData::hasWeapon, 85, 100);
+                HeldWeaponHudData::hasGun, 85, 100);
         text("bomb_phase", "爆破阶段", Group.TEXT, () -> switch (ClientBombData.phase) {
             case CARRIED -> "C4 已携带";
             case DROPPED -> "C4 已掉落";
@@ -501,11 +631,15 @@ public final class HudStats {
             case EXPLODED -> "C4 已引爆";
             case DEFUSED -> "C4 已拆除";
             default -> "";
-        }, () -> ClientBombData.active, "C4 已安装");
+        }, () -> ClientBombData.active, "C4 已安装", Set.of(HudContext.SEARCH_DESTROY));
         text("bomb_site", "爆破地点", Group.TEXT,
-                () -> ClientBombData.bombSiteName, () -> ClientBombData.active, "A 点");
+                () -> ClientBombData.bombSiteName, () -> ClientBombData.active, "A 点",
+                Set.of(HudContext.SEARCH_DESTROY));
         time("bomb_countdown", "C4 倒计时", Group.PROGRESS,
-                () -> ClientBombData.detonationRemainingTicks, () -> ClientBombData.active, 40 * 20);
+                () -> ClientBombData.detonationRemainingTicks,
+                () -> Math.max(1, ClientBombData.detonationTotalTicks),
+                () -> ClientBombData.active, 40 * 20,
+                Set.of(HudContext.SEARCH_DESTROY));
 
         // ---- 队伍统计
         number("match_kills_a", "A队整场击杀", Group.TEAM, () -> ClientMatchData.teamAMatchKills, HudStats::inMatch, 15);
@@ -527,33 +661,42 @@ public final class HudStats {
 
         // ---- 时间类
         time("phase_remaining", "回合倒计时", Group.PROGRESS,
-                () -> ClientMatchData.phaseRemainingTicks, HudStats::inMatch, 225 * 20);
+                () -> ClientMatchData.phaseRemainingTicks,
+                () -> Math.max(1, ClientMatchData.phaseTotalTicks),
+                HudStats::inMatch, 225 * 20, matchContexts());
         time("buy_phase_remaining", "购买阶段倒计时", Group.PROGRESS,
                 () -> ClientMatchData.phaseRemainingTicks,
+                () -> Math.max(1, ClientMatchData.phaseTotalTicks),
                 () -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.BUYING,
-                15 * 20);
+                15 * 20, Set.of(HudContext.SEARCH_DESTROY));
         time("boundary_remaining", "出界倒计时", Group.PROGRESS,
                 () -> ClientMatchData.boundaryTicks, HudStats::inMatch, 10 * 20);
-        time("elapsed", "本局已进行时间", Group.PROGRESS, ClientMatchData::elapsedTicks, HudStats::inMatch, 165 * 20);
+        time("elapsed", "本局已进行时间", Group.PROGRESS, ClientMatchData::elapsedTicks,
+                () -> Math.max(1, ClientMatchData.matchTotalTicks), HudStats::inMatch,
+                165 * 20, Set.of(HudContext.TEAM_DEATHMATCH, HudContext.LAST_STANDING));
 
         // ---- 进度类
         progress("win_progress", "胜利进度（领先方）", Group.PROGRESS,
                 HudStats::leadScore, HudStats::leadTarget, HudStats::inMatch, 6, 10);
         progress("team_a_progress", "A队击杀进度", Group.PROGRESS,
                 () -> ClientMatchData.teamAScore, () -> Math.max(1, ClientMatchData.targetKills),
-                HudStats::inMatch, 12, 25);
+                HudStats::inMatch, 12, 25, Set.of(HudContext.TEAM_DEATHMATCH));
         progress("team_b_progress", "B队击杀进度", Group.PROGRESS,
                 () -> ClientMatchData.teamBScore, () -> Math.max(1, ClientMatchData.targetKills),
-                HudStats::inMatch, 9, 25);
+                HudStats::inMatch, 9, 25, Set.of(HudContext.TEAM_DEATHMATCH));
         progress("total_kill_progress", "房间总击杀进度", Group.PROGRESS,
                 () -> allStats().mapToInt(value -> value.score()).sum(),
-                () -> Math.max(1, ClientMatchData.targetKills), HudStats::inMatch, 21, 25);
+                () -> Math.max(1, ClientMatchData.targetKills), HudStats::inMatch, 21, 25,
+                Set.of(HudContext.TEAM_DEATHMATCH));
         progress("my_wins_progress", "我方胜场进度", Group.PROGRESS,
-                HudStats::myTeamWins, () -> Math.max(1, ClientMatchData.roundsToWin), HudStats::inMatch, 1, 3);
+                HudStats::myTeamWins, () -> Math.max(1, ClientMatchData.roundsToWin), HudStats::inMatch,
+                1, 3, Set.of(HudContext.SEARCH_DESTROY, HudContext.LAST_STANDING));
         for (Team team : Team.playing(4)) {
             String key = team.key().substring(5);
             progress("team_" + key + "_wins_progress", team.displayName() + "胜场进度", Group.PROGRESS,
-                    () -> ClientMatchData.stats(team).wins(), () -> Math.max(1, ClientMatchData.roundsToWin), HudStats::inMatch, 1, 3);
+                    () -> ClientMatchData.stats(team).wins(),
+                    () -> Math.max(1, ClientMatchData.roundsToWin), HudStats::inMatch, 1, 3,
+                    Set.of(HudContext.SEARCH_DESTROY, HudContext.LAST_STANDING));
         }
         progress("health_percent", "我的血量百分比", Group.STATUS,
                 () -> {
@@ -562,7 +705,7 @@ public final class HudStats {
                 }, () -> 100, () -> Minecraft.getInstance().player != null, 76, 100);
         number("my_armor_percent", "我的护甲百分比", Group.STATUS, () -> {
             var player = Minecraft.getInstance().player;
-            return player == null ? 0 : player.getArmorValue();
+            return player == null ? 0 : player.getArmorValue() * 5.0D;
         }, () -> Minecraft.getInstance().player != null, 60);
         progress("my_armor_percent_progress", "我的护甲进度", Group.STATUS, () -> {
             var player = Minecraft.getInstance().player;
@@ -609,7 +752,8 @@ public final class HudStats {
         text("my_team_text", "我的队伍", Group.TEXT,
                 () -> ClientMatchData.myTeam.displayName(), HudStats::inMatch, "A队");
         text("round_text", "回合数（兼容别名）", Group.TEXT, () -> Integer.toString(ClientMatchData.roundNumber), HudStats::inMatch, "1");
-        text("target_text", "目标数（兼容别名）", Group.TEXT, () -> Integer.toString(HudParameters.target()), HudStats::inMatch, "25");
+        text("target_text", "目标数（兼容别名）", Group.TEXT, ClientMatchData::targetText,
+                HudStats::inMatch, "25");
         text("team_sizes_text", "兼容整句：队伍人数汇总", Group.TEXT, ClientMatchData::teamSizesText, HudStats::inMatch,
                 "A队 4人  ·  B队 4人");
         text("kill_feed_text", "最近击杀公告", Group.TEXT, () -> {
@@ -633,7 +777,7 @@ public final class HudStats {
         number("queue_position", "我的序位", Group.MATCHING,
                 () -> Math.max(1, ClientLobbyData.matchmaking().position()), HudStats::inQueue, 2);
         time("queue_wait", "已等待时间", Group.MATCHING, ClientLobbyData::dynamicWaitedTicks,
-                HudStats::inQueue, 18 * 20);
+                () -> 0, HudStats::inQueue, 18 * 20, Set.of(HudContext.MATCHING));
         number("ready_seconds", "开赛倒计时（秒）", Group.MATCHING, ClientLobbyData::dynamicReadySeconds,
                 HudStats::forming, 3);
         progress("queue_progress", "成局人数进度", Group.MATCHING,
@@ -757,31 +901,83 @@ public final class HudStats {
 
     private static void number(String id, String name, Group group, DoubleSupplier value,
                                BooleanSupplier live, double demo) {
-        SOURCES.add(new Source(id, name, group, Kind.NUMBER, value, () -> 0, () -> "", live, demo, 0, ""));
+        number(id, name, group, value, live, demo, defaultContexts(group));
+    }
+
+    private static void number(String id, String name, Group group, DoubleSupplier value,
+                               BooleanSupplier live, double demo, Set<HudContext> contexts) {
+        SOURCES.add(new Source(id, name, group, Kind.NUMBER, value, () -> 0, () -> "", live,
+                demo, 0, "", contexts));
     }
 
     private static void decimal(String id, String name, Group group, DoubleSupplier value,
                                 BooleanSupplier live, double demo) {
-        SOURCES.add(new Source(id, name, group, Kind.DECIMAL, value, () -> 0, () -> "", live, demo, 0, ""));
+        SOURCES.add(new Source(id, name, group, Kind.DECIMAL, value, () -> 0, () -> "", live,
+                demo, 0, "", defaultContexts(group)));
     }
 
     private static void time(String id, String name, Group group, IntSupplier ticks,
                              BooleanSupplier live, int demoTicks) {
+        time(id, name, group, ticks, () -> Math.max(1, demoTicks), live, demoTicks,
+                defaultContexts(group));
+    }
+
+    private static void time(String id, String name, Group group, IntSupplier ticks,
+                             IntSupplier maximum, BooleanSupplier live, int demoTicks,
+                             Set<HudContext> contexts) {
         SOURCES.add(new Source(id, name, group, Kind.TIME, () -> ticks.getAsInt(),
-                () -> id.equals("respawn_left") ? Math.max(1, ClientMatchData.respawnTotalTicks)
-                        : Math.max(1, demoTicks),
-                () -> "", live, demoTicks, Math.max(1, demoTicks), ""));
+                maximum, () -> "", live, demoTicks, Math.max(1, demoTicks), "", contexts));
     }
 
     private static void text(String id, String name, Group group, Supplier<String> text,
                              BooleanSupplier live, String demoText) {
-        SOURCES.add(new Source(id, name, group, Kind.TEXT, () -> 0, () -> 0, text, live, 0, 0, demoText));
+        text(id, name, group, text, live, demoText, defaultContexts(group));
+    }
+
+    private static void text(String id, String name, Group group, Supplier<String> text,
+                             BooleanSupplier live, String demoText, Set<HudContext> contexts) {
+        SOURCES.add(new Source(id, name, group, Kind.TEXT, () -> 0, () -> 0, text, live,
+                0, 0, demoText, contexts));
     }
 
     private static void progress(String id, String name, Group group, DoubleSupplier value,
                                  IntSupplier maximum, BooleanSupplier live, double demoValue, int demoMax) {
+        progress(id, name, group, value, maximum, live, demoValue, demoMax, defaultContexts(group));
+    }
+
+    private static void progress(String id, String name, Group group, DoubleSupplier value,
+                                 IntSupplier maximum, BooleanSupplier live, double demoValue,
+                                 int demoMax, Set<HudContext> contexts) {
         SOURCES.add(new Source(id, name, group, Kind.PROGRESS, value,
-                () -> Math.max(1, maximum.getAsInt()), () -> "", live, demoValue, demoMax, ""));
+                () -> Math.max(1, maximum.getAsInt()), () -> "", live, demoValue, demoMax, "",
+                contexts));
+    }
+
+    private static Set<HudContext> allContexts() {
+        return EnumSet.allOf(HudContext.class);
+    }
+
+    private static Set<HudContext> matchContexts() {
+        return EnumSet.of(HudContext.TEAM_DEATHMATCH, HudContext.SEARCH_DESTROY,
+                HudContext.LAST_STANDING);
+    }
+
+    private static Set<HudContext> defaultContexts(Group group) {
+        return switch (group) {
+            case MATCHING -> EnumSet.of(HudContext.MATCHING);
+            case ROOM -> EnumSet.of(HudContext.ROOM);
+            case SCORE, PROGRESS, SELF, TEAM, NOTICE, TEXT -> matchContexts();
+            case STATUS, SYSTEM, DYNAMIC -> allContexts();
+        };
+    }
+
+    private static Set<HudContext> eventContexts(
+            cn.blockforge.generated.generatedmod.match.MatchHudEventType type) {
+        return switch (type) {
+            case BOMB_SITE_REQUIRED, BOMB_PLANTING, BOMB_DEFUSING, BOMB_ACTION_INTERRUPTED,
+                    BUY_PHASE_START, BUY_AREA_ONLY -> Set.of(HudContext.SEARCH_DESTROY);
+            default -> matchContexts();
+        };
     }
 
     /**

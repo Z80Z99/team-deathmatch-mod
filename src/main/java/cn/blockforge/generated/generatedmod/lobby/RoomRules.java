@@ -200,7 +200,7 @@ public record RoomRules(GameMode mode,
                 mode == GameMode.SEARCH_DESTROY ? clamp(bombPlantSeconds, 1, 30) : 4,
                 mode == GameMode.SEARCH_DESTROY ? clamp(bombDetonationSeconds, 5, 300) : 40,
                 mode == GameMode.SEARCH_DESTROY ? clamp(bombDefuseSeconds, 1, 60) : 5,
-                false,
+                mode == GameMode.SEARCH_DESTROY && bombDefuseResume,
                 restoreTerrainAfterRound,
                 perspective,
                 allowViewSwitch);
@@ -246,7 +246,7 @@ public record RoomRules(GameMode mode,
                     .append(" · 购买 ").append(buyPhaseSeconds).append("s")
                     .append(" · C4 ").append(bombPlantSeconds).append("/")
                     .append(bombDetonationSeconds).append("/").append(bombDefuseSeconds).append("s")
-                    .append(bombDefuseResume ? " · 可续拆" : "")
+                    .append(bombDefuseResume ? " · 可续拆" : " · 中断重置")
                     .append(teamCount > 2 ? " · 各队独立出生区 · 回合后地形恢复"
                             + (restoreTerrainAfterRound ? "开" : "关") : " · 每 " + switchSideEvery + " 回合换边");
             case LAST_STANDING -> text.append(" · 总时长 ")

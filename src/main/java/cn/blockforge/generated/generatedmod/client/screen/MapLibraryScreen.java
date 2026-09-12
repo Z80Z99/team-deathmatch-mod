@@ -23,6 +23,9 @@ public final class MapLibraryScreen extends UiListScreen<MapLibraryScreen.MapRow
     private int revision = -1;
     private List<MapRow> cached = List.of();
     private String localStatus = "";
+    private String pendingEditId = "";
+    private int pendingEditTicks;
+    private int pendingEditRevision;
 
     public MapLibraryScreen(Screen parent) { super(Component.literal("地图工作台")); this.parent = parent; }
     public static void open(Screen parent) {
@@ -69,7 +72,14 @@ public final class MapLibraryScreen extends UiListScreen<MapLibraryScreen.MapRow
                 "打开地图工具完整教程。", UiButton.Kind.SECONDARY);
         edit = footerButton("编辑地图", 4, 5, 0, () -> {
             MapRow row = selectedEntry();
-            if (row != null) { send(MapEditorAction.EDIT_MAP, row.id()); MapPlannerScreen.open(); }
+            if (row != null && pendingEditId.isBlank()) {
+                send(MapEditorAction.EDIT_MAP, row.id());
+                pendingEditId = row.id();
+                pendingEditTicks = 0;
+                pendingEditRevision = ClientMapEditorData.revision();
+                localStatus = "正在切换编辑目标…";
+                updateButtons();
+            }
         }, null, UiButton.Kind.PRIMARY);
         updateButtons();
     }
@@ -101,7 +111,7 @@ public final class MapLibraryScreen extends UiListScreen<MapLibraryScreen.MapRow
         MapEditorView view = ClientMapEditorData.view();
         MapRow row = selectedEntry();
         boolean manage = row != null && (row.owned() || view.isAdmin()) && !view.locked();
-        edit.active = manage; delete.active = manage; share.active = manage;
+        edit.active = manage && pendingEditId.isBlank(); delete.active = manage; share.active = manage;
         revoke.active = manage && (!row.code().isBlank() || view.isAdmin());
         copy.active = row != null && !row.code().isBlank();
         create.active = !view.locked(); importButton.active = !view.locked() && codeDraft.length() == 6;
@@ -110,6 +120,23 @@ public final class MapLibraryScreen extends UiListScreen<MapLibraryScreen.MapRow
         super.tick(); code.tick();
         if (revision != ClientMapEditorData.revision()) localStatus = "";
         refreshEntries(); updateButtons();
+        if (!pendingEditId.isBlank()) {
+            MapEditorView view = ClientMapEditorData.view();
+            if (pendingEditId.equals(view.mapId()) && !view.error()) {
+                pendingEditId = "";
+                pendingEditTicks = 0;
+                MapPlannerScreen.open();
+                return;
+            }
+            boolean responseChanged = ClientMapEditorData.revision() != pendingEditRevision;
+            if (++pendingEditTicks >= 200 || (responseChanged && view.error())) {
+                pendingEditId = "";
+                pendingEditTicks = 0;
+                localStatus = view.error() && !view.message().isBlank()
+                        ? view.message() : "切换编辑目标超时，请重试。";
+                updateButtons();
+            }
+        }
         if (++ticks % 40 == 0) send(MapEditorAction.POLL, "");
     }
     @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {

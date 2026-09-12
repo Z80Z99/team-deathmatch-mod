@@ -121,6 +121,8 @@ public final class MatchSyncPacket {
     private final int teamAMatchKills;
     private final int teamBMatchKills;
     private final int matchElapsedTicks;
+    private int phaseTotalTicks;
+    private int matchTotalTicks;
 
     public MatchSyncPacket(MatchState state, int teamAScore, int teamBScore, int teamAWins, int teamBWins,
                             int roundNumber, int targetKills, int phaseRemainingTicks, int respawnRemainingTicks,
@@ -192,6 +194,8 @@ public final class MatchSyncPacket {
         teamAMatchKills = buffer.readVarInt();
         teamBMatchKills = buffer.readVarInt();
         matchElapsedTicks = buffer.readVarInt();
+        phaseTotalTicks = buffer.readVarInt();
+        matchTotalTicks = buffer.readVarInt();
         boundaryTicks = buffer.readVarInt();
         respawnTotalTicks = buffer.readVarInt();
         boundaryOutside = buffer.readBoolean();
@@ -253,6 +257,8 @@ public final class MatchSyncPacket {
         buffer.writeVarInt(teamAMatchKills);
         buffer.writeVarInt(teamBMatchKills);
         buffer.writeVarInt(matchElapsedTicks);
+        buffer.writeVarInt(phaseTotalTicks);
+        buffer.writeVarInt(matchTotalTicks);
         buffer.writeVarInt(boundaryTicks);
         buffer.writeVarInt(respawnTotalTicks);
         buffer.writeBoolean(boundaryOutside);
@@ -398,5 +404,19 @@ public final class MatchSyncPacket {
 
     public int matchElapsedTicks() {
         return matchElapsedTicks;
+    }
+
+    public int phaseTotalTicks() {
+        return Math.max(0, phaseTotalTicks);
+    }
+
+    public int matchTotalTicks() {
+        return Math.max(0, matchTotalTicks);
+    }
+
+    public MatchSyncPacket withTimeline(int phaseTotal, int matchTotal) {
+        phaseTotalTicks = Math.max(0, phaseTotal);
+        matchTotalTicks = Math.max(0, matchTotal);
+        return this;
     }
 }

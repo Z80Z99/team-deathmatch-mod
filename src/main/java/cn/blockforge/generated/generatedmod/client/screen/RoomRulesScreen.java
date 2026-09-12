@@ -65,6 +65,7 @@ public final class RoomRulesScreen extends UiScreen {
     private UiEditBox bombPlantSecondsBox;
     private UiEditBox bombDetonationSecondsBox;
     private UiEditBox bombDefuseSecondsBox;
+    private UiCycleButton<Boolean> bombDefuseResumeToggle;
     private UiCycleButton<Boolean> terrainRestoreToggle;
     private UiCycleButton<PlayerPerspective> perspectiveCycle;
     private UiCycleButton<Boolean> allowViewSwitchToggle;
@@ -207,6 +208,8 @@ public final class RoomRulesScreen extends UiScreen {
                 "安装完成后到爆炸的倒计时（5～300）。");
         bombDefuseSecondsBox = integer(13, 1, "C4 拆除/秒", current.bombDefuseSeconds(), 2, editable,
                 "拆弹所需时间（1～60）。");
+        bombDefuseResumeToggle = bool(14, 1, "拆除可续拆", current.bombDefuseResume(),
+                editable && current.mode() == GameMode.SEARCH_DESTROY);
         terrainRestoreToggle = bool(14, 0, "回合后恢复地形", current.restoreTerrainAfterRound(),
                 editable && multiTeamRoom());
         perspectiveCycle = cycle(15, 0, "视角设置", List.of(PlayerPerspective.values()),
@@ -358,6 +361,7 @@ public final class RoomRulesScreen extends UiScreen {
         setRowY(bombPlantSecondsBox, 12);
         setRowY(bombDetonationSecondsBox, 13);
         setRowY(bombDefuseSecondsBox, 13);
+        setRowY(bombDefuseResumeToggle, 14);
         setRowY(terrainRestoreToggle, 14);
         setRowY(perspectiveCycle, 15);
         setRowY(allowViewSwitchToggle, 15);
@@ -391,6 +395,10 @@ public final class RoomRulesScreen extends UiScreen {
         setBombSettingVisibility(bombPlantSecondsBox, mode == GameMode.SEARCH_DESTROY);
         setBombSettingVisibility(bombDetonationSecondsBox, mode == GameMode.SEARCH_DESTROY);
         setBombSettingVisibility(bombDefuseSecondsBox, mode == GameMode.SEARCH_DESTROY);
+        if (bombDefuseResumeToggle != null) {
+            bombDefuseResumeToggle.visible = mode == GameMode.SEARCH_DESTROY;
+            bombDefuseResumeToggle.active = editable() && mode == GameMode.SEARCH_DESTROY;
+        }
         setBombSettingVisibility(terrainRestoreToggle,
                 mode == GameMode.SEARCH_DESTROY && multiTeamRoom());
         durationBox.setMessage(Component.literal(durationLabel(mode)));
@@ -488,7 +496,7 @@ public final class RoomRulesScreen extends UiScreen {
                 parse(bombPlantSecondsBox, draft.bombPlantSeconds()),
                 parse(bombDetonationSecondsBox, draft.bombDetonationSeconds()),
                 parse(bombDefuseSecondsBox, draft.bombDefuseSeconds()),
-                false,
+                bombDefuseResumeToggle.getValue(),
                 terrainRestoreToggle.getValue(),
                 perspectiveCycle.getValue(),
                 allowViewSwitchToggle.getValue());
@@ -759,7 +767,8 @@ public final class RoomRulesScreen extends UiScreen {
             return column == 0 ? "C4 引爆/秒" : "C4 拆除/秒";
         }
         if (row == 14) {
-            return column == 0 && multiTeamRoom() ? "回合后恢复地形" : null;
+            if (column == 0) return multiTeamRoom() ? "回合后恢复地形" : null;
+            return mode == GameMode.SEARCH_DESTROY ? "拆除可续拆" : null;
         }
         if (row == 15) {
             return column == 0 ? "视角设置" : "可切换视角";

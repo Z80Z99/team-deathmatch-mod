@@ -39,8 +39,29 @@ public final class HudApi {
         return HudStats.sourcesWithDynamic();
     }
 
+    public static List<HudStats.Source> sources(HudContext context) {
+        return HudStats.sourcesFor(context);
+    }
+
     public static void registerCondition(String id, BooleanSupplier condition) { HudConditions.register(id, condition); }
     public static boolean unregisterCondition(String id) { return HudConditions.unregister(id); }
+
+    public static void registerEvent(String id, String title, String defaultDetail,
+                                     int durationTicks, int priority) {
+        ClientHudEventData.register(new ClientHudEventData.Descriptor(id, title, defaultDetail,
+                durationTicks, priority));
+    }
+
+    public static void registerEvent(String id, String title, String defaultDetail,
+                                     int durationTicks, int priority,
+                                     java.util.Set<HudContext> contexts) {
+        ClientHudEventData.register(new ClientHudEventData.Descriptor(id, title, defaultDetail,
+                durationTicks, priority, contexts));
+    }
+
+    public static boolean unregisterEvent(String id) {
+        return ClientHudEventData.unregister(id);
+    }
 
     public static void registerSource(HudStats.Source source) {
         HudStats.register(source);
@@ -52,10 +73,24 @@ public final class HudApi {
                 () -> 0, () -> "", live, demo, 0, ""));
     }
 
+    public static void registerNumber(String id, String name, HudStats.Group group,
+                                      DoubleSupplier value, BooleanSupplier live, double demo,
+                                      java.util.Set<HudContext> contexts) {
+        registerSource(new HudStats.Source(id, name, group, HudStats.Kind.NUMBER, value,
+                () -> 0, () -> "", live, demo, 0, "", contexts));
+    }
+
     public static void registerText(String id, String name, HudStats.Group group,
                                     Supplier<String> text, BooleanSupplier live, String demoText) {
         registerSource(new HudStats.Source(id, name, group, HudStats.Kind.TEXT, () -> 0,
                 () -> 0, text, live, 0, 0, demoText));
+    }
+
+    public static void registerText(String id, String name, HudStats.Group group,
+                                    Supplier<String> text, BooleanSupplier live, String demoText,
+                                    java.util.Set<HudContext> contexts) {
+        registerSource(new HudStats.Source(id, name, group, HudStats.Kind.TEXT, () -> 0,
+                () -> 0, text, live, 0, 0, demoText, contexts));
     }
 
     public static void registerProgress(String id, String name, HudStats.Group group,
@@ -63,6 +98,14 @@ public final class HudApi {
                                         BooleanSupplier live, double demoValue, int demoMaximum) {
         registerSource(new HudStats.Source(id, name, group, HudStats.Kind.PROGRESS, value,
                 maximum, () -> "", live, demoValue, demoMaximum, ""));
+    }
+
+    public static void registerProgress(String id, String name, HudStats.Group group,
+                                        DoubleSupplier value, IntSupplier maximum,
+                                        BooleanSupplier live, double demoValue, int demoMaximum,
+                                        java.util.Set<HudContext> contexts) {
+        registerSource(new HudStats.Source(id, name, group, HudStats.Kind.PROGRESS, value,
+                maximum, () -> "", live, demoValue, demoMaximum, "", contexts));
     }
 
     public static boolean unregisterSource(String id) {
@@ -113,12 +156,22 @@ public final class HudApi {
     }
 
     public static void setBuiltInVisible(HudContext context, HudContext.BuiltIn component, boolean visible) {
+        if (context == null || component == null) {
+            throw new IllegalArgumentException("HUD 内置组件参数无效");
+        }
         Snapshot snapshot = ClientHudLayout.snapshot();
         ClientHudLayout.Draft draft = snapshot.draft();
         ClientHudLayout.Mutable mutable = draft.of(context);
+        String exampleName = "示例·" + component.displayName();
+        for (CustomElement element : List.copyOf(draft.customElements(context))) {
+            if (exampleName.equals(element.placement().example())) {
+                draft.removeCustomElement(context, element.id());
+            }
+        }
+        mutable.setBuiltInEnabled(component, visible);
         switch (component) {
             case SCORE -> mutable.scoreVisible = visible;
-            case TEXT -> mutable.textVisible = visible;
+            case NOTICE, TEXT -> mutable.textVisible = visible;
             case FEED -> mutable.feedVisible = visible;
             case BANNER -> mutable.bannerVisible = visible;
         }
@@ -126,6 +179,9 @@ public final class HudApi {
     }
 
     public static void add(HudContext context, CustomElement element) {
+        if (context == null || element == null) {
+            throw new IllegalArgumentException("HUD 模块参数无效");
+        }
         Snapshot snapshot = ClientHudLayout.snapshot();
         ClientHudLayout.Draft draft = snapshot.draft();
         draft.addCustomElement(context, element);
@@ -133,6 +189,7 @@ public final class HudApi {
     }
 
     public static boolean remove(HudContext context, String id) {
+        if (context == null || id == null || id.isBlank()) return false;
         Snapshot snapshot = ClientHudLayout.snapshot();
         ClientHudLayout.Draft draft = snapshot.draft();
         boolean exists = draft.customElements(context).stream().anyMatch(element -> element.id().equals(id));
@@ -141,6 +198,17 @@ public final class HudApi {
             ClientHudLayout.apply(draft.build());
         }
         return exists;
+    }
+
+    /** Replace an existing module by ID, or add it when the ID is new. */
+    public static void update(HudContext context, CustomElement element) {
+        if (context == null || element == null) {
+            throw new IllegalArgumentException("HUD 模块参数无效");
+        }
+        Snapshot snapshot = ClientHudLayout.snapshot();
+        ClientHudLayout.Draft draft = snapshot.draft();
+        draft.replaceCustomElement(context, element);
+        ClientHudLayout.apply(draft.build());
     }
 
     public static String save() {

@@ -91,10 +91,10 @@ public abstract class UiScreen extends Screen implements UiChoiceHost {
         panelLeft = (width - panelWidth) / 2;
         int headerHeight = withHeader ? HEADER_HEIGHT : 10;
         int chrome = headerHeight + (withStatusBand ? STATUS_HEIGHT + 8 : 6) + footerHeight + CONTENT_PADDING + BUTTON_HEIGHT;
-        int available = Math.max(chrome, height - 8);
+        int available = Math.max(1, height - 8);
         int panelHeight = preferredHeight <= 0
                 ? available
-                : clamp(preferredHeight, chrome, available);
+                : clamp(preferredHeight, Math.min(chrome, available), available);
         panelTop = Math.max(4, (height - panelHeight) / 2);
         panelBottom = Math.min(height - 4, panelTop + panelHeight);
         innerLeft = panelLeft + CONTENT_PADDING;

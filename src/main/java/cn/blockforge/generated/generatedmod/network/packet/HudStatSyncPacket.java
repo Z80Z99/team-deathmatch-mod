@@ -24,6 +24,9 @@ public final class HudStatSyncPacket {
 
     public HudStatSyncPacket(FriendlyByteBuf buffer) {
         int count = buffer.readVarInt();
+        if (count < 0 || count > 1024) {
+            throw new IllegalArgumentException("Invalid HUD stat count");
+        }
         List<String> read = new ArrayList<>(Math.max(0, count));
         for (int index = 0; index < count; index++) {
             read.add(buffer.readUtf(256));

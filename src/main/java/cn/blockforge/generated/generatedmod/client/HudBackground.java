@@ -93,7 +93,12 @@ public final class HudBackground {
     }
 
     private static Path resolve(String fileName) {
-        return ClientHudLayout.backgroundDirectory().resolve(fileName);
+        Path directory = ClientHudLayout.backgroundDirectory().toAbsolutePath().normalize();
+        Path resolved = directory.resolve(fileName == null ? "" : fileName).normalize();
+        if (!resolved.startsWith(directory)) {
+            throw new IllegalArgumentException("HUD image path escapes hud_images directory");
+        }
+        return resolved;
     }
 
     private static DynamicTexture textureFor(String fileName) {
@@ -207,6 +212,10 @@ public final class HudBackground {
         if (fileName == null || fileName.isBlank()) {
             return true;
         }
-        return Files.isRegularFile(resolve(fileName));
+        try {
+            return Files.isRegularFile(resolve(fileName));
+        } catch (RuntimeException error) {
+            return false;
+        }
     }
 }

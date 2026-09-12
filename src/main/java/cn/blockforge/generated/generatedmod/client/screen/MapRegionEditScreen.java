@@ -1,5 +1,6 @@
 package cn.blockforge.generated.generatedmod.client.screen;
 
+import cn.blockforge.generated.generatedmod.client.ClientMapEditorData;
 import cn.blockforge.generated.generatedmod.client.ui.UiButton;
 import cn.blockforge.generated.generatedmod.client.ui.UiCycleButton;
 import cn.blockforge.generated.generatedmod.client.ui.UiEditBox;
@@ -22,6 +23,7 @@ public final class MapRegionEditScreen extends UiScreen {
     private UiEditBox name;
     private UiEditBox activationValue;
     private UiEditBox notes;
+    private UiButton saveButton;
     private UiCycleButton<MapRegion.Type> type;
     private UiCycleButton<Boolean> visible;
     private UiCycleButton<Integer> range;
@@ -34,6 +36,11 @@ public final class MapRegionEditScreen extends UiScreen {
     private List<String> helpLines = List.of();
     private int helpY;
     private int builtInInfoY;
+    private boolean waiting;
+    private int pendingRequestId;
+    private int waitTicks;
+    private String status = "";
+    private int statusColor = UiTheme.INFO;
 
     public MapRegionEditScreen(MapRegion region) {
         super(Component.literal("区域编辑"));
@@ -193,7 +200,8 @@ public final class MapRegionEditScreen extends UiScreen {
                 "备注只保存在地图 JSON 中，供地图作者记录设计意图。",
                 "不会在对局 HUD 中显示。"), notesY);
 
-        footerButton("保存", 0, 3, 0, this::save, "保存这个区域的属性。", UiButton.Kind.PRIMARY);
+        saveButton = footerButton("保存", 0, 3, 0, this::save,
+                "保存这个区域的属性。", UiButton.Kind.PRIMARY);
         footerButton("删除", 1, 3, 0, () -> confirmAction("删除自定义区域",
                         "删除后需要重新绘制区域范围，保存的属性不会保留。", this::delete),
                 "删除前需要确认。", UiButton.Kind.DANGER);
@@ -206,17 +214,28 @@ public final class MapRegionEditScreen extends UiScreen {
     }
 
     private void save() {
+        if (waiting) return;
         MapRegion updated = new MapRegion(region.id(), name.getValue(), type.getValue(), region.region(),
                 visible.getValue(), range.getValue(), appearance.getValue(), activation.getValue(),
                 activationValue.getValue(), color.getValue(), outline.getValue(), fill.getValue(),
                 priority.getValue(), notes.getValue());
-        FpsTdmNetwork.sendToServer(new MapRegionPacket(MapRegionAction.SAVE, updated, 0));
-        onClose();
+        MapRegionPacket packet = new MapRegionPacket(MapRegionAction.SAVE, updated, 0);
+        pendingRequestId = packet.requestId();
+        waiting = true;
+        if (saveButton != null) saveButton.active = false;
+        waitTicks = 0;
+        setStatus("正在保存区域属性…", UiTheme.INFO);
+        FpsTdmNetwork.sendToServer(packet);
     }
 
     private void delete() {
         FpsTdmNetwork.sendToServer(new MapRegionPacket(MapRegionAction.DELETE, region, 0));
         onClose();
+    }
+
+    private void setStatus(String message, int color) {
+        status = message == null ? "" : message;
+        statusColor = color;
     }
 
     private void toggleHelp() {
@@ -240,6 +259,7 @@ public final class MapRegionEditScreen extends UiScreen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderShell(graphics, region.displayName());
+        renderStatus(graphics, status, statusColor);
         if (!helpLines.isEmpty()) {
             int y = helpY + 4;
             for (String line : helpLines) {
@@ -258,6 +278,29 @@ public final class MapRegionEditScreen extends UiScreen {
                     innerLeft + 8, y + 36, UiTheme.MUTED, false);
         }
         super.render(graphics, mouseX, mouseY, partialTick);
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (!waiting) return;
+        waitTicks++;
+        var view = ClientMapEditorData.view();
+        if (view.responseRequestId() == pendingRequestId) {
+            waiting = false;
+            if (view.error()) {
+                if (saveButton != null) saveButton.active = true;
+                setStatus(view.message().isBlank() ? "区域保存失败。" : view.message(), UiTheme.ERROR);
+            } else {
+                onClose();
+            }
+            return;
+        }
+        if (waitTicks >= 200) {
+            waiting = false;
+            if (saveButton != null) saveButton.active = true;
+            setStatus("区域保存超时，请检查网络后重试。", UiTheme.ERROR);
+        }
     }
 
     @Override

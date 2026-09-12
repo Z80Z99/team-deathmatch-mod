@@ -3,11 +3,12 @@ package cn.blockforge.generated.generatedmod.client;
 import cn.blockforge.generated.generatedmod.match.MatchState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.CameraType;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraftforge.client.gui.overlay.ForgeGui;
 
 import java.lang.reflect.Method;
-import java.util.Optional;
+import java.util.List;
 
 /** Lightweight death treatment over the live world, without camera or shader mutation. */
 public final class RespawnOverlay {
@@ -101,21 +102,24 @@ public final class RespawnOverlay {
     /** Hide the live local body after Physics Mod has captured it for its ragdoll. */
     public static boolean shouldHideLocalPlayer(net.minecraft.world.entity.player.Player player) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (!net.minecraftforge.fml.ModList.get().isLoaded("physicsmod")) return false;
-        if (minecraft.player == player) return ragdollSpawned && active() && !returning();
+        if (minecraft.player == player) {
+            return net.minecraftforge.fml.ModList.get().isLoaded("physicsmod")
+                    && ragdollSpawned && active() && !returning();
+        }
         return ClientMatchData.inMatch() && ClientMatchData.downedPlayerIds.contains(player.getUUID());
     }
 
     public static void render(ForgeGui gui, GuiGraphics graphics, float partial, int width, int height) {
         Minecraft mc = Minecraft.getInstance();
         if (!active() || mc.screen != null || width < 80 || height < 80) return;
-        var sceneElements = ClientHudLayout.customElements(HudContext.match(ClientMatchData.mode));
-        Optional<ClientHudLayout.CustomElement> configured = sceneElements.stream()
+        HudContext context = HudContext.match(ClientMatchData.mode);
+        var sceneElements = ClientHudLayout.customElements(context);
+        List<ClientHudLayout.CustomElement> configured = sceneElements.stream()
                 .filter(element -> element.type().equals("respawn") && element.visible()
-                        && HudConditions.visible(element, sceneElements, false)).findFirst();
+                        && HudConditions.visible(element, sceneElements, false,
+                        context)).toList();
         if (configured.isEmpty()) return;
-        ClientHudLayout.CustomElement element = configured.get();
-        HudGeometry.Rect rect = HudGeometry.custom(element, width, height);
+        ClientHudLayout.CustomElement element = configured.get(0);
         double time = now();
         float fade = TIMELINE.fade(time);
         if (fade < 0.02F) return;
@@ -135,56 +139,108 @@ public final class RespawnOverlay {
             graphics.fill(x0, 0, x1, height, c);
             graphics.fill(width - x1, 0, width - x0, height, c);
         }
-        int panelWidth = rect.width();
+        for (ClientHudLayout.CustomElement configuredElement : configured) {
+            renderCard(graphics, mc.font, configuredElement, context, width, height,
+                    fade, impact, returning, partial, time);
+        }
+    }
+
+    private static void renderCard(GuiGraphics graphics, Font font,
+                                   ClientHudLayout.CustomElement element, HudContext context,
+                                   int width, int height, float fade, float impact,
+                                   boolean returning, float partial, double time) {
+        double amount = HudAnimation.frame(HudAnimation.key(element.id()), true,
+                element.placement());
+        if (amount <= 0.0D) return;
+        HudGeometry.Rect rect = HudGeometry.custom(element, width, height);
+        float alpha = fade * (float) amount;
+        int opacity = Math.max(0, Math.min(100, element.opacityPercent()));
+        int effectRgb = element.color() & 0xFFFFFF;
+        int accent = returning ? 0xA7DDD1 : effectRgb;
+        int white = color((int) (255 * alpha), 0xF2F4F5);
+        int muted = color((int) (235 * alpha), 0xBBC2C7);
         int left = rect.left();
         int top = rect.top();
-        int white = color((int) (255 * fade), 0xF2F4F5);
-        int muted = color((int) (235 * fade), 0xBBC2C7);
-        int accent = returning ? 0xA7DDD1 : effectRgb;
-        // A local scrim keeps labels readable against bright terrain without framing a card.
+        int panelWidth = rect.width();
+        if (element.shadow()) graphics.fill(left + 2, top - 2, rect.right() + 2, rect.bottom() + 2,
+                color((int) (95 * alpha * opacity / 100F),
+                        element.placement().shadowColor() == 0 ? 0x000000
+                                : element.placement().shadowColor()));
         if (element.background()) graphics.fill(left, top - 4, rect.right(), rect.bottom(),
-                color((int) (155 * fade * opacity / 100F), element.placement().backgroundColor() == 0
-                        ? 0x080B0D : element.placement().backgroundColor()));
+                color((int) (155 * alpha * opacity / 100F),
+                        element.placement().backgroundColor() == 0 ? 0x080B0D
+                                : element.placement().backgroundColor()));
         if (element.border()) graphics.renderOutline(left, top - 4, panelWidth, rect.height(),
-                color((int) (255 * fade), element.placement().borderColor() == 0 ? accent : element.placement().borderColor()));
-        graphics.fill(left, top, left + 24, top + 2, color((int) (255 * fade), accent));
-        String title = HudParameters.render(element.text(), false);
+                color((int) (255 * alpha), element.placement().borderColor() == 0
+                        ? accent : element.placement().borderColor()));
+        graphics.fill(left, top, left + 24, top + 2, color((int) (255 * alpha), accent));
+        String title = HudCustomRenderer.resolveText(element, context, false);
         if (title.isBlank()) title = returning ? "重返战场" : "已阵亡";
-        graphics.drawString(mc.font, mc.font.plainSubstrByWidth(title, panelWidth), left, top + 10, white, false);
-        String detail = mc.font.plainSubstrByWidth(ClientMatchData.deathLabel, panelWidth);
-        if (returning) detail = "";
-        graphics.drawString(mc.font, detail, left, top + 25, muted, false);
+        float textScale = Math.max(0.5F, Math.min(3.0F, element.scalePercent() / 100.0F));
+        drawAligned(graphics, font, title, rect.left() + 4, rect.right() - 4, top + 9,
+                element.placement().alignment(), textScale, white);
+        String detail = returning ? "" : ClientMatchData.deathLabel;
+        drawAligned(graphics, font, detail, rect.left() + 4, rect.right() - 4, top + 24,
+                element.placement().alignment(), textScale, muted);
         int remaining = ClientMatchData.respawnRemainingTicks;
         boolean elimination = !ClientMatchData.mode.respawnRules();
         String status = returning ? "部署完成" : elimination ? "本回合已阵亡 · 等待下一回合"
                 : remaining > 0 ? "重新部署"
                 : "复活已就绪 · 按移动键或跳跃键回归";
-        graphics.drawString(mc.font, mc.font.plainSubstrByWidth(status, panelWidth), left, top + 48, white, false);
+        int statusY = Math.max(top + 40, rect.bottom() - 20);
+        drawAligned(graphics, font, status, rect.left() + 4, rect.right() - 4, statusY,
+                element.placement().alignment(), textScale, white);
         if (!returning && !elimination && remaining > 0) {
             String seconds = Integer.toString(remaining / 20 + (remaining % 20 == 0 ? 0 : 1));
-            float scale = 1.6F;
-            int numberWidth = (int) Math.ceil(mc.font.width(seconds) * scale);
-            graphics.pose().pushPose();
-            graphics.pose().translate(left + panelWidth - numberWidth, top + 43, 0);
-            graphics.pose().scale(scale, scale, 1);
-            graphics.drawString(mc.font, seconds, 0, 0, white, false);
-            graphics.pose().popPose();
+            drawAligned(graphics, font, seconds, rect.left() + 4, rect.right() - 4, statusY - 2,
+                    "right", textScale * 1.45F, white);
         }
+        int barY = Math.max(top + 4, rect.bottom() - 5);
+        int barBottom = Math.min(rect.bottom(), barY + 3);
         if (!elimination) {
-            graphics.fill(left, top + 64, left + panelWidth, top + 67, color((int) (115 * fade), 0xFFFFFF));
-            int total = ClientMatchData.respawnTotalTicks;
-            float progress = total <= 0 ? 1 : Math.max(0, Math.min(1, 1 - (remaining - partial) / total));
-            int filled = returning ? panelWidth : (int) (panelWidth * progress);
-            graphics.fill(left, top + 64, left + filled, top + 67, color((int) (255 * fade), 0xA7DDD1));
+            float fallback = ClientMatchData.respawnTotalTicks <= 0 ? 1.0F
+                    : Math.max(0, Math.min(1, remaining / (float) ClientMatchData.respawnTotalTicks));
+            double ratio = HudCustomRenderer.resolveRatio(element, context, false, fallback);
+            int inner = Math.max(1, panelWidth);
+            int filled = returning ? inner : (int) Math.round(inner * ratio);
+            graphics.fill(left, barY, left + panelWidth, barBottom,
+                    color((int) (115 * alpha), 0xFFFFFF));
+            if ("drain".equals(element.placement().progressDirection())) {
+                graphics.fill(rect.right() - filled, barY, rect.right(), barBottom,
+                        color((int) (255 * alpha), 0xA7DDD1));
+            } else {
+                graphics.fill(left, barY, left + filled, barBottom,
+                        color((int) (255 * alpha), 0xA7DDD1));
+            }
             if (!returning && remaining <= 0) {
-                // Back-and-forth movement signals activity without pretending a spawn is ready.
                 int segment = Math.max(8, panelWidth / 6);
                 int offset = (int) ((panelWidth - segment) * (0.5 - 0.5 * Math.cos(time * 2)));
-                graphics.fill(left, top + 64, left + panelWidth, top + 67, color((int) (200 * fade), 0x343F43));
-                graphics.fill(left + offset, top + 64, left + offset + segment, top + 67,
-                        color((int) (255 * fade), 0xA7DDD1));
+                graphics.fill(left, barY, left + panelWidth, barBottom,
+                        color((int) (200 * alpha), 0x343F43));
+                graphics.fill(left + offset, barY, left + offset + segment, barBottom,
+                        color((int) (255 * alpha), 0xA7DDD1));
             }
         }
+        HudCustomRenderer.glow(graphics, element, rect, (int) (255 * alpha));
+    }
+
+    private static void drawAligned(GuiGraphics graphics, Font font, String text,
+                                    int left, int right, int y, String alignment,
+                                    float scale, int color) {
+        if (text == null || text.isBlank()) return;
+        int maximum = Math.max(1, Math.round((right - left) / Math.max(0.5F, scale)));
+        String fitted = font.plainSubstrByWidth(text, maximum);
+        float width = font.width(fitted) * scale;
+        float x = switch (alignment == null ? "center" : alignment) {
+            case "left" -> left;
+            case "right" -> right - width;
+            default -> (left + right - width) / 2.0F;
+        };
+        graphics.pose().pushPose();
+        graphics.pose().translate(x, y, 0.0F);
+        graphics.pose().scale(scale, scale, 1.0F);
+        graphics.drawString(font, fitted, 0, 0, color, false);
+        graphics.pose().popPose();
     }
 
     private static int color(int alpha, int rgb) { return (Math.max(0, Math.min(255, alpha)) << 24) | rgb; }

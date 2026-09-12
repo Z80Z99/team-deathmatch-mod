@@ -215,7 +215,7 @@ public final class ClassicBombManager {
         if (player == null || !player.getUUID().equals(state.operatorId())) {
             return;
         }
-        state.cancelAction(true);
+        state.cancelAction(match.rulesBombDefuseResume());
         match.recordEvent(player.getGameProfile().getName() + " 的 C4 动作已中断。");
         match.publishHudEvent(player, MatchHudEventType.BOMB_ACTION_INTERRUPTED,
                 "安装或拆除没有完成", 60);
@@ -223,7 +223,7 @@ public final class ClassicBombManager {
 
     public void interruptIfOperator(ServerPlayer player) {
         if (player != null && player.getUUID().equals(state.operatorId())) {
-            state.cancelAction(true);
+            state.cancelAction(match.rulesBombDefuseResume());
             match.recordEvent(player.getGameProfile().getName() + " 的 C4 动作因状态变化中断。");
             match.publishHudEvent(player, MatchHudEventType.BOMB_ACTION_INTERRUPTED,
                     "移动或状态变化导致动作中断", 60);
@@ -237,7 +237,7 @@ public final class ClassicBombManager {
         if (player.getUUID().equals(state.carrierId())) {
             state.dropAt(player.getUUID(), player.getX(), player.getY(), player.getZ(), server.getTickCount());
         } else if (player.getUUID().equals(state.operatorId())) {
-            state.cancelAction(true);
+            state.cancelAction(match.rulesBombDefuseResume());
         }
     }
 
@@ -329,6 +329,7 @@ public final class ClassicBombManager {
                 state.actionProgress(),
                 state.actionRemainingTicks(match.rulesBombPlantTicks(), match.rulesBombDefuseTicks()),
                 state.detonationRemainingTicks(server.getTickCount()),
+                Math.max(1, match.rulesBombDetonationTicks()),
                 state.x(),
                 state.y(),
                 state.z());
@@ -337,7 +338,7 @@ public final class ClassicBombManager {
     private void finishAction(long now) {
         ServerPlayer operator = player(state.operatorId());
         if (operator == null) {
-            state.cancelAction(true);
+            state.cancelAction(match.rulesBombDefuseResume());
             return;
         }
         if (state.phase() == ClassicBombState.Phase.PLANTING) {
@@ -350,7 +351,7 @@ public final class ClassicBombManager {
     private void finishPlanting(ServerPlayer player, long now) {
         MapRegion site = activeSiteAt(state.x(), state.y(), state.z());
         if (site == null || !removeRoundItem(player, "c4")) {
-            state.cancelAction();
+            state.cancelAction(match.rulesBombDefuseResume());
             match.recordEvent(player.getGameProfile().getName()
                     + " 安装 C4 失败：位置或道具状态已变化。");
             return;
@@ -416,7 +417,7 @@ public final class ClassicBombManager {
             }
         }
         if (!valid) {
-            state.cancelAction(true);
+            state.cancelAction(match.rulesBombDefuseResume());
         }
     }
 

@@ -5,7 +5,7 @@ import java.util.Map;
 
 public final class HudAnimation {
     private record Frame(double amount, long time) { }
-    private record ContentFrame(String value, long changedAt) { }
+    private record ContentFrame(String value, long changedAt, double amount) { }
     private record ProgressFrame(double value, long time) { }
     private static final Map<String, Frame> FRAMES = new LinkedHashMap<>();
     private static final Map<String, ContentFrame> CONTENT = new LinkedHashMap<>();
@@ -27,10 +27,11 @@ public final class HudAnimation {
         long now = System.nanoTime();
         Frame old = FRAMES.get(key);
         if (old != null && now - old.time() > 500_000_000L) old = null;
-        double amount = placement.animation().equals("none") ? (visible ? 1 : 0)
-                : advance(old == null ? 0 : old.amount(), visible,
-                old == null ? 0 : (now - old.time()) / 1_000_000D, placement.animationMillis());
-        if (FRAMES.size() > 1024) FRAMES.clear();
+        double amount = placement.animation().equals("none") || old == null
+                ? (visible ? 1 : 0)
+                : advance(old.amount(), visible, (now - old.time()) / 1_000_000D,
+                placement.animationMillis());
+        trim(FRAMES);
         FRAMES.put(key, new Frame(amount, now));
         return amount;
     }
@@ -40,13 +41,20 @@ public final class HudAnimation {
         long now = System.nanoTime();
         ContentFrame old = CONTENT.get(id);
         if (old == null || !old.value().equals(safe)) {
-            CONTENT.put(id, new ContentFrame(safe, now));
-            if (CONTENT.size() > 1024) CONTENT.clear();
-            return placement.contentAnimation().equals("none") ? 1.0D : 0.0D;
+            double carried = old == null ? 0.0D : Math.min(1.0D,
+                    (now - old.changedAt()) / 1_000_000D
+                            / Math.max(1, placement.contentAnimationMillis()));
+            CONTENT.put(id, new ContentFrame(safe, now, carried));
+            trim(CONTENT);
+            return placement.contentAnimation().equals("none") ? 1.0D : carried;
         }
         if (placement.contentAnimation().equals("none")) return 1.0D;
-        return Math.min(1.0D, (now - old.changedAt()) / 1_000_000D
+        double amount = Math.min(1.0D, (now - old.changedAt()) / 1_000_000D
                 / Math.max(1, placement.contentAnimationMillis()));
+        if (amount > old.amount()) {
+            CONTENT.put(id, new ContentFrame(safe, old.changedAt(), amount));
+        }
+        return amount;
     }
 
     public static double progressFrame(String id, double target, ClientHudLayout.Placement placement) {
@@ -61,7 +69,16 @@ public final class HudAnimation {
         double blend = Math.min(1.0D, elapsed / Math.max(1.0D, duration));
         double value = old.value() + (target - old.value()) * blend;
         PROGRESS.put(id, new ProgressFrame(value, now));
-        if (PROGRESS.size() > 1024) PROGRESS.clear();
+        trim(PROGRESS);
         return value;
+    }
+
+    private static void trim(Map<?, ?> map) {
+        while (map.size() > 1024) {
+            var iterator = map.entrySet().iterator();
+            if (!iterator.hasNext()) return;
+            iterator.next();
+            iterator.remove();
+        }
     }
 }

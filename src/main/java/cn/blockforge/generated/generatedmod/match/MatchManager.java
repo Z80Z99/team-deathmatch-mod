@@ -455,6 +455,31 @@ public final class MatchManager {
         return Math.max(0, (int) Math.min(Integer.MAX_VALUE, phaseEndTick - server.getTickCount()));
     }
 
+    /** Total duration of the current phase for HUD progress bars. */
+    public int phaseTotalTicks() {
+        return switch (state) {
+            case WARMUP -> hudTicks(30);
+            case FROZEN -> 100;
+            case BUYING -> hudTicks(rulesBuyPhaseSeconds());
+            case PLAYING -> hudTicks(rulesMatchDurationSeconds());
+            case ROUND_END -> hudTicks(rulesRoundEndDelaySeconds());
+            case MATCH_END -> hudTicks(rulesMatchEndDelaySeconds());
+            case TERRAIN_RESTORING, MAP_RESETTING, WAITING -> 0;
+        };
+    }
+
+    /** Total configured match duration for single-round modes. */
+    private int matchTotalTicks() {
+        if (rulesMode() == GameMode.SEARCH_DESTROY) {
+            return 0;
+        }
+        return hudTicks(rulesMatchDurationSeconds());
+    }
+
+    private static int hudTicks(int seconds) {
+        return (int) Math.min(Integer.MAX_VALUE, Math.max(0L, seconds * 20L));
+    }
+
     public int respawnRemainingTicks(ServerPlayer player) {
         DownedEntry entry = downedPlayers.get(player.getUUID());
         if (entry == null) {
@@ -1183,7 +1208,8 @@ public final class MatchManager {
                 .withDownedPlayers(downedPlayers.keySet())
                 .withEconomy(economy.enabled(), economy.globalBalance(player.getUUID()),
                         economy.matchBalance(player.getUUID()))
-                .withViewSettings(rulesPerspective(), rulesAllowViewSwitch());
+                .withViewSettings(rulesPerspective(), rulesAllowViewSwitch())
+                .withTimeline(phaseTotalTicks(), matchTotalTicks());
         maps.currentMap().ifPresent(map -> packet.withBoundaryBox(map.bounds()));
         FpsTdmNetwork.sendToPlayer(packet, player);
     }

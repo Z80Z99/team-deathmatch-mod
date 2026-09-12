@@ -511,7 +511,8 @@ public final class MapManager {
         if (value == null) {
             return fallback;
         }
-        String cleaned = value.trim().replace('\n', ' ').replace('\r', ' ').replace('\t', ' ');
+        String cleaned = value.trim().replace('\n', ' ').replace('\r', ' ')
+                .replace('\t', ' ').replace('|', ' ');
         if (cleaned.isBlank()) {
             return fallback;
         }

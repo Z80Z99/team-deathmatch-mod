@@ -30,6 +30,7 @@ public final class MapCreateScreen extends UiScreen {
     private boolean waiting;
     private boolean created;
     private int pendingRequestId;
+    private int waitTicks;
     private String status = "";
     private String nameDraft = "";
     private int statusColor = UiTheme.INFO;
@@ -80,7 +81,12 @@ public final class MapCreateScreen extends UiScreen {
             setStatus("请填写地图显示名称。", UiTheme.ERROR);
             return;
         }
+        if (name.indexOf('|') >= 0 || name.chars().anyMatch(Character::isISOControl)) {
+            setStatus("地图名称不能包含“|”或控制字符。", UiTheme.ERROR);
+            return;
+        }
         waiting = true;
+        waitTicks = 0;
         observedRevision = ClientMapEditorData.revision();
         setStatus("正在由服务器创建地图，请稍候……", UiTheme.INFO);
         updateControls();
@@ -96,17 +102,24 @@ public final class MapCreateScreen extends UiScreen {
             nameBox.tick();
         }
         int revision = ClientMapEditorData.revision();
+        if (waiting) waitTicks++;
         if (revision != observedRevision) {
             observedRevision = revision;
             if (waiting) {
                 MapEditorView view = ClientMapEditorData.view();
                 if (view.responseRequestId() == pendingRequestId) {
                     waiting = false;
+                    waitTicks = 0;
                     created = !view.error() && view.hasTarget();
                     setStatus(view.message().isBlank() ? "服务器未返回创建结果。" : view.message(),
                             view.error() ? UiTheme.ERROR : created ? UiTheme.SUCCESS : UiTheme.INFO);
                 }
             }
+        }
+        if (waiting && waitTicks >= 200) {
+            waiting = false;
+            waitTicks = 0;
+            setStatus("地图创建请求超时，请检查网络或稍后重试。", UiTheme.ERROR);
         }
         updateControls();
     }

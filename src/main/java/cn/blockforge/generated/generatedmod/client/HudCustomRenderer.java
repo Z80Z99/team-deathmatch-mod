@@ -26,6 +26,12 @@ public final class HudCustomRenderer {
     public interface ElementRenderer {
         void render(GuiGraphics graphics, Font font, ClientHudLayout.CustomElement element,
                     HudGeometry.Rect rect, boolean editor);
+
+        default void render(GuiGraphics graphics, Font font, ClientHudLayout.CustomElement element,
+                            HudGeometry.Rect rect, boolean editor, HudContext context,
+                            double amount) {
+            render(graphics, font, element, rect, editor);
+        }
     }
 
     private HudCustomRenderer() {
@@ -34,19 +40,27 @@ public final class HudCustomRenderer {
     /** 画一个场景的全部模块；showHidden=true 时给隐藏模块画虚线占位（配置窗用）。 */
     public static void render(GuiGraphics graphics, Font font, List<CustomElement> elements,
                               int screenWidth, int screenHeight, boolean showHidden, boolean editor) {
-        render(graphics, font, elements, screenWidth, screenHeight, showHidden, editor, "");
+        render(graphics, font, elements, screenWidth, screenHeight, showHidden, editor, "",
+                HudContext.GLOBAL);
     }
 
     /** 绘制列表时跳过当前活动模块，留到最后绘制以保证活动窗口在最上层。 */
     public static void render(GuiGraphics graphics, Font font, List<CustomElement> elements,
                               int screenWidth, int screenHeight, boolean showHidden, boolean editor,
                               String skipId) {
+        render(graphics, font, elements, screenWidth, screenHeight, showHidden, editor, skipId,
+                HudContext.GLOBAL);
+    }
+
+    public static void render(GuiGraphics graphics, Font font, List<CustomElement> elements,
+                              int screenWidth, int screenHeight, boolean showHidden, boolean editor,
+                              String skipId, HudContext context) {
         for (CustomElement element : elements) {
             if (skipId != null && !skipId.isBlank() && skipId.equals(element.id())) {
                 continue;
             }
             HudGeometry.Rect rect = HudGeometry.custom(element, screenWidth, screenHeight);
-            boolean visible = HudConditions.visible(element, elements, editor);
+            boolean visible = HudConditions.visible(element, elements, editor, context);
             double amount = editor ? (visible ? 1 : 0) : HudAnimation.frame(
                     HudAnimation.key(element.id()), visible, element.placement());
             if (amount > 0) {
@@ -58,7 +72,7 @@ public final class HudCustomRenderer {
                     graphics.pose().scale(scale, scale, 1);
                     graphics.pose().translate(-rect.centerX(), -rect.centerY(), 0);
                 }
-                drawContent(graphics, font, element, rect, editor, amount);
+                drawContent(graphics, font, element, rect, editor, amount, context);
                 graphics.pose().popPose();
             } else if (showHidden) {
                 drawGhost(graphics, font, element, rect);
@@ -84,15 +98,26 @@ public final class HudCustomRenderer {
 
     public static void draw(GuiGraphics graphics, Font font, CustomElement element,
                             HudGeometry.Rect rect, boolean editor) {
-        if (!HudParameters.visible(element.placement().condition(), editor)) return;
-        drawContent(graphics, font, element, rect, editor, 1);
+        draw(graphics, font, element, rect, editor, HudContext.GLOBAL);
+    }
+
+    public static void draw(GuiGraphics graphics, Font font, CustomElement element,
+                            HudGeometry.Rect rect, boolean editor, HudContext context) {
+        if (!element.visible()
+                || !HudConditions.visible(element, List.of(element), editor, context)) return;
+        drawContent(graphics, font, element, rect, editor, 1, context);
     }
 
     private static void drawContent(GuiGraphics graphics, Font font, CustomElement element,
-                                    HudGeometry.Rect rect, boolean editor, double amount) {
+                                    HudGeometry.Rect rect, boolean editor, double amount,
+                                    HudContext context) {
+        HudStats.Source bound = element.boundSource();
+        if (bound != null && !bound.usable(context, editor)) {
+            return;
+        }
         ElementRenderer external = EXTERNAL_RENDERERS.get(element.type());
         if (external != null) {
-            external.render(graphics, font, element, rect, editor);
+            external.render(graphics, font, element, rect, editor, context, amount);
             return;
         }
         int alpha = (int) Math.round(Math.max(0, Math.min(100, element.opacityPercent())) * amount);
@@ -102,12 +127,20 @@ public final class HudCustomRenderer {
         int color = UiTheme.withAlpha(element.color(), alpha);
         switch (element.type()) {
             case "respawn" -> {
-                if (editor) drawStatusPreview(graphics, font, element, rect, alpha, color,
-                        "已阵亡", "重新部署  4", 0.42);
+                if (editor) {
+                    String previewTitle = resolveText(element, context, true);
+                    drawStatusPreview(graphics, font, element, rect, alpha, color,
+                            previewTitle.isBlank() ? "已阵亡" : previewTitle,
+                            "重新部署  4", resolveRatio(element, context, true, 0.42));
+                }
             }
             case "boundary" -> {
-                if (editor) drawStatusPreview(graphics, font, element, rect, alpha, color,
-                        "返回作战区域", "8", 0.80);
+                if (editor) {
+                    String previewTitle = resolveText(element, context, true);
+                    drawStatusPreview(graphics, font, element, rect, alpha, color,
+                            previewTitle.isBlank() ? "返回作战区域" : previewTitle,
+                            "8", resolveRatio(element, context, true, 0.80));
+                }
             }
             case "block" -> {
                 if (element.shadow()) {
@@ -124,7 +157,8 @@ public final class HudCustomRenderer {
                 }
                 glow(graphics, element, rect, alpha);
             }
-            case "progress" -> drawProgress(graphics, font, element, rect, alpha, color, editor);
+            case "progress" -> drawProgress(graphics, font, element, rect, alpha, color, editor,
+                    context);
             case "image" -> {
                 if (element.shadow()) {
                     graphics.fill(rect.left() + 2, rect.top() + 2, rect.right() + 2, rect.bottom() + 2,
@@ -141,7 +175,7 @@ public final class HudCustomRenderer {
                 }
                 glow(graphics, element, rect, alpha);
             }
-            default -> drawText(graphics, font, element, rect, alpha, color, editor);
+            default -> drawText(graphics, font, element, rect, alpha, color, editor, context);
         }
     }
 
@@ -166,22 +200,24 @@ public final class HudCustomRenderer {
 
     /** 进度条：绑定数据源后按比例填充，标签走模板（%s=百分比/数值）。 */
     private static void drawProgress(GuiGraphics graphics, Font font, CustomElement element,
-                                     HudGeometry.Rect rect, int alpha, int color, boolean editor) {
+                                     HudGeometry.Rect rect, int alpha, int color, boolean editor,
+                                     HudContext context) {
         double ratio = FIXED_DEMO_RATIO;
         String label = element.text();
         HudStats.Source source = element.boundSource();
         if (source != null) {
-            ratio = source.ratio(editor);
+            ratio = source.ratio(editor, context);
             if (element.placement().progressMaximum() > 0) ratio = Math.max(0, Math.min(1,
-                    source.number(editor) / (element.placement().progressMaximum() * (source.kind() == HudStats.Kind.TIME ? 20D : 1D))));
+                    source.number(editor, context) / (element.placement().progressMaximum() * (source.kind() == HudStats.Kind.TIME ? 20D : 1D))));
             int maximum = element.placement().progressMaximum() > 0 ? element.placement().progressMaximum()
-                    * (source.kind() == HudStats.Kind.TIME ? 20 : 1) : source.maximum(editor);
+                    * (source.kind() == HudStats.Kind.TIME ? 20 : 1) : source.maximum(editor, context);
             label = HudStats.applyTemplate(element.text(), Math.round(ratio * 100) + "%",
-                    Long.toString(Math.round(source.number(editor))), Integer.toString(maximum));
+                    Long.toString(Math.round(source.number(editor, context))), Integer.toString(maximum));
         } else if (!element.source().isBlank()) {
             label = element.text() + "（源缺失）";
         }
-        if (!editor) ratio = HudAnimation.progressFrame(element.id(), ratio, element.placement());
+        if (!editor) ratio = HudAnimation.progressFrame(HudAnimation.key(element.id()) + ":progress",
+                ratio, element.placement());
         if (element.shadow()) {
             graphics.fill(rect.left() + 2, rect.top() + 2, rect.right() + 2, rect.bottom() + 2,
                     UiTheme.withAlpha(shadowColor(element), alpha));
@@ -190,7 +226,7 @@ public final class HudCustomRenderer {
             graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
                     UiTheme.withAlpha(backgroundColor(element, UiTheme.PANEL), alpha));
         }
-        label = HudParameters.render(label, editor);
+        label = HudParameters.render(label, context, editor);
         int inset = rect.height() < 6 ? 0 : 2;
         int inner = Math.max(1, rect.width() - inset * 2);
         int filled = ratio <= 0.0 ? 0 : Math.max(1, (int) Math.round(inner * Math.min(1.0, ratio)));
@@ -207,7 +243,8 @@ public final class HudCustomRenderer {
         }
         if (rect.height() >= 12 && !label.isBlank()) {
             String fitted = UiTheme.fit(font, label, inner);
-            double contentAmount = editor ? 1.0D : HudAnimation.contentFrame(element.id() + ":label",
+            double contentAmount = editor ? 1.0D : HudAnimation.contentFrame(
+                    HudAnimation.key(element.id()) + ":label",
                     fitted, element.placement());
             graphics.pose().pushPose();
             applyContentTransition(graphics, element, rect, contentAmount);
@@ -219,19 +256,53 @@ public final class HudCustomRenderer {
         glow(graphics, element, rect, alpha);
     }
 
-    /** 文字模块：绑定数据源时内容 = 模板(统计值)；支持 50%~300% 字号缩放。 */
-    private static void drawText(GuiGraphics graphics, Font font, CustomElement element,
-                                 HudGeometry.Rect rect, int alpha, int color, boolean editor) {
+    /** Resolve a text module for integrations that render their own container. */
+    public static String resolveText(CustomElement element, HudContext context, boolean editor) {
         String content = element.text();
         HudStats.Source source = element.boundSource();
         if (source != null) {
-            content = HudStats.applyTemplate(element.text(), source.display(editor),
-                    Long.toString(Math.round(source.number(editor))), Integer.toString(source.maximum(editor)));
+            if (!source.usable(context, editor)) return "";
+            content = HudStats.applyTemplate(content, source.display(editor, context),
+                    Long.toString(Math.round(source.number(editor, context))),
+                    Integer.toString(source.maximum(editor, context)));
+        } else if (!element.source().isBlank()) {
+            content = content + "（源缺失）";
+        }
+        return HudParameters.render(content, context, editor);
+    }
+
+    /** Resolve the progress ratio for integrations that render their own progress bar. */
+    public static double resolveRatio(CustomElement element, HudContext context,
+                                      boolean editor, double fallback) {
+        HudStats.Source source = element.boundSource();
+        if (source != null) {
+            if (!source.usable(context, editor)) return fallback;
+            if (element.placement().progressMaximum() > 0) {
+                double divisor = element.placement().progressMaximum()
+                        * (source.kind() == HudStats.Kind.TIME ? 20D : 1D);
+                return Math.max(0, Math.min(1, source.number(editor, context) / divisor));
+            }
+            return source.ratio(editor, context);
+        }
+        return fallback;
+    }
+
+    /** 文字模块：绑定数据源时内容 = 模板(统计值)；支持 50%~300% 字号缩放。 */
+    private static void drawText(GuiGraphics graphics, Font font, CustomElement element,
+                                 HudGeometry.Rect rect, int alpha, int color, boolean editor,
+                                 HudContext context) {
+        String content = element.text();
+        HudStats.Source source = element.boundSource();
+        if (source != null) {
+            content = HudStats.applyTemplate(element.text(), source.display(editor, context),
+                    Long.toString(Math.round(source.number(editor, context))),
+                    Integer.toString(source.maximum(editor, context)));
         } else if (!element.source().isBlank()) {
             content = element.text() + "（源缺失）";
         }
-        content = HudParameters.render(content, editor);
-        double contentAmount = editor ? 1.0D : HudAnimation.contentFrame(element.id(), content,
+        content = HudParameters.render(content, context, editor);
+        double contentAmount = editor ? 1.0D : HudAnimation.contentFrame(
+                HudAnimation.key(element.id()), content,
                 element.placement());
         float scale = Math.max(0.5F, Math.min(3.0F, element.scalePercent() / 100.0F)) * rect.scale();
         graphics.pose().pushPose();
@@ -297,7 +368,8 @@ public final class HudCustomRenderer {
             default -> left;
         };
     }
-    private static void glow(GuiGraphics graphics, CustomElement element, HudGeometry.Rect rect, int alpha) {
+    public static void glow(GuiGraphics graphics, CustomElement element, HudGeometry.Rect rect,
+                            int alpha) {
         if (!element.placement().glow()) return;
         int color = element.placement().glowColor() == 0 ? element.color() : element.placement().glowColor();
         graphics.renderOutline(rect.left() - 1, rect.top() - 1, rect.width() + 2, rect.height() + 2,

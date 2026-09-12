@@ -193,25 +193,34 @@ public final class ClientForgeEvents {
         if (minecraft.player == null || minecraft.getConnection() == null) {
             return;
         }
-        int left = Math.max(4, pauseScreen.width - 108);
-        Button lobbyButton = Button.builder(Component.literal("游戏大厅"),
+        boolean compact = pauseScreen.width < 420;
+        int buttonWidth = compact
+                ? Math.max(24, (pauseScreen.width - 34) / 4)
+                : 100;
+        int left = compact ? 8 : Math.max(4, pauseScreen.width - buttonWidth - 8);
+        int top = compact ? Math.max(8, pauseScreen.height - 28) : 8;
+        int gap = compact ? 6 : 24;
+        String[] labels = compact
+                ? new String[]{"大厅", "地图", "HUD", "仓库"}
+                : new String[]{"游戏大厅", "地图工作台", "HUD 配置窗", "武器仓库"};
+        Button lobbyButton = Button.builder(Component.literal(labels[0]),
                         ignored -> LobbyMenuScreen.open(pauseScreen))
-                .bounds(left, 8, 100, 20)
+                .bounds(left, top, buttonWidth, 20)
                 .tooltip(Tooltip.create(Component.literal("选择入口：房间大厅或快速匹配，两者彼此独立。")))
                 .build();
-        Button mapButton = Button.builder(Component.literal("地图工作台"),
+        Button mapButton = Button.builder(Component.literal(labels[1]),
                         ignored -> MapLibraryScreen.open(pauseScreen))
-                .bounds(left, 32, 100, 20)
+                .bounds(left + (buttonWidth + gap), top, buttonWidth, 20)
                 .tooltip(Tooltip.create(Component.literal("独立制图入口：制作、导入并编辑属于自己的地图。")))
                 .build();
-        Button hudButton = Button.builder(Component.literal("HUD 配置窗"),
+        Button hudButton = Button.builder(Component.literal(labels[2]),
                         ignored -> minecraft.setScreen(new HudLayoutScreen(pauseScreen)))
-                .bounds(left, 56, 100, 20)
+                .bounds(left + (buttonWidth + gap) * 2, top, buttonWidth, 20)
                 .tooltip(Tooltip.create(Component.literal("可伸缩实时配置：拖动位置、参考线、背景图。")))
                 .build();
-        Button weaponButton = Button.builder(Component.literal("武器仓库"),
+        Button weaponButton = Button.builder(Component.literal(labels[3]),
                         ignored -> WeaponRepositoryScreen.open(pauseScreen))
-                .bounds(left, 80, 100, 20)
+                .bounds(left + (buttonWidth + gap) * 3, top, buttonWidth, 20)
                 .tooltip(Tooltip.create(Component.literal("武器 MOD 目录与服务器仓库。")))
                 .build();
         event.addListener(lobbyButton);

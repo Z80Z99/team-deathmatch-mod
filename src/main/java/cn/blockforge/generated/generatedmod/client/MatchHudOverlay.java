@@ -47,19 +47,25 @@ public final class MatchHudOverlay {
         renderBoundaryFilters(graphics, width, height);
         HudContext context = HudContext.match(ClientMatchData.mode);
         HudCustomRenderer.render(graphics, forgeGui.getMinecraft().font,
-                ClientHudLayout.customElements(HudContext.GLOBAL), width, height, false, false);
+                ClientHudLayout.customElements(HudContext.GLOBAL), width, height, false, false,
+                "", HudContext.GLOBAL);
         if (elements.builtInEnabled(HudContext.BuiltIn.SCORE) && elements.scoreVisible() && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
                 HudContext.BuiltIn.SCORE, elements, width, height, partialTick)) {
-            renderScore(forgeGui, graphics, width, height, elements);
+            renderScore(forgeGui, graphics, width, height, elements, context);
+        }
+        if (elements.builtInEnabled(HudContext.BuiltIn.NOTICE) && elements.textVisible()
+                && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
+                HudContext.BuiltIn.NOTICE, elements, width, height, partialTick)) {
+            renderNotice(forgeGui, graphics, width, height, elements);
         }
         if (elements.builtInEnabled(HudContext.BuiltIn.FEED) && elements.feedVisible() && ClientMatchData.killFeedActive()
                 && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
                 HudContext.BuiltIn.FEED, elements, width, height, partialTick)) {
-            renderKillFeed(forgeGui, graphics, width, height, elements);
+            renderKillFeed(forgeGui, graphics, width, height, elements, context);
         }
         if (!RespawnOverlay.active() && elements.builtInEnabled(HudContext.BuiltIn.TEXT) && elements.textVisible() && !renderOverride(graphics, forgeGui.getMinecraft().font, context,
                 HudContext.BuiltIn.TEXT, elements, width, height, partialTick)) {
-            renderTeamHint(forgeGui, graphics, width, height, elements);
+            renderTeamHint(forgeGui, graphics, width, height, elements, context);
         }
         renderCustom(graphics, forgeGui.getMinecraft().font, width, height,
                 HudContext.match(ClientMatchData.mode));
@@ -72,7 +78,7 @@ public final class MatchHudOverlay {
         List<ClientHudLayout.CustomElement> elements = ClientHudLayout.customElements(context);
         ClientHudLayout.CustomElement warning = elements.stream()
                 .filter(element -> element.type().equals("boundary") && element.visible()
-                        && HudConditions.visible(element, elements, false))
+                        && HudConditions.visible(element, elements, false, context))
                 .findFirst().orElse(null);
         if (warning == null) return;
         float opacity = Math.max(0, Math.min(100, warning.opacityPercent())) / 100.0F;
@@ -88,23 +94,61 @@ public final class MatchHudOverlay {
                                               HudContext context) {
         if (!ClientMatchData.boundaryOutside || ClientMatchData.boundaryTicks <= 0) return;
         List<ClientHudLayout.CustomElement> elements = ClientHudLayout.customElements(context);
-        ClientHudLayout.CustomElement warning = elements.stream()
+        List<ClientHudLayout.CustomElement> warnings = elements.stream()
                 .filter(element -> element.type().equals("boundary") && element.visible()
-                        && HudConditions.visible(element, elements, false))
-                .findFirst().orElse(null);
-        if (warning == null) return;
+                        && HudConditions.visible(element, elements, false, context))
+                .toList();
+        if (warnings.isEmpty()) return;
+        for (ClientHudLayout.CustomElement warning : warnings) {
+            renderBoundaryCard(graphics, font, warning, context, width, height);
+        }
+    }
+
+    private static void renderBoundaryCard(GuiGraphics graphics, Font font,
+                                           ClientHudLayout.CustomElement warning,
+                                           HudContext context, int width, int height) {
+        double amount = HudAnimation.frame(HudAnimation.key(warning.id()), true,
+                warning.placement());
+        if (amount <= 0.0D) return;
         HudGeometry.Rect rect = HudGeometry.custom(warning, width, height);
+        float alpha = (float) amount;
+        int opacity = Math.max(0, Math.min(100, warning.opacityPercent()));
+        if (warning.shadow()) graphics.fill(rect.left() + 2, rect.top() + 2,
+                rect.right() + 2, rect.bottom() + 2,
+                UiTheme.withAlpha(warning.placement().shadowColor() == 0 ? UiTheme.SHADOW
+                        : warning.placement().shadowColor(), (int) (opacity * alpha)));
         if (warning.background()) graphics.fill(rect.left(), rect.top(), rect.right(), rect.bottom(),
                 UiTheme.withAlpha(warning.placement().backgroundColor() == 0 ? UiTheme.PANEL_RAISED
-                        : warning.placement().backgroundColor(), warning.opacityPercent()));
+                        : warning.placement().backgroundColor(), (int) (opacity * alpha)));
         if (warning.border()) graphics.renderOutline(rect.left(), rect.top(), rect.width(), rect.height(),
                 UiTheme.withAlpha(warning.placement().borderColor() == 0 ? warning.color()
-                        : warning.placement().borderColor(), warning.opacityPercent()));
-        String label = HudParameters.render(warning.text(), false);
-        graphics.drawCenteredString(font, UiTheme.fit(font, label.isBlank() ? "返回作战区域" : label,
-                Math.max(20, rect.width() - 12)), rect.centerX(), rect.top() + 9, 0xFFFFD6D6);
-        graphics.drawCenteredString(font, Integer.toString((ClientMatchData.boundaryTicks + 19) / 20),
-                rect.centerX(), rect.top() + 29, 0xFFFFFFFF);
+                        : warning.placement().borderColor(), (int) (opacity * alpha)));
+        String label = HudCustomRenderer.resolveText(warning, context, false);
+        if (label.isBlank()) label = "返回作战区域";
+        float scale = Math.max(0.5F, Math.min(3.0F, warning.scalePercent() / 100.0F));
+        drawAlignedText(graphics, font, label, rect.left() + 5, rect.right() - 5,
+                rect.top() + 8, warning.placement().alignment(), scale, 0xFFFFD6D6);
+        drawAlignedText(graphics, font,
+                Integer.toString((ClientMatchData.boundaryTicks + 19) / 20),
+                rect.left() + 5, rect.right() - 5, rect.top() + 27,
+                warning.placement().alignment(), scale * 1.25F, 0xFFFFFFFF);
+        int barY = Math.max(rect.top() + 5, rect.bottom() - 6);
+        float fallback = Math.max(0, Math.min(1,
+                ClientMatchData.boundaryTicks / (float) cn.blockforge.generated.generatedmod.match.BoundaryCountdown.DURATION));
+        double ratio = HudCustomRenderer.resolveRatio(warning, context, false, fallback);
+        int filled = (int) Math.round(rect.width() * ratio);
+        graphics.fill(rect.left(), barY, rect.right(), Math.min(rect.bottom(), barY + 3),
+                UiTheme.withAlpha(UiTheme.BORDER, (int) (opacity * alpha)));
+        if ("drain".equals(warning.placement().progressDirection())) {
+            graphics.fill(rect.right() - filled, barY, rect.right(),
+                    Math.min(rect.bottom(), barY + 3),
+                    UiTheme.withAlpha(warning.color(), (int) (opacity * alpha)));
+        } else {
+            graphics.fill(rect.left(), barY, rect.left() + filled,
+                    Math.min(rect.bottom(), barY + 3),
+                    UiTheme.withAlpha(warning.color(), (int) (opacity * alpha)));
+        }
+        HudCustomRenderer.glow(graphics, warning, rect, (int) (255 * alpha));
     }
 
     private static boolean renderOverride(GuiGraphics graphics, Font font, HudContext context,
@@ -124,16 +168,14 @@ public final class MatchHudOverlay {
     private static void renderCustom(GuiGraphics graphics, Font font, int width, int height,
                                      HudContext context) {
         HudCustomRenderer.render(graphics, font, ClientHudLayout.customElements(context),
-                width, height, false, false);
+                width, height, false, false, "", context);
     }
 
     /** 击杀播报：位置 / 大小 / 透明度独立可调，出现约 6 秒并淡出。 */
     private static void renderKillFeed(ForgeGui forgeGui, GuiGraphics graphics, int width, int height,
-                                       Elements elements) {
+                                       Elements elements, HudContext context) {
         Font font = forgeGui.getMinecraft().font;
-        String text = HudStats.resolveTemplate(elements.feedTemplate(), Map.of(
-                "killer", ClientMatchData.killFeedKiller(), "victim", ClientMatchData.killFeedVictim(),
-                "feed", ClientMatchData.killFeedText()));
+        String text = HudParameters.render(elements.feedTemplate(), context, false);
         int fade = ClientMatchData.killFeedTicksLeft() < 20
                 ? 255 * ClientMatchData.killFeedTicksLeft() / 20 : 255;
         int panelAlpha = Math.min(elements.feedOpacityPercent(), 100) * fade / 255;
@@ -143,18 +185,27 @@ public final class MatchHudOverlay {
     }
 
     private static void renderScore(ForgeGui forgeGui, GuiGraphics graphics, int width, int height,
-                                    Elements elements) {
+                                    Elements elements, HudContext context) {
         cn.blockforge.generated.generatedmod.client.ui.ScoreHudRenderer.draw(graphics, forgeGui.getMinecraft().font,
-                HudGeometry.score(elements, width, height), elements, templateValues(), ClientMatchData.pulseActive());
+                HudGeometry.score(elements, width, height), elements, templateValues(context),
+                ClientMatchData.pulseActive());
+    }
+
+    private static void renderNotice(ForgeGui forgeGui, GuiGraphics graphics, int width, int height,
+                                     Elements elements) {
+        String title = MatchHudNotice.title();
+        String detail = MatchHudNotice.detail();
+        String timer = MatchHudNotice.timer();
+        String first = timer == null || timer.isBlank() ? title : title + "  " + timer;
+        HudGeometry.Rect panel = HudGeometry.banner(elements, width, height, 300);
+        drawPanel(graphics, forgeGui.getMinecraft().font, panel, HudGeometry.BANNER_BASE_HEIGHT,
+                first, detail, elements.bannerColor(), elements.bannerOpacityPercent());
     }
 
     private static void renderTeamHint(ForgeGui forgeGui, GuiGraphics graphics, int width, int height,
-                                       Elements elements) {
+                                       Elements elements, HudContext context) {
         Font font = forgeGui.getMinecraft().font;
-        String hint = HudStats.resolveTemplate(elements.textTemplate(), Map.of(
-                "team", ClientMatchData.myTeam.displayName(), "sizes", ClientMatchData.teamSizesText(),
-                "hint", hintText(), "mode", ClientMatchData.modeText(), "phase", ClientMatchData.phaseText(),
-                "bomb_status", bombStatusText() == null ? "" : bombStatusText()));
+        String hint = HudParameters.render(elements.textTemplate(), context, false);
         HudGeometry.Rect panel = HudGeometry.text(elements, width, height, elements.textWidth());
         drawPanel(graphics, font, panel, HudGeometry.TEXT_BASE_HEIGHT, hint, "", elements.textColor(), elements.textOpacityPercent());
     }
@@ -211,7 +262,7 @@ public final class MatchHudOverlay {
         return "队伍：" + ClientMatchData.myTeam.displayName() + "  ·  " + ClientMatchData.teamSizesText();
     }
 
-    private static String bombStatusText() {
+    public static String bombStatusText() {
         if (ClientMatchData.mode != cn.blockforge.generated.generatedmod.match.GameMode.SEARCH_DESTROY
                 || !ClientBombData.active) return null;
         return switch (ClientBombData.phase) {
@@ -260,9 +311,33 @@ public final class MatchHudOverlay {
         return UiTheme.fit(font, value, maximumWidth);
     }
 
+    private static void drawAlignedText(GuiGraphics graphics, Font font, String text,
+                                        int left, int right, int y, String alignment,
+                                        float scale, int color) {
+        if (text == null || text.isBlank()) return;
+        String fitted = font.plainSubstrByWidth(text,
+                Math.max(1, Math.round((right - left) / Math.max(0.5F, scale))));
+        float width = font.width(fitted) * scale;
+        float x = switch (alignment == null ? "center" : alignment) {
+            case "left" -> left;
+            case "right" -> right - width;
+            default -> (left + right - width) / 2.0F;
+        };
+        graphics.pose().pushPose();
+        graphics.pose().translate(x, y, 0.0F);
+        graphics.pose().scale(scale, scale, 1.0F);
+        graphics.drawString(font, fitted, 0, 0, color, false);
+        graphics.pose().popPose();
+    }
+
     /** 当前比赛模板可用的全部占位符，供内置组件和第三方 HUD 共用。 */
     public static Map<String, String> templateValues() {
-        Map<String, String> values = new LinkedHashMap<>();
+        return templateValues(HudContext.match(ClientMatchData.mode));
+    }
+
+    public static Map<String, String> templateValues(HudContext context) {
+        Map<String, String> values = new LinkedHashMap<>(
+                HudParameters.values(false, context, true));
         values.put("mode", ClientMatchData.modeText());
         values.put("phase", ClientMatchData.phaseText());
         values.put("score_a", Integer.toString(ClientMatchData.teamAScore));

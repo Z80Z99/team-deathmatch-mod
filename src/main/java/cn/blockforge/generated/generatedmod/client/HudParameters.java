@@ -11,9 +11,27 @@ public final class HudParameters {
     private HudParameters() { }
 
     public static Map<String, String> values(boolean editor) {
+        return values(editor, HudContext.GLOBAL, false);
+    }
+
+    /**
+     * Parameter vocabulary for one scene.
+     *
+     * @param blankUnavailable live rendering mode: unavailable sources become empty strings
+     *                         instead of leaking zero or stale values into the HUD
+     */
+    public static Map<String, String> values(boolean editor, HudContext context, boolean blankUnavailable) {
         Map<String, String> values = new LinkedHashMap<>();
-        for (HudStats.Source source : HudStats.sourcesWithDynamic()) {
-            values.put(source.id(), source.display(editor));
+        HudContext effective = context == null ? HudContext.GLOBAL : context;
+        for (HudStats.Source source : HudStats.sourcesFor(effective)) {
+            if (!source.availableIn(effective)) {
+                continue;
+            }
+            if (blankUnavailable && !editor && !source.isLive()) {
+                values.put(source.id(), "");
+                continue;
+            }
+            values.put(source.id(), source.display(editor, effective));
         }
         alias(values, "mode", "mode_text");
         alias(values, "phase", "phase_text");
@@ -39,13 +57,19 @@ public final class HudParameters {
         values.put("victim", editor ? "Alex" : ClientMatchData.killFeedVictim());
         values.put("feed", editor ? "Steve 击杀 Alex" : ClientMatchData.killFeedText());
         values.put("hint", editor && !ClientMatchData.inMatch() ? "A队" : MatchHudOverlay.hintText());
+        String bombStatus = MatchHudOverlay.bombStatusText();
+        values.put("bomb_status", editor && bombStatus == null ? "C4 A 10.0"
+                : bombStatus == null ? "" : bombStatus);
         values.put("sizes", editor && !ClientMatchData.inMatch() ? "4:4" : ClientMatchData.teamSizesText());
         return values;
     }
 
     public static int target() {
-        return ClientMatchData.mode == cn.blockforge.generated.generatedmod.match.GameMode.TEAM_DEATHMATCH
-                ? Math.max(0, ClientMatchData.targetKills) : Math.max(1, ClientMatchData.roundsToWin);
+        return switch (ClientMatchData.mode) {
+            case TEAM_DEATHMATCH -> Math.max(0, ClientMatchData.targetKills);
+            case SEARCH_DESTROY -> Math.max(1, ClientMatchData.roundsToWin);
+            case LAST_STANDING -> 0;
+        };
     }
 
     public static int teamCount(boolean editor) {
@@ -54,6 +78,10 @@ public final class HudParameters {
     }
 
     public static boolean visible(String condition, boolean editor) {
+        return visible(condition, editor, HudContext.GLOBAL);
+    }
+
+    public static boolean visible(String condition, boolean editor, HudContext context) {
         if (editor) return true;
         Boolean external = HudConditions.external(condition);
         if (external != null) return external;
@@ -62,6 +90,7 @@ public final class HudParameters {
         }
         Boolean threshold = thresholdCondition(condition);
         if (threshold != null) return threshold;
+        if (condition == null || condition.isBlank()) return true;
         if (condition.startsWith("api:")) return false;
         return switch (condition) {
             case "respawning" -> ClientMatchData.awaitingRespawn;
@@ -83,7 +112,9 @@ public final class HudParameters {
             case "terrain_restoring" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.TERRAIN_RESTORING;
             case "map_resetting" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.MAP_RESETTING;
             case "match_end" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.MATCH_END;
-            case "notice" -> ClientMatchData.inMatch();
+            case "notice" -> ClientMatchData.inMatch()
+                    && (ClientMatchData.state != cn.blockforge.generated.generatedmod.match.MatchState.PLAYING
+                    || MatchHudNotice.urgent());
             case "notice_urgent" -> MatchHudNotice.urgent();
             case "event_active" -> ClientHudEventData.active();
             case "c4_active" -> ClientBombData.active;
@@ -112,8 +143,9 @@ public final class HudParameters {
             case "team_c" -> teamCount(editor) >= 3;
             case "team_d" -> teamCount(editor) >= 4;
             case "forming" -> ClientLobbyData.dynamicReadySeconds() > 0;
-            case "queued" -> ClientLobbyData.dynamicReadySeconds() <= 0;
-            default -> true;
+            case "queued" -> ClientLobbyData.matchmaking().queued()
+                    && ClientLobbyData.dynamicReadySeconds() <= 0;
+            default -> false;
         };
     }
 
@@ -172,8 +204,13 @@ public final class HudParameters {
     }
 
     public static String render(String template, boolean editor) {
+        return render(template, HudContext.GLOBAL, editor);
+    }
+
+    public static String render(String template, HudContext context, boolean editor) {
         if (template == null || template.indexOf('{') < 0) return template == null ? "" : template;
         Map<String, String> selected = new LinkedHashMap<>();
+        Map<String, String> available = values(editor, context, true);
         var matcher = PARAMETER.matcher(template);
         while (matcher.find()) {
             String key = matcher.group(1);
@@ -197,7 +234,8 @@ public final class HudParameters {
                 case "team_count" -> Integer.toString(teamCount(editor));
                 case "killer" -> editor ? "Steve" : ClientMatchData.killFeedKiller();
                 case "victim" -> editor ? "Alex" : ClientMatchData.killFeedVictim();
-                default -> source == null ? null : source.display(editor);
+                default -> available.containsKey(key) ? available.get(key)
+                        : source == null ? null : source.display(editor, context);
             };
             if (value != null) selected.put(key, value);
         }

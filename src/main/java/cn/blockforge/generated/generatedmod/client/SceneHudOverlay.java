@@ -36,22 +36,18 @@ public final class SceneHudOverlay {
         MatchmakingStatus status = ClientLobbyData.matchmaking();
         RoomView room = ownRoom();
         boolean forming = ClientLobbyData.dynamicReadySeconds() > 0;
+        if (!global.backgroundFile().isBlank()) {
+            HudBackground.drawStretch(graphics, global.backgroundFile(),
+                    global.backgroundOpacityPercent(), width, height);
+        }
         if (!status.queued() && !forming) {
             if (room == null) {
                 renderGlobalCustom(graphics, width, height);
                 return;
             }
-            if (!global.backgroundFile().isBlank()) {
-                HudBackground.drawStretch(graphics, global.backgroundFile(),
-                        global.backgroundOpacityPercent(), width, height);
-            }
             renderGlobalCustom(graphics, width, height);
             renderRoom(graphics, partialTick, width, height, room);
             return;
-        }
-        if (!global.backgroundFile().isBlank()) {
-            HudBackground.drawStretch(graphics, global.backgroundFile(),
-                    global.backgroundOpacityPercent(), width, height);
         }
         renderGlobalCustom(graphics, width, height);
         renderMatching(graphics, partialTick, width, height, status, forming, room);
@@ -137,17 +133,19 @@ public final class SceneHudOverlay {
 
     private static void renderCustom(GuiGraphics graphics, Font font, int width, int height, HudContext context) {
         HudCustomRenderer.render(graphics, font, ClientHudLayout.customElements(context),
-                width, height, false, false);
+                width, height, false, false, "", context);
     }
 
     private static void renderGlobalCustom(GuiGraphics graphics, int width, int height) {
         HudCustomRenderer.render(graphics, Minecraft.getInstance().font,
-                ClientHudLayout.customElements(HudContext.GLOBAL), width, height, false, false);
+                ClientHudLayout.customElements(HudContext.GLOBAL), width, height, false, false,
+                "", HudContext.GLOBAL);
     }
 
     private static Map<String, String> matchingTemplateValues(MatchmakingStatus status,
                                                                boolean forming, RoomView room) {
-        Map<String, String> values = new LinkedHashMap<>();
+        Map<String, String> values = new LinkedHashMap<>(
+                HudParameters.values(false, HudContext.MATCHING, true));
         values.put("matching_line1", matchingLineOne(status, forming, room));
         values.put("matching_line2", matchingLineTwo(status, forming, room));
         values.put("queue", Integer.toString(status.queueSize()));
@@ -158,7 +156,8 @@ public final class SceneHudOverlay {
     }
 
     private static Map<String, String> roomTemplateValues(RoomView room) {
-        Map<String, String> values = new LinkedHashMap<>();
+        Map<String, String> values = new LinkedHashMap<>(
+                HudParameters.values(false, HudContext.ROOM, true));
         values.put("room_line1", roomLineOne(room));
         values.put("room_line2", roomLineTwo(room));
         values.put("room", room.name().isBlank() ? room.id() : room.name());
