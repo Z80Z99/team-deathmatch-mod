@@ -167,6 +167,8 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     private UiEditBox conditionEditor;
     private UiButton colorToggle;
     private UiButton closeButton;
+    private UiButton componentTabButton;
+    private UiButton propertyTabButton;
 
     private final List<Row> rows = new ArrayList<>();
     private final List<AbstractWidget> widgets = new ArrayList<>();
@@ -205,6 +207,8 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         conditionEditor = null;
         colorToggle = null;
         closeButton = null;
+        componentTabButton = null;
+        propertyTabButton = null;
         int defaultWidth = Math.max(DOCK_MIN_WIDTH, Math.min(DOCK_MAX_WIDTH, width * 2 / 5));
         int maxWidth = Math.max(200, width - 40);
         if (dockWidth < DOCK_MIN_WIDTH || dockWidth > maxWidth) {
@@ -225,18 +229,17 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
 
         addTabs();
         if (dockHidden) return;
-        int toolY = dockTop + DOCK_HEADER_HEIGHT + 4;
-        int toolGap = 6;
-        int toolWidth = (dockInnerWidth() - toolGap) / 2;
         for (int i = 0; i < 2; i++) {
             boolean properties = i == 1;
-            UiButton tab = new UiButton(dockX + 8 + i * (toolWidth + toolGap), toolY,
-                    toolWidth, CONTROL, Component.literal(properties ? "属性" : "组件"), ignored -> {
+            UiButton tab = new UiButton(0, 0, 10, CONTROL,
+                    Component.literal(properties ? "属性" : "组件"), ignored -> {
                 commitHistoryEdit(); propertyTab = properties; scroll = 0; rebuildWidgets();
             }, UiButton.Kind.SECONDARY);
             tab.setSelected(propertyTab == properties);
             addRenderableWidget(tab);
+            if (properties) propertyTabButton = tab; else componentTabButton = tab;
         }
+        layoutToolTabs();
         if (globalTab && !propertyTab) addGlobalControls();
         if (propertyTab) addPropertyControls(); else addComponentList();
         addFooter();
@@ -1222,6 +1225,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     }
 
     private void layoutRows() {
+        layoutToolTabs();
         clampScroll();
         int y = viewportTop() + TOP_INSET - scroll;
         int gap = 6;
@@ -1253,6 +1257,21 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             }
             previousLine = row.line();
         }
+    }
+
+    private void layoutToolTabs() {
+        if (dockHidden || componentTabButton == null || propertyTabButton == null) {
+            return;
+        }
+        int gap = 6;
+        int width = Math.max(24, (dockInnerWidth() - gap) / 2);
+        int y = dockTop + DOCK_HEADER_HEIGHT + 4;
+        componentTabButton.setX(dockX + 8);
+        componentTabButton.setY(y);
+        componentTabButton.setWidth(width);
+        propertyTabButton.setX(dockX + 8 + width + gap);
+        propertyTabButton.setY(y);
+        propertyTabButton.setWidth(width);
     }
 
     private void addSlider(String name, int minimum, int maximum, IntSupplier getter, IntConsumer setter) {
@@ -1600,20 +1619,10 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
 
     private ResizeEdge dockResizeEdge(double mouseX, double mouseY) {
         if (dockHidden) return ResizeEdge.NONE;
-        int cornerHandle = 8;
-        boolean left = mouseX >= dockX - 2 && mouseX <= dockX + cornerHandle;
-        boolean right = mouseX >= dockX + dockWidth - cornerHandle && mouseX <= dockX + dockWidth + 2;
-        // 边缘只占外框附近几像素，不能覆盖标题栏和内容控件的点击区域。
-        boolean top = mouseY >= dockTop - 2 && mouseY <= dockTop + 3;
-        boolean bottom = mouseY >= dockBottom - 3 && mouseY <= dockBottom + 2;
-        if (left && top) return ResizeEdge.TOP_LEFT;
-        if (right && top) return ResizeEdge.TOP_RIGHT;
-        if (left && bottom) return ResizeEdge.BOTTOM_LEFT;
+        int handle = 18;
+        boolean right = mouseX >= dockX + dockWidth - handle && mouseX <= dockX + dockWidth + 3;
+        boolean bottom = mouseY >= dockBottom - handle && mouseY <= dockBottom + 3;
         if (right && bottom) return ResizeEdge.BOTTOM_RIGHT;
-        if (left && mouseY >= dockTop + cornerHandle && mouseY <= dockBottom - cornerHandle) return ResizeEdge.LEFT;
-        if (right && mouseY >= dockTop + cornerHandle && mouseY <= dockBottom - cornerHandle) return ResizeEdge.RIGHT;
-        if (top && mouseX >= dockX + cornerHandle && mouseX <= dockX + dockWidth - cornerHandle) return ResizeEdge.TOP;
-        if (bottom && mouseX >= dockX + cornerHandle && mouseX <= dockX + dockWidth - cornerHandle) return ResizeEdge.BOTTOM;
         return ResizeEdge.NONE;
     }
 
@@ -2323,10 +2332,18 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                 UiTheme.BORDER_SUBTLE);
         graphics.fill(dockX, dockBottom - CONTROL * FOOTER_ROWS - 18, dockX + dockWidth,
                 dockBottom - CONTROL * FOOTER_ROWS - 17, UiTheme.BORDER_SUBTLE);
-        graphics.fill(dockX + dockWidth - 12, dockBottom - 3, dockX + dockWidth - 3, dockBottom - 2,
-                UiTheme.ACCENT);
-        graphics.fill(dockX + dockWidth - 3, dockBottom - 12, dockX + dockWidth - 2, dockBottom - 3,
-                UiTheme.ACCENT);
+        int resizeHandle = 18;
+        int handleLeft = dockX + dockWidth - resizeHandle;
+        int handleTop = dockBottom - resizeHandle;
+        graphics.renderOutline(handleLeft + 1, handleTop + 1, resizeHandle - 2, resizeHandle - 2,
+                UiTheme.BORDER_SUBTLE);
+        for (int offset = 0; offset < 3; offset++) {
+            int inset = 5 + offset * 4;
+            graphics.fill(dockX + dockWidth - inset, dockBottom - 4,
+                    dockX + dockWidth - inset + 1, dockBottom - 3, UiTheme.ACCENT);
+            graphics.fill(dockX + dockWidth - 4, dockBottom - inset,
+                    dockX + dockWidth - 3, dockBottom - inset + 1, UiTheme.ACCENT);
+        }
         int y = viewportTop() + TOP_INSET - scroll;
         int previousLine = Integer.MIN_VALUE;
         for (Row row : rows) {
