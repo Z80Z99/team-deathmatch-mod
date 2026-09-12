@@ -49,7 +49,7 @@ public enum HudContext {
 
     /** 场景内置组件；每项都可以单独关闭或交给独立模块替代。 */
     public enum BuiltIn {
-        SCORE("记分板"), TEXT("状态文字"), FEED("击杀播报"), BANNER("场景横幅");
+        SCORE("记分板"), NOTICE("阶段公告"), TEXT("状态文字"), FEED("击杀播报"), BANNER("场景横幅");
 
         private final String displayName;
 

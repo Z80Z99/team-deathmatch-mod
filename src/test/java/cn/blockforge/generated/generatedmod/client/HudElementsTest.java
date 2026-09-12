@@ -94,6 +94,52 @@ class HudElementsTest {
         }
     }
 
+    @Test void noticeSourcesMirrorWarmupAndBombEvents() {
+        var previousState = ClientMatchData.state;
+        var previousMode = ClientMatchData.mode;
+        int previousPhase = ClientMatchData.phaseRemainingTicks;
+        try {
+            ClientMatchData.state = cn.blockforge.generated.generatedmod.match.MatchState.WARMUP;
+            ClientMatchData.mode = cn.blockforge.generated.generatedmod.match.GameMode.TEAM_DEATHMATCH;
+            ClientMatchData.phaseRemainingTicks = 200;
+            assertEquals("热身阶段", MatchHudNotice.title());
+            assertTrue(MatchHudNotice.detail().contains("10 秒后开始"));
+            assertEquals("10 秒", MatchHudNotice.timer());
+            assertTrue(HudStats.sourcesFor(HudContext.TEAM_DEATHMATCH).stream()
+                    .anyMatch(source -> source.id().equals("notice_title")));
+
+            ClientBombData.active = true;
+            ClientBombData.phase = cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.PLANTED;
+            ClientBombData.bombSiteName = "A";
+            ClientBombData.detonationRemainingTicks = 200;
+            assertEquals("C4 已安装", MatchHudNotice.title());
+            assertTrue(MatchHudNotice.detail().contains("A"));
+            assertEquals("10.0 秒", MatchHudNotice.timer());
+        } finally {
+            ClientBombData.clear();
+            ClientMatchData.state = previousState;
+            ClientMatchData.mode = previousMode;
+            ClientMatchData.phaseRemainingTicks = previousPhase;
+        }
+    }
+
+    @Test void everyMatchPresetContainsCombatReadouts() {
+        for (var preset : HudPreset.values()) {
+            var draft = draft();
+            preset.apply(draft, HudContext.TEAM_DEATHMATCH);
+            String content = draft.customElements(HudContext.TEAM_DEATHMATCH).stream()
+                    .map(element -> element.text() + "|" + element.source() + "|"
+                            + element.placement().condition())
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            for (String required : List.of("notice_title", "notice_detail", "notice_timer",
+                    "target", "health_percent", "held_weapon", "held_ammo", "held_durability",
+                    "my_kills", "my_deaths", "my_damage", "my_match_money", "match_kills_sum",
+                    "bomb_phase", "bomb_countdown")) {
+                assertTrue(content.contains(required), preset.label() + " 缺少 " + required);
+            }
+        }
+    }
+
     private ClientHudLayout.CustomElement conditional(String id, String condition) {
         return new ClientHudLayout.CustomElement(id, "text", "test", 50, 50, 100, 20, 100, -1, true,
                 "", 100, false, false, false, new ClientHudLayout.Placement(0, 0, 0, 0, "", condition));

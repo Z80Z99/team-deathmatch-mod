@@ -425,6 +425,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         }
         rows.add(Row.header("添加组件示例"));
         for (HudContext.BuiltIn component : HudContext.BuiltIn.values()) {
+            if (component == HudContext.BuiltIn.NOTICE && !activeContext.isMatch()) continue;
             if (activeContext.isMatch() == (component == HudContext.BuiltIn.BANNER)) continue;
             UiButton sample = new UiButton(0, 0, 10, CONTROL, Component.literal("+ " + component.displayName()), ignored -> {
                 editDiscrete(() -> {
@@ -627,9 +628,10 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         addSlider("不透明度 %", 0, 100,
                 () -> intOf(id, ClientHudLayout.CustomElement::opacityPercent, 85),
                 value -> replaceById(id, e -> e.opacityPercent = value));
-        List<String> conditions = new ArrayList<>(List.of("", "feed", "team_c", "team_d", "forming", "queued",
+        List<String> conditions = new ArrayList<>(List.of("", "feed", "notice", "notice_urgent", "c4_active",
+                "team_c", "team_d", "forming", "queued",
                 "death", "respawning", "respawn_waiting", "respawn_ready", "returned",
-                "alive", "playing", "warmup", "outside", "spectator"));
+                "alive", "playing", "warmup", "buying", "outside", "spectator"));
         for (var other : draft.customElements(activeContext)) if (!other.id().equals(id)) conditions.add("hidden:" + other.id());
         conditions.addAll(cn.blockforge.generated.generatedmod.client.HudConditions.ids());
         if (!conditions.contains(chosen.placement().condition())) conditions.add(chosen.placement().condition());
@@ -638,10 +640,12 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                 value -> "显示条件：" + switch (value) {
                     case "feed" -> "击杀播报有效期"; case "team_c" -> "至少三队";
                     case "team_d" -> "至少四队"; case "forming" -> "已成局倒计时";
-                    case "queued" -> "等待成局"; case "death" -> "死亡后";
+                    case "notice" -> "比赛内阶段公告"; case "notice_urgent" -> "紧急阶段或 C4";
+                    case "c4_active" -> "C4 已发放或安装"; case "queued" -> "等待成局"; case "death" -> "死亡后";
                     case "respawning" -> "死亡至回归期间"; case "respawn_waiting" -> "复活倒计时中";
                     case "respawn_ready" -> "复活已就绪"; case "returned" -> "刚刚回归";
                     case "alive" -> "可作战"; case "playing" -> "比赛进行中"; case "warmup" -> "热身中";
+                    case "buying" -> "购买阶段";
                     case "outside" -> "越界警告中"; case "spectator" -> "观战中";
                     default -> value.startsWith("hidden:") ? value.substring(7) + " 隐藏后" : value.isBlank() ? "始终" : value;
                 }, value -> replaceByIdDiscrete(id, e -> e.placement = e.placement.withCondition(value)),

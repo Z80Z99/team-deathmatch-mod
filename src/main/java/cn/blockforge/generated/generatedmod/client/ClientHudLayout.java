@@ -34,16 +34,18 @@ import java.util.Map;
 public final class ClientHudLayout {
     private static final Logger LOGGER = LoggerFactory.getLogger("generated_mod_hud_layout");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int VERSION = 9;
+    private static final int VERSION = 10;
     private static final int SCORE_BIT = 1;
     private static final int TEXT_BIT = 1 << 1;
     private static final int FEED_BIT = 1 << 2;
     private static final int BANNER_BIT = 1 << 3;
-    private static final int ALL_BUILT_IN_BITS = SCORE_BIT | TEXT_BIT | FEED_BIT | BANNER_BIT;
+    private static final int NOTICE_BIT = 1 << 4;
+    private static final int ALL_BUILT_IN_BITS = SCORE_BIT | NOTICE_BIT | TEXT_BIT | FEED_BIT | BANNER_BIT;
 
     private static int builtInBit(HudContext.BuiltIn component) {
         return switch (component) {
             case SCORE -> SCORE_BIT;
+            case NOTICE -> NOTICE_BIT;
             case TEXT -> TEXT_BIT;
             case FEED -> FEED_BIT;
             case BANNER -> BANNER_BIT;
@@ -175,6 +177,7 @@ public final class ClientHudLayout {
                 migrateVersion1(object);
             }
             if (sourceVersion < 9) restoreTextBuiltIns();
+            if (sourceVersion < 10) restoreNoticeBuiltIn();
             if (sourceVersion < 7) installStatusEffectDefaults();
         } catch (Exception error) {
             LOGGER.warn("读取客户端 HUD 配置失败，将使用默认值：{}", file, error);
@@ -201,6 +204,16 @@ public final class ClientHudLayout {
             if (!context.isMatch()) continue;
             Mutable elements = CONTEXTS.get(context).mutable();
             elements.setBuiltInEnabled(HudContext.BuiltIn.TEXT, true);
+            CONTEXTS.put(context, elements.build());
+        }
+    }
+
+    /** v10 新增可独立删除的阶段公告示例，旧配置首次加载时补上。 */
+    private static void restoreNoticeBuiltIn() {
+        for (HudContext context : HudContext.values()) {
+            if (!context.isMatch()) continue;
+            Mutable elements = CONTEXTS.get(context).mutable();
+            elements.setBuiltInEnabled(HudContext.BuiltIn.NOTICE, true);
             CONTEXTS.put(context, elements.build());
         }
     }

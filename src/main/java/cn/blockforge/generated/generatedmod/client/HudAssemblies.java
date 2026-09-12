@@ -19,28 +19,30 @@ public final class HudAssemblies {
         Elements v = draft.elements(context);
         if (!v.builtInEnabled(component)) return;
         draft.of(context).setBuiltInEnabled(component, false);
+        if (component == BuiltIn.NOTICE && !context.isMatch()) return;
         if (context.isMatch() == (component == BuiltIn.BANNER)) return;
         HudGeometry.Rect r = switch (component) {
             case SCORE -> HudGeometry.score(v, 640, 360);
+            case NOTICE -> HudGeometry.banner(v, 640, 360, 300);
             case TEXT -> HudGeometry.text(v, 640, 360, 0);
             case FEED -> HudGeometry.feed(v, 640, 360, 240);
             case BANNER -> HudGeometry.banner(v, 640, 360, 340);
         };
         int xp = switch (component) {
-            case SCORE -> v.scoreXPercent(); case TEXT -> v.textXPercent();
+            case SCORE -> v.scoreXPercent(); case NOTICE -> v.bannerXPercent(); case TEXT -> v.textXPercent();
             case FEED -> v.feedXPercent(); case BANNER -> v.bannerXPercent();
         };
         int yp = switch (component) {
-            case SCORE -> v.scoreYPercent(); case TEXT -> v.textYPercent();
+            case SCORE -> v.scoreYPercent(); case NOTICE -> v.bannerYPercent(); case TEXT -> v.textYPercent();
             case FEED -> v.feedYPercent(); case BANNER -> v.bannerYPercent();
         };
         Builder b = new Builder(draft, context, "示例·" + component.displayName(), xp, yp);
         b.visible = switch (component) {
-            case SCORE -> v.scoreVisible(); case TEXT -> v.textVisible();
+            case SCORE -> v.scoreVisible(); case NOTICE -> v.textVisible(); case TEXT -> v.textVisible();
             case FEED -> v.feedVisible(); case BANNER -> v.bannerVisible();
         };
         b.opacity = switch (component) {
-            case SCORE -> v.scoreOpacityPercent(); case TEXT -> v.textOpacityPercent();
+            case SCORE -> v.scoreOpacityPercent(); case NOTICE -> v.textOpacityPercent(); case TEXT -> v.textOpacityPercent();
             case FEED -> v.feedOpacityPercent(); case BANNER -> v.bannerOpacityPercent();
         };
         b.condition = component == BuiltIn.FEED ? "feed" : "";
@@ -49,7 +51,7 @@ public final class HudAssemblies {
         int w = r.width(), h = r.height();
         b.block("底板", x, y, w, h, 0xFF17191C);
         int color = switch (component) {
-            case SCORE -> v.scoreColor(); case TEXT -> v.textColor();
+            case SCORE -> v.scoreColor(); case NOTICE -> v.textColor(); case TEXT -> v.textColor();
             case FEED -> v.feedColor(); case BANNER -> v.bannerColor();
         };
         b.block("强调线", x, y - h / 2 + 1, w, 2, color);
@@ -67,6 +69,13 @@ public final class HudAssemblies {
                 b.line(key.toUpperCase() + "队", key.toUpperCase() + "队 {score_" + key + "}",
                         x + (i == 2 ? -70 : 70), y + 50, 120, i == 2 ? 0xFF7BDC98 : 0xFFF4CE70);
             }
+        } else if (component == BuiltIn.NOTICE) {
+            b.condition = "notice";
+            b.text("标题", "{notice_title}", x - Math.max(36, w / 5), y - 8,
+                    Math.max(90, w / 2), color, 110);
+            b.text("倒计时", "{notice_timer}", x + Math.max(34, w / 4), y - 8,
+                    Math.max(72, w / 4), color, 105);
+            b.line("详情", "{notice_detail}", x, y + 10, w - 16, 0xFFE8ECEF);
         } else if (component == BuiltIn.BANNER) {
             boolean matchingExample = context == HudContext.MATCHING
                     && v.bannerLineOneTemplate().equals("{matching_line1}")

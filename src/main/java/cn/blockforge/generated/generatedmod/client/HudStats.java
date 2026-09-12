@@ -32,7 +32,7 @@ import java.util.function.Supplier;
 public final class HudStats {
     /** 数据源分组，决定它在配置窗列表里的归类。 */
     public enum Group {
-        PROGRESS("比赛进度"), SCORE("比分与回合"), SELF("我的统计"), TEAM("队伍统计"),
+        PROGRESS("比赛进度"), NOTICE("对局公告"), SCORE("比分与回合"), SELF("我的统计"), TEAM("队伍统计"),
         STATUS("玩家状态"), TEXT("比赛文本"), MATCHING("正在匹配 HUD"), ROOM("房间中 HUD"),
         SYSTEM("系统"), DYNAMIC("自定义通道");
 
@@ -401,6 +401,14 @@ public final class HudStats {
         number("team_b_size", "B队人数", Group.SCORE, () -> ClientMatchData.teamBSize, HudStats::inMatch, 4);
         number("spectator_size", "观战人数", Group.SCORE, () -> ClientMatchData.spectatorSize, HudStats::inMatch, 1);
 
+        // ---- 对局公告：把原本只在聊天栏出现的阶段信息提供给 HUD。
+        text("notice_title", "阶段公告标题", Group.NOTICE, MatchHudNotice::title,
+                HudStats::inMatch, "热身阶段");
+        text("notice_detail", "阶段公告详情", Group.NOTICE, MatchHudNotice::detail,
+                HudStats::inMatch, "比赛将在 10 秒后开始 · A队 4人 · B队 4人");
+        text("notice_timer", "阶段公告倒计时", Group.NOTICE, MatchHudNotice::timer,
+                HudStats::inMatch, "00:10");
+
         // ---- 我的统计（整场累计，服务器同步）
         number("my_kills", "我的击杀数", Group.SELF, () -> ClientMatchData.myMatchKills, HudStats::inMatch, 7);
         number("my_deaths", "我的阵亡数", Group.SELF, () -> ClientMatchData.myMatchDeaths, HudStats::inMatch, 4);
@@ -417,6 +425,13 @@ public final class HudStats {
                 () -> "$" + ClientMatchData.matchBalance, HudStats::inMatch, "$800");
         text("my_global_money", "局外资金（大厅账户）", Group.SELF,
                 () -> "$" + ClientMatchData.globalBalance, () -> true, "$1000");
+        text("held_weapon", "手持武器名称", Group.STATUS, HeldWeaponHudData::name,
+                HeldWeaponHudData::hasWeapon, "AK-47");
+        text("held_ammo", "手持武器弹药", Group.STATUS, HeldWeaponHudData::ammoText,
+                HeldWeaponHudData::hasWeapon, "30 / 120");
+        progress("held_durability", "手持武器耐久", Group.STATUS,
+                HeldWeaponHudData::durabilityPercent, () -> 100,
+                HeldWeaponHudData::hasWeapon, 85, 100);
         text("bomb_phase", "爆破阶段", Group.TEXT, () -> switch (ClientBombData.phase) {
             case CARRIED -> "C4 已携带";
             case DROPPED -> "C4 已掉落";

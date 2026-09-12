@@ -67,6 +67,9 @@ public final class HudParameters {
             case "playing" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.PLAYING;
             case "warmup" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.WARMUP;
             case "buying" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.BUYING;
+            case "notice" -> ClientMatchData.inMatch();
+            case "notice_urgent" -> MatchHudNotice.urgent();
+            case "c4_active" -> ClientBombData.active;
             case "outside" -> ClientMatchData.boundaryOutside;
             case "spectator" -> !ClientMatchData.myTeam.isPlayable();
             case "feed" -> editor || ClientMatchData.killFeedActive();
@@ -133,6 +136,10 @@ public final class HudParameters {
             case "rounds_to_win" -> "获胜所需回合数"; case "team_count" -> "参赛队伍数";
             case "killer" -> "击杀者名称"; case "victim" -> "被击杀者名称";
             case "feed" -> "兼容：完整击杀消息"; case "hint" -> "当前状态消息";
+            case "notice_title" -> "阶段或事件标题"; case "notice_detail" -> "阶段或事件说明";
+            case "notice_timer" -> "阶段、C4、越界或复活倒计时";
+            case "held_weapon" -> "当前主手武器或物品名称"; case "held_ammo" -> "TACZ 当前弹匣/备用弹药";
+            case "held_durability" -> "当前主手武器耐久百分比";
             case "sizes" -> "兼容：队伍人数汇总"; default -> key;
         };
     }
