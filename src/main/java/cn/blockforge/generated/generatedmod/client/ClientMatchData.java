@@ -184,6 +184,7 @@ public final class ClientMatchData {
     }
 
     public static void clear() {
+        ClientHudEventData.clear();
         awaitingRespawn = false;
         deathLabel = "";
         downedPlayerIds = java.util.Set.of();

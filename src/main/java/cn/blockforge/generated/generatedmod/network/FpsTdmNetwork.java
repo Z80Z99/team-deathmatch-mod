@@ -22,6 +22,7 @@ import cn.blockforge.generated.generatedmod.network.packet.WeaponRepositorySyncP
 import cn.blockforge.generated.generatedmod.network.packet.MatchShopActionPacket;
 import cn.blockforge.generated.generatedmod.network.packet.MatchShopSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.BombSyncPacket;
+import cn.blockforge.generated.generatedmod.network.packet.HudEventPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkDirection;
@@ -30,7 +31,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class FpsTdmNetwork {
-    private static final String PROTOCOL_VERSION = "22";
+    private static final String PROTOCOL_VERSION = "23";
     private static SimpleChannel channel;
     private static int nextId;
 
@@ -151,6 +152,11 @@ public final class FpsTdmNetwork {
                 .decoder(BombSyncPacket::new)
                 .consumerMainThread(BombSyncPacket::handle)
                 .add();
+        channel.messageBuilder(HudEventPacket.class, nextId(), NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(HudEventPacket::encode)
+                .decoder(HudEventPacket::new)
+                .consumerMainThread(HudEventPacket::handle)
+                .add();
     }
 
     public static void sendToPlayer(Object packet, ServerPlayer player) {
@@ -162,6 +168,12 @@ public final class FpsTdmNetwork {
     public static void sendToServer(Object packet) {
         if (channel != null) {
             channel.sendToServer(packet);
+        }
+    }
+
+    public static void sendToAll(Object packet) {
+        if (channel != null) {
+            channel.send(PacketDistributor.ALL.noArg(), packet);
         }
     }
 

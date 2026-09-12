@@ -56,6 +56,7 @@ public final class ClientForgeEvents {
         }
         ClientMatchData.tick();
         ClientBombData.tick();
+        ClientHudEventData.tick();
         RespawnOverlay.tick();
         ClientLobbyData.tick();
         MapPreview.tick(minecraft);

@@ -366,6 +366,33 @@ public final class HudStats {
         return killTargetMode() ? ClientMatchData.targetKills : Math.max(1, ClientMatchData.roundsToWin);
     }
 
+    private static ClientHudEventData.ActiveEvent primaryEvent() {
+        return ClientHudEventData.primary();
+    }
+
+    private static String eventText(cn.blockforge.generated.generatedmod.match.MatchHudEventType type,
+                                    boolean title) {
+        var event = ClientHudEventData.get(type.id());
+        if (event == null) return "";
+        return title ? event.type().displayName() : event.detail();
+    }
+
+    private static String eventTimer(cn.blockforge.generated.generatedmod.match.MatchHudEventType type) {
+        var event = ClientHudEventData.get(type.id());
+        return event == null ? "" : String.format(Locale.ROOT, "%.1f 秒",
+                event.remainingTicks() / 20.0D);
+    }
+
+    private static int eventRemaining(cn.blockforge.generated.generatedmod.match.MatchHudEventType type) {
+        var event = ClientHudEventData.get(type.id());
+        return event == null ? 0 : event.remainingTicks();
+    }
+
+    private static int eventDuration(cn.blockforge.generated.generatedmod.match.MatchHudEventType type) {
+        var event = ClientHudEventData.get(type.id());
+        return event == null ? 1 : Math.max(1, event.totalTicks());
+    }
+
     // ------------------------------------------------------------- 构建
 
     private static void ensureBuilt() {
@@ -408,6 +435,39 @@ public final class HudStats {
                 HudStats::inMatch, "比赛将在 10 秒后开始 · A队 4人 · B队 4人");
         text("notice_timer", "阶段公告倒计时", Group.NOTICE, MatchHudNotice::timer,
                 HudStats::inMatch, "00:10");
+        text("event_id", "HUD 事件 ID", Group.NOTICE,
+                () -> primaryEvent() == null ? "" : primaryEvent().type().id(),
+                HudStats::inMatch, "bomb_planting");
+        text("event_title", "HUD 事件标题", Group.NOTICE,
+                () -> primaryEvent() == null ? "" : primaryEvent().type().displayName(),
+                HudStats::inMatch, "正在安装 C4");
+        text("event_detail", "HUD 事件说明", Group.NOTICE,
+                () -> primaryEvent() == null ? "" : primaryEvent().detail(),
+                HudStats::inMatch, "保持安装动作直到进度完成");
+        text("event_timer", "HUD 事件剩余时间", Group.NOTICE,
+                () -> {
+                    var event = primaryEvent();
+                    return event == null ? "" : String.format(Locale.ROOT, "%.1f 秒",
+                            event.remainingTicks() / 20.0D);
+                }, HudStats::inMatch, "2.0 秒");
+        progress("event_progress", "HUD 事件进度", Group.NOTICE,
+                () -> primaryEvent() == null ? 0 : primaryEvent().remainingTicks(),
+                () -> primaryEvent() == null ? 1 : Math.max(1, primaryEvent().totalTicks()),
+                HudStats::inMatch, 60, 100);
+        for (var type : cn.blockforge.generated.generatedmod.match.MatchHudEventType.values()) {
+            String prefix = "event:" + type.id();
+            text(prefix + ":title", type.displayName() + " · 标题", Group.NOTICE,
+                    () -> eventText(type, true), () -> ClientHudEventData.active(type.id()),
+                    type.displayName());
+            text(prefix + ":detail", type.displayName() + " · 说明", Group.NOTICE,
+                    () -> eventText(type, false), () -> ClientHudEventData.active(type.id()),
+                    type.defaultDetail());
+            text(prefix + ":timer", type.displayName() + " · 剩余时间", Group.NOTICE,
+                    () -> eventTimer(type), () -> ClientHudEventData.active(type.id()), "2.0 秒");
+            progress(prefix + ":progress", type.displayName() + " · 进度", Group.NOTICE,
+                    () -> eventRemaining(type), () -> eventDuration(type),
+                    () -> ClientHudEventData.active(type.id()), 60, 100);
+        }
 
         // ---- 我的统计（整场累计，服务器同步）
         number("my_kills", "我的击杀数", Group.SELF, () -> ClientMatchData.myMatchKills, HudStats::inMatch, 7);

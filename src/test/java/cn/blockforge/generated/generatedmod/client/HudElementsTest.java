@@ -140,6 +140,31 @@ class HudElementsTest {
         }
     }
 
+    @Test void structuredEventsDriveSpecificHudSourcesAndThresholdTriggers() {
+        int previousMoney = ClientMatchData.matchBalance;
+        try {
+            ClientHudEventData.apply(new cn.blockforge.generated.generatedmod.network.packet.HudEventPacket(
+                    cn.blockforge.generated.generatedmod.match.MatchHudEventType.BUY_PHASE_START,
+                    "购买并准备装备", 100));
+            assertTrue(HudParameters.visible("event:buy_phase_start", false));
+            assertFalse(HudParameters.visible("event:action_phase", false));
+            assertEquals("购买阶段开始",
+                    HudStats.byId("event:buy_phase_start:title").display(false));
+            assertEquals("购买并准备装备",
+                    HudStats.byId("event:buy_phase_start:detail").display(false));
+
+            ClientMatchData.matchBalance = 500;
+            assertTrue(HudParameters.visible("money_below:1000", false));
+            assertFalse(HudParameters.visible("money_at_least:1000", false));
+            ClientMatchData.myMatchKills = 10;
+            assertTrue(HudParameters.visible("kills_at_least:10", false));
+        } finally {
+            ClientHudEventData.clear();
+            ClientMatchData.matchBalance = previousMoney;
+            ClientMatchData.myMatchKills = 0;
+        }
+    }
+
     private ClientHudLayout.CustomElement conditional(String id, String condition) {
         return new ClientHudLayout.CustomElement(id, "text", "test", 50, 50, 100, 20, 100, -1, true,
                 "", 100, false, false, false, new ClientHudLayout.Placement(0, 0, 0, 0, "", condition));

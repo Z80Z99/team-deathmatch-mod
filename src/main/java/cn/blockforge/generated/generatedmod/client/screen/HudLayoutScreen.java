@@ -438,6 +438,22 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
             sample.setTooltip(Tooltip.create(Component.literal("添加由独立元素拼成的示例，各元素可分别编辑和删除。")));
             register(sample, CONTROL);
         }
+        if (activeContext.isMatch()) {
+            rows.add(Row.header("对局事件组件"));
+            for (var event : cn.blockforge.generated.generatedmod.match.MatchHudEventType.values()) {
+                UiButton eventButton = new UiButton(0, 0, 10, CONTROL,
+                        Component.literal("+ " + event.displayName()), ignored -> {
+                    editDiscrete(() -> cn.blockforge.generated.generatedmod.client.HudAssemblies
+                            .addEventComponent(draft, activeContext, event));
+                    selected = defaultSelection();
+                    rebuildWidgets();
+                    setStatus("已添加事件组件“" + event.displayName() + "”，可单独编辑和删除。", UiTheme.SUCCESS);
+                }, UiButton.Kind.SECONDARY);
+                eventButton.setTooltip(Tooltip.create(Component.literal(
+                        "仅在事件 " + event.id() + " 有效时显示；可改位置、文字、颜色、动画和条件。")));
+                register(eventButton, CONTROL);
+            }
+        }
     }
 
     private void addLegacyPositionPresets() {
@@ -628,10 +644,21 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         addSlider("不透明度 %", 0, 100,
                 () -> intOf(id, ClientHudLayout.CustomElement::opacityPercent, 85),
                 value -> replaceById(id, e -> e.opacityPercent = value));
-        List<String> conditions = new ArrayList<>(List.of("", "feed", "notice", "notice_urgent", "c4_active",
+        List<String> conditions = new ArrayList<>(List.of("", "feed", "notice", "notice_urgent",
+                "event_active", "c4_active", "c4_carried", "c4_dropped", "c4_planting", "c4_planted",
+                "c4_defusing", "c4_exploded", "c4_defused",
                 "team_c", "team_d", "forming", "queued",
                 "death", "respawning", "respawn_waiting", "respawn_ready", "returned",
-                "alive", "playing", "warmup", "buying", "outside", "spectator"));
+                "alive", "playing", "warmup", "warmup_waiting", "warmup_countdown",
+                "buying", "round_end", "terrain_restoring", "map_resetting", "match_end",
+                "outside", "spectator",
+                "round_odd", "round_even", "team_leading", "team_trailing", "score_tied",
+                "health_below:50", "armor_below:10", "money_below:1000",
+                "kills_at_least:10", "deaths_at_least:5",
+                "phase_remaining_below:10", "boundary_below:5"));
+        for (var event : cn.blockforge.generated.generatedmod.match.MatchHudEventType.values()) {
+            conditions.add("event:" + event.id());
+        }
         for (var other : draft.customElements(activeContext)) if (!other.id().equals(id)) conditions.add("hidden:" + other.id());
         conditions.addAll(cn.blockforge.generated.generatedmod.client.HudConditions.ids());
         if (!conditions.contains(chosen.placement().condition())) conditions.add(chosen.placement().condition());
@@ -641,13 +668,24 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                     case "feed" -> "击杀播报有效期"; case "team_c" -> "至少三队";
                     case "team_d" -> "至少四队"; case "forming" -> "已成局倒计时";
                     case "notice" -> "比赛内阶段公告"; case "notice_urgent" -> "紧急阶段或 C4";
-                    case "c4_active" -> "C4 已发放或安装"; case "queued" -> "等待成局"; case "death" -> "死亡后";
+                    case "event_active" -> "任意 HUD 事件有效";
+                    case "c4_active" -> "C4 已发放或安装"; case "c4_carried" -> "C4 正在被携带";
+                    case "c4_dropped" -> "C4 已掉落"; case "c4_planting" -> "正在安装 C4";
+                    case "c4_planted" -> "C4 已安装"; case "c4_defusing" -> "正在拆除 C4";
+                    case "c4_exploded" -> "C4 已引爆"; case "c4_defused" -> "C4 已拆除";
+                    case "queued" -> "等待成局"; case "death" -> "死亡后";
                     case "respawning" -> "死亡至回归期间"; case "respawn_waiting" -> "复活倒计时中";
                     case "respawn_ready" -> "复活已就绪"; case "returned" -> "刚刚回归";
                     case "alive" -> "可作战"; case "playing" -> "比赛进行中"; case "warmup" -> "热身中";
                     case "buying" -> "购买阶段";
+                    case "warmup_waiting" -> "热身等待玩家"; case "warmup_countdown" -> "热身开赛倒计时";
+                    case "round_end" -> "回合结束"; case "terrain_restoring" -> "地形恢复阶段";
+                    case "map_resetting" -> "地图恢复阶段"; case "match_end" -> "比赛结束";
                     case "outside" -> "越界警告中"; case "spectator" -> "观战中";
-                    default -> value.startsWith("hidden:") ? value.substring(7) + " 隐藏后" : value.isBlank() ? "始终" : value;
+                    case "round_odd" -> "奇数回合"; case "round_even" -> "偶数回合";
+                    case "team_leading" -> "我方领先"; case "team_trailing" -> "我方落后";
+                    case "score_tied" -> "比分持平";
+                    default -> conditionLabel(value);
                 }, value -> replaceByIdDiscrete(id, e -> e.placement = e.placement.withCondition(value)),
                 "条件不满足时不绘制此元素；选择始终可取消条件。", UiButton.Kind.SECONDARY);
         register(condition, CONTROL);
@@ -2345,6 +2383,30 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    private static String conditionLabel(String value) {
+        if (value == null || value.isBlank()) return "始终";
+        if (value.startsWith("hidden:")) return value.substring(7) + " 隐藏后";
+        if (value.startsWith("event:")) {
+            var event = cn.blockforge.generated.generatedmod.match.MatchHudEventType
+                    .byId(value.substring("event:".length()));
+            return event == null ? value : "事件 · " + event.displayName();
+        }
+        String[] parts = value.split(":", 2);
+        if (parts.length != 2) return value;
+        return switch (parts[0]) {
+            case "health_below" -> "生命低于 " + parts[1] + "%";
+            case "health_above" -> "生命高于 " + parts[1] + "%";
+            case "armor_below" -> "护甲低于 " + parts[1];
+            case "money_below" -> "局内资金低于 $" + parts[1];
+            case "money_at_least" -> "局内资金至少 $" + parts[1];
+            case "kills_at_least" -> "击杀至少 " + parts[1];
+            case "deaths_at_least" -> "阵亡至少 " + parts[1];
+            case "phase_remaining_below" -> "阶段剩余低于 " + parts[1] + " 秒";
+            case "boundary_below" -> "出界剩余低于 " + parts[1] + " 秒";
+            default -> value;
+        };
     }
 
     private static int clamp(int value, int minimum, int maximum) {

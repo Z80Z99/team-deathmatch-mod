@@ -94,6 +94,26 @@ public final class HudAssemblies {
         }
     }
 
+    /** Adds one event-specific, independently editable HUD element set. */
+    public static void addEventComponent(Draft draft, HudContext context,
+                                         cn.blockforge.generated.generatedmod.match.MatchHudEventType type) {
+        if (draft == null || context == null || type == null || !context.isMatch()) return;
+        long existing = draft.customElements(context).stream()
+                .filter(element -> element.placement().example().equals("事件·" + type.displayName()))
+                .count();
+        int anchorY = 20 + (int) (existing % 4) * 9;
+        String prefix = "event:" + type.id();
+        Builder b = new Builder(draft, context, "事件·" + type.displayName(), 50, anchorY);
+        b.condition = "event:" + type.id();
+        b.opacity = 88;
+        b.block("事件底板", 0, 0, 300, 46, 0xFF11161B);
+        b.block("事件强调线", 0, -23, 300, 2, 0xFF78D6A5);
+        b.text("事件标题", "{" + prefix + ":title}", -95, -8, 140, 0xFF78D6A5, 110);
+        b.text("事件计时", "{" + prefix + ":timer}", 118, -8, 68, 0xFFE8ECEF, 100);
+        b.line("事件说明", "{" + prefix + ":detail}", 0, 9, 280, 0xFFE8ECEF);
+        b.progress("事件进度", prefix + ":progress", 0, 17, 280, 0xFFFF7078);
+    }
+
     public static final class Builder {
         final Draft draft;
         final HudContext context;

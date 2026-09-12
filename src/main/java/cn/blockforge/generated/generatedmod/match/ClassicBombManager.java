@@ -7,7 +7,6 @@ import cn.blockforge.generated.generatedmod.network.packet.BombSyncPacket;
 import cn.blockforge.generated.generatedmod.network.FpsTdmNetwork;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -79,12 +78,14 @@ public final class ClassicBombManager {
         }
         state.startRound(carrier.getUUID(), server.getTickCount());
         sync();
-        carrier.sendSystemMessage(Component.literal("你携带 C4：进入爆破区后按住右键安装。"));
+        match.recordEvent(carrier.getGameProfile().getName()
+                + " 携带 C4：进入爆破区后按住右键安装。");
         for (ServerPlayer defender : teamPlayers(defending)) {
-            defender.sendSystemMessage(Component.literal("你获得拆弹器：C4 安装后靠近它按住右键拆除。"));
+            match.recordEvent(defender.getGameProfile().getName()
+                    + " 获得拆弹器：C4 安装后靠近它按住右键拆除。");
         }
-        server.getPlayerList().broadcastSystemMessage(Component.literal("本回合 "
-                + attacking.displayName() + " 进攻，" + defending.displayName() + " 防守。"), false);
+        match.recordEvent("本回合 " + attacking.displayName() + " 进攻，"
+                + defending.displayName() + " 防守。");
         return true;
     }
 
@@ -129,12 +130,17 @@ public final class ClassicBombManager {
         }
         MapRegion site = activeSiteAt(player);
         if (site == null) {
-            player.sendSystemMessage(Component.literal("必须站在激活的爆破区内才能安装 C4。"));
+            match.recordEvent(player.getGameProfile().getName()
+                    + " 尝试安装 C4，但不在激活的爆破区内。");
+            match.publishHudEvent(player, MatchHudEventType.BOMB_SITE_REQUIRED,
+                    "进入激活的爆破区域后再安装 C4", 70);
             return false;
         }
         state.startPlanting(player.getUUID(), server.getTickCount(),
                 player.getX(), player.getY(), player.getZ());
-        player.sendSystemMessage(Component.literal("正在安装 C4……"));
+        match.recordEvent(player.getGameProfile().getName() + " 正在安装 C4。");
+        match.publishHudEvent(player, MatchHudEventType.BOMB_PLANTING,
+                "保持安装动作直到进度完成", match.rulesBombPlantTicks());
         player.playNotifySound(SoundEvents.TNT_PRIMED, SoundSource.BLOCKS, 0.7F, 1.0F);
         return true;
     }
@@ -156,7 +162,9 @@ public final class ClassicBombManager {
         }
         state.startDefusing(player.getUUID(), server.getTickCount(),
                 match.rulesBombDefuseResume() && state.actionProgress() > 0);
-        player.sendSystemMessage(Component.literal("正在拆除 C4……"));
+        match.recordEvent(player.getGameProfile().getName() + " 正在拆除 C4。");
+        match.publishHudEvent(player, MatchHudEventType.BOMB_DEFUSING,
+                "保持拆除动作直到进度完成", match.rulesBombDefuseTicks());
         player.playNotifySound(SoundEvents.TNT_PRIMED, SoundSource.BLOCKS, 0.5F, 1.5F);
         return true;
     }
@@ -167,13 +175,18 @@ public final class ClassicBombManager {
         }
         state.cancelAction(state.phase() == ClassicBombState.Phase.DEFUSING
                 && match.rulesBombDefuseResume());
-        player.sendSystemMessage(Component.literal("动作已中断。"));
+        match.recordEvent(player.getGameProfile().getName() + " 的 C4 动作已中断。");
+        match.publishHudEvent(player, MatchHudEventType.BOMB_ACTION_INTERRUPTED,
+                "安装或拆除没有完成", 60);
     }
 
     public void interruptIfOperator(ServerPlayer player) {
         if (player != null && player.getUUID().equals(state.operatorId())) {
             state.cancelAction(state.phase() == ClassicBombState.Phase.DEFUSING
                     && match.rulesBombDefuseResume());
+            match.recordEvent(player.getGameProfile().getName() + " 的 C4 动作因状态变化中断。");
+            match.publishHudEvent(player, MatchHudEventType.BOMB_ACTION_INTERRUPTED,
+                    "移动或状态变化导致动作中断", 60);
         }
     }
 
@@ -271,14 +284,15 @@ public final class ClassicBombManager {
         MapRegion site = activeSiteAt(player);
         if (site == null || !removeRoundItem(player, "c4")) {
             state.cancelAction();
-            player.sendSystemMessage(Component.literal("C4 安装失败：位置或道具状态已变化。"));
+            match.recordEvent(player.getGameProfile().getName()
+                    + " 安装 C4 失败：位置或道具状态已变化。");
             return;
         }
         state.finishPlanting(now, site.id(), site.displayName(), match.rulesBombDetonationTicks());
         plantedC4 = createDisplayC4(player.serverLevel(), player.blockPosition());
         player.playNotifySound(SoundEvents.TNT_PRIMED, SoundSource.BLOCKS, 1.0F, 1.0F);
-        server.getPlayerList().broadcastSystemMessage(Component.literal("C4 已安装在 "
-                + site.displayName() + "，" + (match.rulesBombDetonationTicks() / 20) + " 秒后引爆！"), false);
+        match.recordEvent("C4 已安装在 " + site.displayName() + "，"
+                + (match.rulesBombDetonationTicks() / 20) + " 秒后引爆！");
         sync();
     }
 
@@ -286,8 +300,7 @@ public final class ClassicBombManager {
         state.finishDefusing(match.rulesBombDefuseTicks());
         discardPlantedC4();
         player.playNotifySound(SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.BLOCKS, 1.0F, 1.2F);
-        server.getPlayerList().broadcastSystemMessage(Component.literal(player.getGameProfile().getName()
-                + " 成功拆除了 C4！"), false);
+        match.recordEvent(player.getGameProfile().getName() + " 成功拆除了 C4！");
         sync();
         match.finishRound(match.defendingTeam(), false);
     }
@@ -301,7 +314,7 @@ public final class ClassicBombManager {
         match.finishRound(match.attackingTeam(), false);
         level.explode(null, state.x(), state.y(), state.z(), 6.0F,
                 Level.ExplosionInteraction.NONE);
-        server.getPlayerList().broadcastSystemMessage(Component.literal("C4 已引爆！"), false);
+        match.recordEvent("C4 已引爆！");
         sync();
     }
 

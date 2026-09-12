@@ -1,5 +1,7 @@
 package cn.blockforge.generated.generatedmod.client;
 
+import net.minecraft.client.Minecraft;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -55,6 +57,11 @@ public final class HudParameters {
         if (editor) return true;
         Boolean external = HudConditions.external(condition);
         if (external != null) return external;
+        if (condition != null && condition.startsWith("event:")) {
+            return ClientHudEventData.active(condition.substring("event:".length()));
+        }
+        Boolean threshold = thresholdCondition(condition);
+        if (threshold != null) return threshold;
         if (condition.startsWith("api:")) return false;
         return switch (condition) {
             case "respawning" -> ClientMatchData.awaitingRespawn;
@@ -66,11 +73,39 @@ public final class HudParameters {
                     && !ClientMatchData.pending;
             case "playing" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.PLAYING;
             case "warmup" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.WARMUP;
+            case "warmup_waiting" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.WARMUP
+                    && ClientMatchData.phaseRemainingTicks <= 0;
+            case "warmup_countdown" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.WARMUP
+                    && ClientMatchData.phaseRemainingTicks > 0;
             case "buying" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.BUYING;
+            case "round_end" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.ROUND_END;
+            case "terrain_restoring" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.TERRAIN_RESTORING;
+            case "map_resetting" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.MAP_RESETTING;
+            case "match_end" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.MATCH_END;
             case "notice" -> ClientMatchData.inMatch();
             case "notice_urgent" -> MatchHudNotice.urgent();
+            case "event_active" -> ClientHudEventData.active();
             case "c4_active" -> ClientBombData.active;
+            case "c4_carried" -> ClientBombData.active
+                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.CARRIED;
+            case "c4_dropped" -> ClientBombData.active
+                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.DROPPED;
+            case "c4_planting" -> ClientBombData.active
+                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.PLANTING;
+            case "c4_planted" -> ClientBombData.active
+                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.PLANTED;
+            case "c4_defusing" -> ClientBombData.active
+                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.DEFUSING;
+            case "c4_exploded" -> ClientBombData.active
+                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.EXPLODED;
+            case "c4_defused" -> ClientBombData.active
+                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.DEFUSED;
             case "outside" -> ClientMatchData.boundaryOutside;
+            case "round_odd" -> ClientMatchData.roundNumber % 2 == 1;
+            case "round_even" -> ClientMatchData.roundNumber % 2 == 0;
+            case "team_leading" -> scoreState() > 0;
+            case "team_trailing" -> scoreState() < 0;
+            case "score_tied" -> scoreState() == 0;
             case "spectator" -> !ClientMatchData.myTeam.isPlayable();
             case "feed" -> editor || ClientMatchData.killFeedActive();
             case "team_c" -> teamCount(editor) >= 3;
@@ -79,6 +114,56 @@ public final class HudParameters {
             case "queued" -> ClientLobbyData.dynamicReadySeconds() <= 0;
             default -> true;
         };
+    }
+
+    private static Boolean thresholdCondition(String condition) {
+        if (condition == null || !condition.contains(":")) return null;
+        String[] parts = condition.split(":", 2);
+        int value;
+        try {
+            value = Integer.parseInt(parts[1]);
+        } catch (NumberFormatException error) {
+            return null;
+        }
+        return switch (parts[0]) {
+            case "health_below" -> (int) Math.ceil(healthPercent()) < value;
+            case "health_above" -> (int) Math.floor(healthPercent()) > value;
+            case "armor_below" -> armor() < value;
+            case "money_below" -> ClientMatchData.matchBalance < value;
+            case "money_at_least" -> ClientMatchData.matchBalance >= value;
+            case "kills_at_least" -> ClientMatchData.myMatchKills >= value;
+            case "deaths_at_least" -> ClientMatchData.myMatchDeaths >= value;
+            case "phase_remaining_below" -> ClientMatchData.phaseRemainingTicks > 0
+                    && ClientMatchData.phaseRemainingTicks <= value * 20;
+            case "boundary_below" -> ClientMatchData.boundaryOutside
+                    && ClientMatchData.boundaryTicks > 0 && ClientMatchData.boundaryTicks <= value * 20;
+            default -> null;
+        };
+    }
+
+    private static double healthPercent() {
+        var player = Minecraft.getInstance().player;
+        return player == null ? 0.0D : player.getHealth() / player.getMaxHealth() * 100.0D;
+    }
+
+    private static int armor() {
+        var player = Minecraft.getInstance().player;
+        return player == null ? 0 : player.getArmorValue();
+    }
+
+    private static int scoreState() {
+        int mine = metric(ClientMatchData.myTeam);
+        int highest = ClientMatchData.teamStats.stream().mapToInt(stats -> metric(stats.team())).max().orElse(mine);
+        int lowest = ClientMatchData.teamStats.stream().mapToInt(stats -> metric(stats.team())).min().orElse(mine);
+        if (mine >= highest && highest > lowest) return 1;
+        if (mine <= lowest && highest > lowest) return -1;
+        return 0;
+    }
+
+    private static int metric(cn.blockforge.generated.generatedmod.match.Team team) {
+        var stats = ClientMatchData.stats(team);
+        return ClientMatchData.mode == cn.blockforge.generated.generatedmod.match.GameMode.TEAM_DEATHMATCH
+                ? stats.score() : stats.wins();
     }
 
     private static void alias(Map<String, String> values, String key, String source) {

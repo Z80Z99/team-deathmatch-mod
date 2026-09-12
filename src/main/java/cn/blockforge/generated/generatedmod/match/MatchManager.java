@@ -7,6 +7,7 @@ import cn.blockforge.generated.generatedmod.integration.IntegrationManager;
 import cn.blockforge.generated.generatedmod.map.MapManager;
 import cn.blockforge.generated.generatedmod.match.MapRegionActivation;
 import cn.blockforge.generated.generatedmod.network.FpsTdmNetwork;
+import cn.blockforge.generated.generatedmod.network.packet.HudEventPacket;
 import cn.blockforge.generated.generatedmod.network.packet.MatchSyncPacket;
 import cn.blockforge.generated.generatedmod.spawn.SpawnManager;
 import cn.blockforge.generated.generatedmod.spawn.SpawnPoint;
@@ -54,6 +55,7 @@ public final class MatchManager {
     private final EconomyManager economy;
     private final MatchShopManager matchShop;
     private final ClassicBombManager bomb;
+    private final MatchRecordManager records;
     private final Map<UUID, DownedEntry> downedPlayers = new HashMap<>();
     private final java.util.Set<UUID> readyRespawnRequests = new java.util.HashSet<>();
     private final Map<UUID, Long> respawnProtectionEnds = new HashMap<>();
@@ -62,6 +64,7 @@ public final class MatchManager {
     private final Map<UUID, Long> regionReturnTicks = new HashMap<>();
     private final Map<UUID, SpawnPoint> frozenPositions = new HashMap<>();
     private final Map<UUID, SpawnPoint> buySpawnAnchors = new HashMap<>();
+    private final java.util.Set<UUID> buyAreaNoticeSent = new java.util.HashSet<>();
 
     /** 整场开始时刻（tick），供 HUD「本局已进行时间」统计源使用。 */
     private long matchStartTick;
@@ -108,6 +111,7 @@ public final class MatchManager {
         this.economy = new EconomyManager(server);
         this.matchShop = new MatchShopManager(server, this);
         this.bomb = new ClassicBombManager(this);
+        this.records = new MatchRecordManager(server, this);
         this.rooms = new cn.blockforge.generated.generatedmod.lobby.RoomManager(server, this);
         this.mapEditor = new cn.blockforge.generated.generatedmod.map.MapEditorManager(server, this, maps);
         if (!maps.registry().definitions().isEmpty()) {
@@ -122,6 +126,7 @@ public final class MatchManager {
 
     public static void shutdown() {
         if (instance != null) {
+            if (instance.records != null) instance.records.shutdown();
             instance.restoreRules();
             instance.teams.resetAll();
             instance.maps.shutdown();
@@ -167,6 +172,27 @@ public final class MatchManager {
 
     public MatchScoreTracker scores() {
         return scores;
+    }
+
+    MatchRecordManager records() {
+        return records;
+    }
+
+    void recordEvent(String message) {
+        if (records != null) records.log(message);
+    }
+
+    void finishRecord(String result) {
+        if (records != null) records.finish(result);
+    }
+
+    void publishHudEvent(MatchHudEventType type, String detail, int durationTicks) {
+        FpsTdmNetwork.sendToAll(new HudEventPacket(type, detail, durationTicks));
+    }
+
+    void publishHudEvent(ServerPlayer player, MatchHudEventType type,
+                         String detail, int durationTicks) {
+        if (player != null) FpsTdmNetwork.sendToPlayer(new HudEventPacket(type, detail, durationTicks), player);
     }
 
     public WeaponRepositoryManager weapons() {
@@ -468,6 +494,9 @@ public final class MatchManager {
         captureRules();
         economy.beginMatch(server.getPlayerList().getPlayers());
         teams.prepareForMatch();
+        if (records != null) {
+            records.begin(maps.currentMap().orElse(null), rulesMode(), server.getPlayerList().getPlayers());
+        }
         scores.resetMatch();
         matchStartTick = server.getTickCount();
         downedPlayers.clear();
@@ -475,6 +504,7 @@ public final class MatchManager {
         respawnProtectionEnds.clear();
         regionReturnTicks.clear();
         buySpawnAnchors.clear();
+        buyAreaNoticeSent.clear();
         killFeedSequence = 0;
         lastKillKiller = "";
         lastKillVictim = "";
@@ -488,7 +518,7 @@ public final class MatchManager {
         extraWins.clear();
         resetFailureNotified = false;
         beginWarmup(true);
-        broadcastSystemMessage("比赛已创建，正在等待玩家进入热身。", false);
+        recordEvent("比赛已创建，正在等待玩家进入热身。");
         return StartResult.STARTED;
     }
 
@@ -498,7 +528,7 @@ public final class MatchManager {
         }
         stopAfterMapReset = true;
         if (state != MatchState.MAP_RESETTING) beginForcedStopReset();
-        broadcastSystemMessage("比赛正在停止，地图恢复完成后退出。", false);
+        recordEvent("比赛正在停止，地图恢复完成后退出。");
         return true;
     }
 
@@ -539,6 +569,7 @@ public final class MatchManager {
     }
 
     private void resetToWaiting(boolean teleportToLobby) {
+        finishRecord("比赛被重置");
         economy.abortMatch();
         if (bomb != null) bomb.cleanupRound();
         spawns.updateActivationContext(MapRegionActivation.INACTIVE);
@@ -561,6 +592,7 @@ public final class MatchManager {
         respawnProtectionEnds.clear();
         regionReturnTicks.clear();
         buySpawnAnchors.clear();
+        buyAreaNoticeSent.clear();
         winner = null;
         roundWinner = null;
         pendingMatchWinner = null;
@@ -590,8 +622,13 @@ public final class MatchManager {
             long previous = phaseEndTick;
             phaseEndTick = warmupDeadline(previous, teams.totalParticipants(), minimum, server.getTickCount());
             if (phaseEndTick != previous) {
-                broadcastSystemMessage(phaseEndTick == 0L ? "人数不足，继续热身等待。"
-                        : "人数已满足，比赛将在 10 秒后开始。", false);
+                if (phaseEndTick == 0L) {
+                    recordEvent("人数不足，继续热身等待。");
+                } else {
+                    recordEvent("人数已满足，比赛将在 10 秒后开始。");
+                    publishHudEvent(MatchHudEventType.START_COUNTDOWN,
+                            "人数已满足，比赛将在 10 秒后开始", 200);
+                }
                 broadcastMatchState();
             }
         }
@@ -835,6 +872,7 @@ public final class MatchManager {
         killFeedSequence = killFeedSequence == Integer.MAX_VALUE ? 1 : killFeedSequence + 1;
         lastKillKiller = killer.getGameProfile().getName();
         lastKillVictim = victim.getGameProfile().getName();
+        recordEvent(lastKillKiller + " 击杀 " + lastKillVictim + "（" + scoreSummary() + "）");
         killer.displayClientMessage(Component.literal("击杀 " + lastKillVictim
                 + "    " + scoreSummary()), true);
         victim.displayClientMessage(Component.literal("你被 " + lastKillKiller + " 击杀"), true);
@@ -948,8 +986,11 @@ public final class MatchManager {
         player.setInvulnerable(state == MatchState.WARMUP);
         healAndReady(player);
         spawns.teleportToTeamSpawn(player, spawnGroupFor(team), rulesSpawnStrategy());
-        broadcastSystemMessage(player.getGameProfile().getName() + " 中途加入了比赛（"
-                + team.displayName() + "）。", false);
+        if (records != null) records.addParticipant(player);
+        String joinMessage = player.getGameProfile().getName() + " 中途加入了比赛（"
+                + team.displayName() + "）。";
+        recordEvent(joinMessage);
+        broadcastSystemMessage(joinMessage, false);
     }
 
     public void onPlayerLogin(ServerPlayer player) {
@@ -1164,8 +1205,8 @@ public final class MatchManager {
                 spawns.teleportToSpectator(player);
             }
         }
-        broadcastSystemMessage("热身阶段开始，等待足够玩家加入。"
-                + (sidesSwappedThisRound() ? "（本回合双方换边）" : ""), false);
+        recordEvent("热身阶段开始，等待足够玩家加入。"
+                + (sidesSwappedThisRound() ? "（本回合双方换边）" : ""));
         broadcastMatchState();
     }
 
@@ -1195,11 +1236,14 @@ public final class MatchManager {
             finishRound(defendingTeam(), false);
             return;
         }
-        broadcastSystemMessage(switch (rulesMode()) {
+        String actionText = switch (rulesMode()) {
             case SEARCH_DESTROY -> "行动阶段开始，回合 " + roundNumber + "！";
             case TEAM_DEATHMATCH -> "团队竞技开始！";
             case LAST_STANDING -> "歼灭竞技开始！";
-        }, false);
+        };
+        recordEvent(actionText);
+        publishHudEvent(MatchHudEventType.ACTION_PHASE,
+                "回合 " + roundNumber + " · " + rulesMode().displayName(), 70);
         playPhaseSound();
         broadcastMatchState();
     }
@@ -1214,6 +1258,7 @@ public final class MatchManager {
         if (rulesAutoBalanceMode().balancesOnMatchStart()) teams.balanceTeamsAtMatchStart();
         scores.resetRound();
         state = MatchState.BUYING;
+        buyAreaNoticeSent.clear();
         roundStartTick = 0L;
         phaseEndTick = server.getTickCount() + secondsToTicks(rulesBuyPhaseSeconds());
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -1234,7 +1279,12 @@ public final class MatchManager {
                 spawns.teleportToSpectator(player);
             }
         }
-        broadcastSystemMessage("购买阶段开始：只能在出生区域活动，准备装备。", false);
+        int buyTicks = Math.max(1, rulesBuyPhaseSeconds() * 20);
+        recordEvent("购买阶段开始：只能在出生区域活动，准备装备。");
+        publishHudEvent(MatchHudEventType.BUY_PHASE_START,
+                "购买并准备装备 · " + rulesBuyPhaseSeconds() + " 秒", buyTicks);
+        publishHudEvent(MatchHudEventType.BUY_AREA_ONLY,
+                "购买期间只能在出生区域活动", buyTicks);
         playPhaseSound();
         broadcastMatchState();
     }
@@ -1296,10 +1346,11 @@ public final class MatchManager {
             }
         }
         if (resolvedWinner == null) {
-            broadcastSystemMessage("第 " + roundNumber + " 回合平局，比分 "
-                    + scoreSummary() + "。", false);
+            String message = "第 " + roundNumber + " 回合平局，比分 " + scoreSummary() + "。";
+            recordEvent(message);
+            publishHudEvent(MatchHudEventType.ROUND_DRAW, "第 " + roundNumber + " 回合没有队伍获胜", 80);
         } else {
-            broadcastSystemMessage(resolvedWinner.displayName() + " 赢得第 " + roundNumber + " 回合。", false);
+            recordEvent(resolvedWinner.displayName() + " 赢得第 " + roundNumber + " 回合。");
             markWinnerParticles(resolvedWinner);
         }
         broadcastMatchState();
@@ -1378,14 +1429,18 @@ public final class MatchManager {
                 resetFailureNotified = true;
                 String reason = maps.resetManager() == null ? "没有可用的地图快照"
                         : maps.resetManager().lastError();
-                broadcastSystemMessage("地形恢复尚未开始：" + reason + "，服务器将重试。", false);
+                String message = "地形恢复尚未开始：" + reason + "，服务器将重试。";
+                recordEvent(message);
+                broadcastSystemMessage(message, false);
             }
             broadcastMatchState();
             return;
         }
         resetFailureNotified = false;
-        broadcastSystemMessage(afterWarmup ? "热身结束，正在恢复比赛地形。"
-                : "回合结束，正在恢复比赛地形。", false);
+        String message = afterWarmup ? "热身结束，正在恢复比赛地形。"
+                : "回合结束，正在恢复比赛地形。";
+        recordEvent(message);
+        broadcastSystemMessage(message, false);
         broadcastMatchState();
     }
 
@@ -1400,7 +1455,9 @@ public final class MatchManager {
                 resetFailureNotified = true;
                 String reason = maps.resetManager() == null ? "没有可用的地图快照"
                         : maps.resetManager().lastError();
-                broadcastSystemMessage("地形恢复中断：" + reason + "，服务器将重试。", false);
+                String message = "地形恢复中断：" + reason + "，服务器将重试。";
+                recordEvent(message);
+                broadcastSystemMessage(message, false);
             }
             return;
         }
@@ -1417,6 +1474,7 @@ public final class MatchManager {
         boolean restoreAfterWarmup = terrainRestoreAfterWarmup;
         terrainRestoreAfterWarmup = false;
         terrainRestoreStarted = false;
+        recordEvent("地形恢复完成。");
         broadcastSystemMessage("地形恢复完成。", false);
         if (restoreAfterWarmup) {
             if (rulesMode() == GameMode.SEARCH_DESTROY) beginBuying();
@@ -1443,7 +1501,9 @@ public final class MatchManager {
                 resetFailureNotified = true;
                 String reason = maps.resetManager() == null ? "没有可用的地图快照"
                         : maps.resetManager().lastError();
-                broadcastSystemMessage("地图恢复尚未开始：" + reason + "，服务器将重试。", false);
+                String message = "地图恢复尚未开始：" + reason + "，服务器将重试。";
+                recordEvent(message);
+                broadcastSystemMessage(message, false);
             }
             broadcastMatchState();
             return;
@@ -1462,7 +1522,9 @@ public final class MatchManager {
             resetFailureNotified = true;
             String reason = maps.resetManager() == null ? "地图恢复管理器不可用"
                     : maps.resetManager().lastError();
-            broadcastSystemMessage("地图恢复中断：" + reason + "，服务器将在稍后重试。", false);
+            String message = "地图恢复中断：" + reason + "，服务器将在稍后重试。";
+            recordEvent(message);
+            broadcastSystemMessage(message, false);
             broadcastMatchState();
         }
     }
@@ -1472,10 +1534,12 @@ public final class MatchManager {
             return;
         }
         frozenPositions.clear();
+        recordEvent("地图恢复完成。");
         broadcastSystemMessage("地图恢复完成。", false);
         if (stopAfterMapReset) {
+            recordEvent("比赛已停止，玩家状态与地图均已恢复。");
+            finishRecord("比赛已停止");
             resetToWaiting(false);
-            broadcastSystemMessage("比赛已停止，玩家状态与地图均已恢复。", false);
             return;
         }
         if (pendingMatchWinner != null || rulesMode() != GameMode.SEARCH_DESTROY) {
@@ -1504,9 +1568,11 @@ public final class MatchManager {
             spawns.teleportToSpectator(player);
         }
         if (finalWinner == null) {
-            broadcastSystemMessage("比赛结束，双方平局。", false);
+            recordEvent("比赛结束，双方平局。");
+            finishRecord("双方平局");
         } else {
-            broadcastSystemMessage(finalWinner.displayName() + " 赢得整场比赛！", false);
+            recordEvent(finalWinner.displayName() + " 赢得整场比赛！");
+            finishRecord(finalWinner.displayName() + " 获胜");
         }
         broadcastMatchState();
     }
@@ -1524,8 +1590,11 @@ public final class MatchManager {
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new MatchRespawnEvent(player,
                 MatchRespawnEvent.Phase.WAITING, releaseTick));
         if (releaseTick == Long.MAX_VALUE) {
+            recordEvent(player.getGameProfile().getName() + " 阵亡，本回合不再复活。");
             sendMessageTo(player, "你已阵亡，本回合不再复活，等待回合结束。", 0);
         } else {
+            recordEvent(player.getGameProfile().getName() + " 阵亡，将在 "
+                    + secondsRemaining(releaseTick) + " 秒后恢复。");
             sendMessageTo(player, "你已阵亡，将在 %s 秒后恢复。", secondsRemaining(releaseTick));
         }
     }
@@ -1671,7 +1740,12 @@ public final class MatchManager {
                     spawns.teleportToTeamSpawn(player, spawnGroup, buySpawn);
                     buySpawnAnchors.put(player.getUUID(), new SpawnPoint(player.level().dimension(),
                             player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot()));
-                    player.displayClientMessage(Component.literal("购买阶段只能在出生区域内活动。"), true);
+                    if (buyAreaNoticeSent.add(player.getUUID())) {
+                        recordEvent(player.getGameProfile().getName()
+                                + " 离开购买区，被送回出生区域。");
+                    }
+                    publishHudEvent(player, MatchHudEventType.BUY_AREA_ONLY,
+                            "购买期间只能在出生区域活动", 60);
                 }
                 continue;
             }
