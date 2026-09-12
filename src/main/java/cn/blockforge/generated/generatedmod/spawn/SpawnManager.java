@@ -290,6 +290,21 @@ public final class SpawnManager {
                 player.distanceToSqr(point.x() + 0.5D, point.y(), point.z() + 0.5D) <= 64.0D);
     }
 
+    public boolean hasTeamSpawnZone(Team team) {
+        MapDefinition map = maps.currentMap().orElse(null);
+        if (map == null || team == null || !team.isPlayable()) return false;
+        String type = switch (team) {
+            case TEAM_A -> "spawn_a";
+            case TEAM_B -> "spawn_b";
+            case TEAM_C -> "spawn_c";
+            case TEAM_D -> "spawn_d";
+            default -> "";
+        };
+        if (MapRegionActivation.activeRegions(map.customRegions(), activationContext).stream()
+                .anyMatch(region -> region.type().id().equals(type))) return true;
+        return !getSpawns(team).isEmpty();
+    }
+
     public String boundsDescription() {
         return maps.currentMap().map(map -> map.bounds().toString()).orElse("未选择地图");
     }

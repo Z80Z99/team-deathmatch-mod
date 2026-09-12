@@ -61,6 +61,7 @@ public final class MatchManager {
     private final java.util.Set<UUID> respawnedPlayers = new java.util.HashSet<>();
     private final Map<UUID, Long> regionReturnTicks = new HashMap<>();
     private final Map<UUID, SpawnPoint> frozenPositions = new HashMap<>();
+    private final Map<UUID, SpawnPoint> buySpawnAnchors = new HashMap<>();
 
     /** 整场开始时刻（tick），供 HUD「本局已进行时间」统计源使用。 */
     private long matchStartTick;
@@ -473,6 +474,7 @@ public final class MatchManager {
         readyRespawnRequests.clear();
         respawnProtectionEnds.clear();
         regionReturnTicks.clear();
+        buySpawnAnchors.clear();
         killFeedSequence = 0;
         lastKillKiller = "";
         lastKillVictim = "";
@@ -558,6 +560,7 @@ public final class MatchManager {
         readyRespawnRequests.clear();
         respawnProtectionEnds.clear();
         regionReturnTicks.clear();
+        buySpawnAnchors.clear();
         winner = null;
         roundWinner = null;
         pendingMatchWinner = null;
@@ -1223,6 +1226,8 @@ public final class MatchManager {
                 SpawnSelectionStrategy buySpawn = spawns.findFixedSpawn(spawnGroupFor(team)).isPresent()
                         ? SpawnSelectionStrategy.SEQUENTIAL : rulesSpawnStrategy();
                 spawns.teleportToTeamSpawn(player, spawnGroupFor(team), buySpawn);
+                buySpawnAnchors.put(player.getUUID(), new SpawnPoint(player.level().dimension(),
+                        player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot()));
             } else if (isMatchActive()) {
                 player.setGameMode(GameType.SPECTATOR);
                 player.setInvulnerable(true);
@@ -1654,10 +1659,18 @@ public final class MatchManager {
             if (state == MatchState.BUYING && team.isPlayable() && !teams.isPending(player)) {
                 player.setGameMode(GameType.SURVIVAL);
                 player.setInvulnerable(true);
-                if (!spawns.isInsideTeamSpawn(player, spawnGroupFor(team)) && canReturnNow(player, now)) {
-                    SpawnSelectionStrategy buySpawn = spawns.findFixedSpawn(spawnGroupFor(team)).isPresent()
+                Team spawnGroup = spawnGroupFor(team);
+                SpawnPoint anchor = buySpawnAnchors.get(player.getUUID());
+                boolean inside = spawns.hasTeamSpawnZone(spawnGroup)
+                        ? spawns.isInsideTeamSpawn(player, spawnGroup)
+                        : anchor == null || player.distanceToSqr(anchor.x() + 0.5D,
+                        anchor.y(), anchor.z() + 0.5D) <= 64.0D;
+                if (!inside && canReturnNow(player, now)) {
+                    SpawnSelectionStrategy buySpawn = spawns.findFixedSpawn(spawnGroup).isPresent()
                             ? SpawnSelectionStrategy.SEQUENTIAL : rulesSpawnStrategy();
-                    spawns.teleportToTeamSpawn(player, spawnGroupFor(team), buySpawn);
+                    spawns.teleportToTeamSpawn(player, spawnGroup, buySpawn);
+                    buySpawnAnchors.put(player.getUUID(), new SpawnPoint(player.level().dimension(),
+                            player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot()));
                     player.displayClientMessage(Component.literal("购买阶段只能在出生区域内活动。"), true);
                 }
                 continue;
