@@ -230,6 +230,24 @@ public final class SpawnManager {
         return teleported;
     }
 
+    /** Keeps players assigned to the configured spectator area inside its enforced radius. */
+    public boolean enforceSpectatorArea(ServerPlayer player) {
+        Optional<SpawnPoint> configured = getSpectatorSpawn();
+        if (configured.isEmpty()) return false;
+        SpawnPoint point = configured.get();
+        boolean wrongDimension = !point.dimension().equals(player.level().dimension());
+        double distance = player.distanceToSqr(point.x(), point.y(), point.z());
+        if (wrongDimension || distance > 12.0D * 12.0D) {
+            teleport(player, point);
+            player.setGameMode(GameType.SPECTATOR);
+            player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+            player.fallDistance = 0.0F;
+            return true;
+        }
+        player.setGameMode(GameType.SPECTATOR);
+        return false;
+    }
+
     public boolean teleportToLobby(ServerPlayer player) {
         return teleportToSpectator(player);
     }

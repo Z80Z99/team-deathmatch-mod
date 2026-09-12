@@ -65,6 +65,7 @@ public final class MatchManager {
     private final Map<UUID, SpawnPoint> frozenPositions = new HashMap<>();
     private final Map<UUID, SpawnPoint> buySpawnAnchors = new HashMap<>();
     private final java.util.Set<UUID> buyAreaNoticeSent = new java.util.HashSet<>();
+    private final java.util.Set<UUID> spectatorAreaPlayers = new java.util.HashSet<>();
 
     /** 整场开始时刻（tick），供 HUD「本局已进行时间」统计源使用。 */
     private long matchStartTick;
@@ -548,6 +549,7 @@ public final class MatchManager {
 
     private void beginForcedStopReset() {
         state = MatchState.MAP_RESETTING;
+        if (spectatorAreaPlayers != null) spectatorAreaPlayers.clear();
         spawns.updateActivationContext(MapRegionActivation.INACTIVE);
         phaseEndTick = 0L;
         frozenPositions.clear();
@@ -607,6 +609,7 @@ public final class MatchManager {
         regionReturnTicks.clear();
         buySpawnAnchors.clear();
         buyAreaNoticeSent.clear();
+        if (spectatorAreaPlayers != null) spectatorAreaPlayers.clear();
         winner = null;
         roundWinner = null;
         pendingMatchWinner = null;
@@ -936,7 +939,7 @@ public final class MatchManager {
         if (state == MatchState.MAP_RESETTING) {
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
-            spawns.teleportToSpectator(player);
+            sendToSpectatorArea(player);
             return;
         }
         if (state == MatchState.TERRAIN_RESTORING) {
@@ -948,7 +951,7 @@ public final class MatchManager {
         if (state == MatchState.ROUND_END || state == MatchState.MATCH_END) {
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
-            spawns.teleportToSpectator(player);
+            sendToSpectatorArea(player);
             return;
         }
         if (isMatchActive() && team.isPlayable() && !teams.isPending(player)
@@ -961,9 +964,7 @@ public final class MatchManager {
             return;
         }
         if (isMatchActive() && (!team.isPlayable() || teams.isPending(player))) {
-            player.setGameMode(GameType.SPECTATOR);
-            player.setInvulnerable(true);
-            spawns.teleportToSpectator(player);
+            sendToSpectatorArea(player);
         }
     }
 
@@ -978,26 +979,29 @@ public final class MatchManager {
         teams.rememberGameMode(player);
         if (state == MatchState.MAP_RESETTING || state == MatchState.TERRAIN_RESTORING) {
             teams.setPending(player);
-            player.setGameMode(GameType.SPECTATOR);
-            player.setInvulnerable(true);
-            if (state == MatchState.TERRAIN_RESTORING) spawns.teleportToTerrainRestoreHold(player);
-            else spawns.teleportToSpectator(player);
+            if (state == MatchState.TERRAIN_RESTORING) {
+                player.setGameMode(GameType.SPECTATOR);
+                player.setInvulnerable(true);
+                spawns.teleportToTerrainRestoreHold(player);
+            } else {
+                sendToSpectatorArea(player);
+            }
             broadcastMatchState();
             return;
         }
         Team team = teams.forceJoinDuringMatch(player);
         broadcastMatchState();
         if (team == null || !team.isPlayable()) {
-            player.setInvulnerable(true);
-            spawns.teleportToSpectator(player);
+            sendToSpectatorArea(player);
             return;
         }
-        if (state == MatchState.PLAYING && rulesElimination()) {
+        if (state != MatchState.WARMUP && rulesJoinDuringMatchAsSpectator()) {
             // 歼灭类回合不允许“带着上一回合的血条插队”，下一回合再入场。
             teams.setPending(player);
-            spawns.teleportToSpectator(player);
+            sendToSpectatorArea(player);
             return;
         }
+        leaveSpectatorArea(player);
         healAndReady(player);
         spawns.teleportToTeamSpawn(player, spawnGroupFor(team), rulesSpawnStrategy());
         if (records != null) records.addParticipant(player);
@@ -1015,7 +1019,7 @@ public final class MatchManager {
         if (state == MatchState.MAP_RESETTING) {
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
-            spawns.teleportToSpectator(player);
+            sendToSpectatorArea(player);
         } else if (isMatchActive() && teams.getTeam(player) == Team.SPECTATOR) {
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
@@ -1213,14 +1217,13 @@ public final class MatchManager {
             Team team = teams.getTeam(player);
             teams.rememberGameMode(player);
             if (team.isPlayable() && !teams.isPending(player)) {
+                leaveSpectatorArea(player);
                 player.setGameMode(GameType.SURVIVAL);
                 player.setInvulnerable(false);
                 healAndReady(player);
                 spawns.teleportToTeamSpawn(player, spawnGroupFor(team), strategy);
             } else if (isMatchActive()) {
-                player.setGameMode(GameType.SPECTATOR);
-                player.setInvulnerable(true);
-                spawns.teleportToSpectator(player);
+                sendToSpectatorArea(player);
             }
         }
         recordEvent("热身阶段开始，等待足够玩家加入。"
@@ -1237,6 +1240,7 @@ public final class MatchManager {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             Team team = teams.getTeam(player);
             if (team.isPlayable() && !teams.isPending(player)) {
+                leaveSpectatorArea(player);
                 player.setGameMode(GameType.SURVIVAL);
                 player.setInvulnerable(true);
                 player.setDeltaMovement(0.0D, 0.0D, 0.0D);
@@ -1257,6 +1261,7 @@ public final class MatchManager {
         spawns.updateActivationContext(new MapRegionActivation.Context(
                 true, rulesMode(), roundNumber, activeTeams().size(), teams.totalParticipants()));
         if (rulesAutoBalanceMode().balancesOnMatchStart()) teams.balanceTeamsAtMatchStart();
+        teams.activatePendingPlayers();
         scores.resetRound();
         state = MatchState.PLAYING;
         roundStartTick = server.getTickCount();
@@ -1266,6 +1271,7 @@ public final class MatchManager {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             Team team = teams.getTeam(player);
             if (team.isPlayable() && !teams.isPending(player)) {
+                leaveSpectatorArea(player);
                 player.setGameMode(GameType.SURVIVAL);
                 player.setInvulnerable(false);
                 healAndReady(player);
@@ -1301,6 +1307,7 @@ public final class MatchManager {
         spawns.updateActivationContext(new MapRegionActivation.Context(
                 true, rulesMode(), roundNumber, activeTeams().size(), teams.totalParticipants()));
         if (rulesAutoBalanceMode().balancesOnMatchStart()) teams.balanceTeamsAtMatchStart();
+        teams.activatePendingPlayers();
         scores.resetRound();
         state = MatchState.BUYING;
         buyAreaNoticeSent.clear();
@@ -1310,6 +1317,7 @@ public final class MatchManager {
             Team team = teams.getTeam(player);
             teams.rememberGameMode(player);
             if (team.isPlayable() && !teams.isPending(player)) {
+                leaveSpectatorArea(player);
                 player.setGameMode(GameType.SURVIVAL);
                 player.setInvulnerable(true);
                 healAndReady(player);
@@ -1319,9 +1327,7 @@ public final class MatchManager {
                 buySpawnAnchors.put(player.getUUID(), new SpawnPoint(player.level().dimension(),
                         player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot()));
             } else if (isMatchActive()) {
-                player.setGameMode(GameType.SPECTATOR);
-                player.setInvulnerable(true);
-                spawns.teleportToSpectator(player);
+                sendToSpectatorArea(player);
             }
         }
         int buyTicks = Math.max(1, rulesBuyPhaseSeconds() * 20);
@@ -1387,7 +1393,7 @@ public final class MatchManager {
             player.setInvulnerable(true);
             if (teams.getTeam(player).isPlayable()) {
                 player.setGameMode(GameType.SPECTATOR);
-                spawns.teleportToSpectator(player);
+                sendToSpectatorArea(player);
             }
         }
         if (resolvedWinner == null) {
@@ -1540,7 +1546,11 @@ public final class MatchManager {
             return;
         }
         roundNumber++;
-        beginWarmup(false);
+        if (rulesMode() == GameMode.SEARCH_DESTROY) {
+            beginBuying();
+        } else {
+            beginWarmup(false);
+        }
     }
 
     private void retryForcedMapReset() {
@@ -1619,7 +1629,7 @@ public final class MatchManager {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             player.setInvulnerable(true);
             player.setGameMode(GameType.SPECTATOR);
-            spawns.teleportToSpectator(player);
+            sendToSpectatorArea(player);
         }
         if (finalWinner == null) {
             recordEvent("比赛结束，双方平局。");
@@ -1678,6 +1688,13 @@ public final class MatchManager {
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
             player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+            if (rulesMode() == GameMode.SEARCH_DESTROY && entry.team() == attackingTeam()
+                    && bomb != null && (bomb.state().phase() == ClassicBombState.Phase.PLANTED
+                    || bomb.state().phase() == ClassicBombState.Phase.DEFUSING)) {
+                sendToSpectatorArea(player);
+                continue;
+            }
+            leaveSpectatorArea(player);
             player.teleportTo(entry.x(), entry.y(), entry.z());
             boolean requested = readyRespawnRequests.remove(entry.playerId());
             boolean observationFinished = now >= entry.cameraUnlockTick();
@@ -1741,6 +1758,12 @@ public final class MatchManager {
         long now = server.getTickCount();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             Team team = teams.getTeam(player);
+            if (spectatorAreaPlayers != null && spectatorAreaPlayers.contains(player.getUUID())
+                    && state != MatchState.TERRAIN_RESTORING
+                    && state != MatchState.MAP_RESETTING) {
+                sendToSpectatorArea(player);
+                continue;
+            }
 
             boolean boundaryEligible = state == MatchState.PLAYING && team.isPlayable()
                     && !teams.isPending(player) && !isDowned(player) && player.isAlive()
@@ -1764,7 +1787,7 @@ public final class MatchManager {
                 player.setInvulnerable(true);
                 player.setDeltaMovement(0.0D, 0.0D, 0.0D);
                 if (canReturnNow(player, now)) {
-                    spawns.teleportToSpectator(player);
+                    sendToSpectatorArea(player);
                 }
                 continue;
             }
@@ -1805,11 +1828,10 @@ public final class MatchManager {
             }
 
             if (!team.isPlayable() || teams.isPending(player)) {
-                player.setGameMode(GameType.SPECTATOR);
-                player.setInvulnerable(true);
+                sendToSpectatorArea(player);
                 if (state != MatchState.MATCH_END && FpsTdmConfig.COMMON.enforceRegion.get()
                         && !spawns.isInsideMap(player) && canReturnNow(player, now)) {
-                    spawns.teleportToSpectator(player);
+                    sendToSpectatorArea(player);
                 }
                 continue;
             }
@@ -1839,7 +1861,7 @@ public final class MatchManager {
                     }
                     spawns.teleportToTeamSpawn(player, spawnGroupFor(team), rulesSpawnStrategy());
                 } else {
-                    spawns.teleportToSpectator(player);
+                    sendToSpectatorArea(player);
                 }
             }
         }
@@ -1853,6 +1875,24 @@ public final class MatchManager {
         }
         regionReturnTicks.put(player.getUUID(), now + REGION_RETURN_COOLDOWN_TICKS);
         return true;
+    }
+
+    private void sendToSpectatorArea(ServerPlayer player) {
+        if (player == null) return;
+        player.setGameMode(GameType.SPECTATOR);
+        player.setInvulnerable(true);
+        player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+        if (spectatorAreaPlayers == null) {
+            spawns.teleportToSpectator(player);
+        } else if (spectatorAreaPlayers.add(player.getUUID())) {
+            spawns.teleportToSpectator(player);
+        } else {
+            spawns.enforceSpectatorArea(player);
+        }
+    }
+
+    private void leaveSpectatorArea(ServerPlayer player) {
+        if (player != null && spectatorAreaPlayers != null) spectatorAreaPlayers.remove(player.getUUID());
     }
 
     private ServerPlayer resolveKiller(DamageSource source) {

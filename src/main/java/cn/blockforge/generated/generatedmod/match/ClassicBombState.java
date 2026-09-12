@@ -84,6 +84,8 @@ public final class ClassicBombState {
         y = posY;
         z = posZ;
         droppedTick = now;
+        droppedGlowing = false;
+        plantedGlowing = false;
         actionProgress = 0;
     }
 
@@ -94,6 +96,8 @@ public final class ClassicBombState {
         phase = Phase.CARRIED;
         carrierId = playerId;
         droppedTick = 0L;
+        droppedGlowing = false;
+        plantedGlowing = false;
     }
 
     public void startPlanting(UUID playerId, long now, double posX, double posY, double posZ) {

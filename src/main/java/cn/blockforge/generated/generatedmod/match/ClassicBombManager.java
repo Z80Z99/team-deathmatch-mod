@@ -149,7 +149,8 @@ public final class ClassicBombManager {
                 && player.getUUID().equals(state.operatorId())) {
             return true;
         }
-        if (state.phase() == ClassicBombState.Phase.DROPPED && holdsRoundItem(player, "c4")) {
+        if (state.phase() == ClassicBombState.Phase.DROPPED && holdsRoundItem(player, "c4")
+                && match.teamManager().getTeam(player) == match.attackingTeam()) {
             state.pickup(player.getUUID());
         }
         if (state.phase() != ClassicBombState.Phase.CARRIED
@@ -255,10 +256,17 @@ public final class ClassicBombManager {
     }
 
     public void onItemPickup(ServerPlayer player, ItemStack stack) {
-        if (player != null && isRoundItem(stack, "c4") && state.phase() == ClassicBombState.Phase.DROPPED) {
-            state.pickup(player.getUUID());
-            droppedC4 = null;
+        if (player == null || !isRoundItem(stack, "c4") || state.phase() != ClassicBombState.Phase.DROPPED) {
+            return;
         }
+        if (match.teamManager().getTeam(player) != match.attackingTeam()) {
+            ItemStack rejected = takeRoundItem(player, "c4");
+            if (!rejected.isEmpty()) player.drop(rejected, false);
+            return;
+        }
+        state.pickup(player.getUUID());
+        if (droppedC4 != null) droppedC4.setGlowingTag(false);
+        droppedC4 = null;
     }
 
     public void onItemToss(ServerPlayer player, ItemEntity entity) {
