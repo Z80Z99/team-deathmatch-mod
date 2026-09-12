@@ -194,8 +194,15 @@ public final class HudStats {
     private static final List<Source> SOURCES = new ArrayList<>();
     private static final Map<String, Source> BY_ID = new LinkedHashMap<>();
     private static final Map<String, Source> EXTERNAL_SOURCES = new LinkedHashMap<>();
+    private static final Set<String> HUD_RESTRICTED_SOURCES = Set.of(
+            "notice_title", "notice_detail", "notice_timer",
+            "bomb_phase", "bomb_site", "bomb_countdown");
 
     private HudStats() {
+    }
+
+    public static boolean hudRestricted(String id) {
+        return id != null && HUD_RESTRICTED_SOURCES.contains(id);
     }
 
     // ------------------------------------------------------------- 注册表
@@ -203,13 +210,17 @@ public final class HudStats {
     /** 全部静态数据源（不含 dyn: 动态源）。 */
     public static List<Source> sources() {
         ensureBuilt();
-        return List.copyOf(SOURCES);
+        return SOURCES.stream()
+                .filter(source -> !HUD_RESTRICTED_SOURCES.contains(source.id()))
+                .toList();
     }
 
     /** 含自定义通道条目在内的全部可选数据源（配置窗列表用）。 */
     public static List<Source> sourcesWithDynamic() {
         ensureBuilt();
-        List<Source> all = new ArrayList<>(SOURCES);
+        List<Source> all = new ArrayList<>(SOURCES.stream()
+                .filter(source -> !HUD_RESTRICTED_SOURCES.contains(source.id()))
+                .toList());
         all.addAll(EXTERNAL_SOURCES.values());
         all.addAll(dynamicSources());
         all.addAll(externalEventSources());
@@ -321,6 +332,9 @@ public final class HudStats {
     /** 按 id 取数据源；找不到返回 null。 */
     public static Source byId(String id) {
         if (id == null || id.isBlank()) {
+            return null;
+        }
+        if (HUD_RESTRICTED_SOURCES.contains(id)) {
             return null;
         }
         ensureBuilt();

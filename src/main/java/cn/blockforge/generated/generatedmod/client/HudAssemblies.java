@@ -21,6 +21,12 @@ public final class HudAssemblies {
         draft.of(context).setBuiltInEnabled(component, false);
         if (component == BuiltIn.NOTICE && !context.isMatch()) return;
         if (context.isMatch() == (component == BuiltIn.BANNER)) return;
+        if (component == BuiltIn.NOTICE) {
+            for (var event : cn.blockforge.generated.generatedmod.match.MatchHudEventType.values()) {
+                addEventComponent(draft, context, event);
+            }
+            return;
+        }
         HudGeometry.Rect r = switch (component) {
             case SCORE -> HudGeometry.score(v, 640, 360);
             case NOTICE -> HudGeometry.banner(v, 640, 360, 300);
@@ -69,13 +75,6 @@ public final class HudAssemblies {
                 b.line(key.toUpperCase() + "队", key.toUpperCase() + "队 {score_" + key + "}",
                         x + (i == 2 ? -70 : 70), y + 50, 120, i == 2 ? 0xFF7BDC98 : 0xFFF4CE70);
             }
-        } else if (component == BuiltIn.NOTICE) {
-            b.condition = "notice";
-            b.text("标题", "{notice_title}", x - Math.max(36, w / 5), y - 8,
-                    Math.max(90, w / 2), color, 110);
-            b.text("倒计时", "{notice_timer}", x + Math.max(34, w / 4), y - 8,
-                    Math.max(72, w / 4), color, 105);
-            b.line("详情", "{notice_detail}", x, y + 10, w - 16, 0xFFE8ECEF);
         } else if (component == BuiltIn.BANNER) {
             boolean matchingExample = context == HudContext.MATCHING
                     && v.bannerLineOneTemplate().equals("{matching_line1}")

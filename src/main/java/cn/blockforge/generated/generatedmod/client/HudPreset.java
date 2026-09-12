@@ -119,20 +119,9 @@ public enum HudPreset {
 
     private static void addMatchReadouts(ClientHudLayout.Draft draft, HudContext context,
                                          String example, int accent, int white, int red) {
-        var notice = new HudAssemblies.Builder(draft, context, example, 50, 42);
-        notice.opacity = 80;
-        notice.condition = "notice";
-        notice.block("阶段公告底板", 0, 0, 340, 48, 0xFF11161B);
-        notice.block("阶段公告强调线", 0, -23, 340, 2, accent);
-        notice.text("阶段公告标题", "{notice_title}", -95, -8, 130, accent, 110);
-        notice.text("阶段公告计时", "{notice_timer}", 120, -8, 68, white, 105);
-        notice.line("阶段公告详情", "{notice_detail}", 0, 10, 320, white);
-
-        var bomb = new HudAssemblies.Builder(draft, context, example, 50, 53);
-        bomb.opacity = 88;
-        bomb.condition = "c4_active";
-        bomb.text("C4状态", "{bomb_phase} · {bomb_site}", 0, -9, 300, red, 90);
-        bomb.progress("C4倒计时", "bomb_countdown", 0, 0, 300, red);
+        for (var event : cn.blockforge.generated.generatedmod.match.MatchHudEventType.values()) {
+            HudAssemblies.addEventComponent(draft, context, event);
+        }
     }
 
     public void apply(ClientHudLayout.Mutable v, HudContext context) {

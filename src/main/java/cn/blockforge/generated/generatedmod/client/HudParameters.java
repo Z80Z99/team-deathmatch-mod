@@ -57,9 +57,6 @@ public final class HudParameters {
         values.put("victim", editor ? "Alex" : ClientMatchData.killFeedVictim());
         values.put("feed", editor ? "Steve 击杀 Alex" : ClientMatchData.killFeedText());
         values.put("hint", editor && !ClientMatchData.inMatch() ? "A队" : MatchHudOverlay.hintText());
-        String bombStatus = MatchHudOverlay.bombStatusText();
-        values.put("bomb_status", editor && bombStatus == null ? "C4 A 10.0"
-                : bombStatus == null ? "" : bombStatus);
         values.put("sizes", editor && !ClientMatchData.inMatch() ? "4:4" : ClientMatchData.teamSizesText());
         return values;
     }
@@ -117,21 +114,8 @@ public final class HudParameters {
                     || MatchHudNotice.urgent());
             case "notice_urgent" -> MatchHudNotice.urgent();
             case "event_active" -> ClientHudEventData.active();
-            case "c4_active" -> ClientBombData.active;
-            case "c4_carried" -> ClientBombData.active
-                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.CARRIED;
-            case "c4_dropped" -> ClientBombData.active
-                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.DROPPED;
-            case "c4_planting" -> ClientBombData.active
-                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.PLANTING;
-            case "c4_planted" -> ClientBombData.active
-                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.PLANTED;
-            case "c4_defusing" -> ClientBombData.active
-                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.DEFUSING;
-            case "c4_exploded" -> ClientBombData.active
-                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.EXPLODED;
-            case "c4_defused" -> ClientBombData.active
-                    && ClientBombData.phase == cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.DEFUSED;
+            case "c4_active", "c4_carried", "c4_dropped", "c4_planting", "c4_planted",
+                    "c4_defusing", "c4_exploded", "c4_defused" -> false;
             case "outside" -> ClientMatchData.boundaryOutside;
             case "round_odd" -> ClientMatchData.roundNumber % 2 == 1;
             case "round_even" -> ClientMatchData.roundNumber % 2 == 0;
@@ -226,6 +210,10 @@ public final class HudParameters {
                 case "hint" -> "hint_text"; case "feed" -> "kill_feed_text";
                 default -> key;
             };
+            if (HudStats.hudRestricted(sourceId)) {
+                selected.put(key, "");
+                continue;
+            }
             var source = HudStats.byId(sourceId);
             String value = switch (key) {
                 case "round" -> editor && !ClientMatchData.inMatch() ? "1" : Integer.toString(ClientMatchData.roundNumber);

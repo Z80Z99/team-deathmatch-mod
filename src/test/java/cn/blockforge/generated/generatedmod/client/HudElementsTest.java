@@ -51,7 +51,13 @@ class HudElementsTest {
         assertTrue(HudStats.sourcesFor(HudContext.TEAM_DEATHMATCH).stream()
                 .noneMatch(s -> s.id().equals("bomb_countdown")));
         assertTrue(HudStats.sourcesFor(HudContext.SEARCH_DESTROY).stream()
-                .anyMatch(s -> s.id().equals("bomb_countdown")));
+                .noneMatch(s -> s.id().equals("bomb_countdown")));
+        for (String restricted : List.of("notice_title", "notice_detail", "notice_timer",
+                "bomb_phase", "bomb_site", "bomb_countdown")) {
+            assertNull(HudStats.byId(restricted));
+            assertTrue(HudStats.sources().stream().noneMatch(source -> source.id().equals(restricted)));
+            assertEquals("", HudParameters.render("{" + restricted + "}", HudContext.SEARCH_DESTROY, false));
+        }
         assertTrue(HudStats.sourcesFor(HudContext.ROOM).stream().noneMatch(s -> s.group() == HudStats.Group.SCORE));
         ClientMatchData.state = cn.blockforge.generated.generatedmod.match.MatchState.PLAYING;
         ClientMatchData.respawnTotalTicks = 200;
@@ -81,8 +87,7 @@ class HudElementsTest {
             ClientBombData.detonationRemainingTicks = 200;
             ClientBombData.detonationTotalTicks = 800;
             try {
-                assertEquals(800, HudStats.byId("bomb_countdown").maximum(false));
-                assertEquals(.25, HudStats.byId("bomb_countdown").ratio(false), .0001);
+                assertNull(HudStats.byId("bomb_countdown"));
             assertEquals(12000, HudStats.byId("phase_remaining").maximum(false));
             assertEquals(.075, HudStats.byId("phase_remaining").ratio(false), .0001);
             assertEquals(200, HudStats.byId("boundary_remaining").maximum(false));
@@ -115,7 +120,7 @@ class HudElementsTest {
             assertTrue(MatchHudNotice.detail().contains("30 秒后开始"));
             assertEquals("30 秒", MatchHudNotice.timer());
             assertTrue(HudStats.sourcesFor(HudContext.TEAM_DEATHMATCH).stream()
-                    .anyMatch(source -> source.id().equals("notice_title")));
+                    .noneMatch(source -> source.id().equals("notice_title")));
 
             ClientBombData.active = true;
             ClientBombData.phase = cn.blockforge.generated.generatedmod.match.ClassicBombState.Phase.PLANTED;
@@ -140,10 +145,10 @@ class HudElementsTest {
                     .map(element -> element.text() + "|" + element.source() + "|"
                             + element.placement().condition())
                     .collect(java.util.stream.Collectors.joining("\n"));
-            for (String required : List.of("notice_title", "notice_detail", "notice_timer",
+            for (String required : List.of(
                     "target", "health_percent", "held_weapon", "held_ammo", "held_durability",
                     "my_kills", "my_deaths", "my_damage", "my_match_money", "match_kills_sum",
-                    "bomb_phase", "bomb_countdown")) {
+                    "event:bomb_planting:title", "event:bomb_planting:progress")) {
                 assertTrue(content.contains(required), preset.label() + " 缺少 " + required);
             }
         }
