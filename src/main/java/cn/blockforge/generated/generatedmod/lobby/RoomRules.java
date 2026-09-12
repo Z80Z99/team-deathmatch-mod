@@ -36,7 +36,12 @@ public record RoomRules(GameMode mode,
                         SpawnSelectionStrategy spawnSelectionStrategy,
                         int maxTeamImbalance,
                         int respawnProtectionSeconds,
-                        int respawnProtectionPercent) {
+                        int respawnProtectionPercent,
+                        int buyPhaseSeconds,
+                        int bombPlantSeconds,
+                        int bombDetonationSeconds,
+                        int bombDefuseSeconds,
+                        boolean bombDefuseResume) {
 
     public RoomRules {
         mode = mode == null ? GameMode.TEAM_DEATHMATCH : mode;
@@ -58,7 +63,8 @@ public record RoomRules(GameMode mode,
         this(mode, targetKills, matchDurationSeconds, roundWinTarget, warmupDurationSeconds, respawnDelaySeconds,
                 autoRespawn, friendlyFire, switchSideEvery, minPlayersToStart, roundEndDelaySeconds, matchEndDelaySeconds,
                 keepInventoryOnDeath, suppressDeathMessages, autoReset, requireBothTeams, teamChangePolicy, autoBalanceMode,
-                spawnSelectionStrategy, maxTeamImbalance, 3, 80);
+                spawnSelectionStrategy, maxTeamImbalance, 3, 80,
+                15, 4, 40, 5, true);
     }
 
     /** 以服务器当前配置作为默认规则快照。必须在服务端线程调用。 */
@@ -144,7 +150,12 @@ public record RoomRules(GameMode mode,
                         ? SpawnSelectionStrategy.RANDOM : spawnSelectionStrategy,
                 clamp(maxTeamImbalance, 0, 8),
                 mode.respawnRules() ? clamp(respawnProtectionSeconds, 0, 10) : 0,
-                mode.respawnRules() ? clamp(respawnProtectionPercent, 0, 100) : 0);
+                mode.respawnRules() ? clamp(respawnProtectionPercent, 0, 100) : 0,
+                clamp(buyPhaseSeconds, 0, 120),
+                mode == GameMode.SEARCH_DESTROY ? clamp(bombPlantSeconds, 1, 30) : 4,
+                mode == GameMode.SEARCH_DESTROY ? clamp(bombDetonationSeconds, 5, 300) : 40,
+                mode == GameMode.SEARCH_DESTROY ? clamp(bombDefuseSeconds, 1, 60) : 5,
+                mode == GameMode.SEARCH_DESTROY && bombDefuseResume);
     }
 
     /** 返回错误文本；null 表示合法。 */
@@ -184,6 +195,10 @@ public record RoomRules(GameMode mode,
                     .append(autoRespawn ? "" : "（关闭）");
             case SEARCH_DESTROY -> text.append(" · 回合 ").append(formatSeconds(matchDurationSeconds))
                     .append(" · 先胜 ").append(roundWinTarget).append(" 回合")
+                    .append(" · 购买 ").append(buyPhaseSeconds).append("s")
+                    .append(" · C4 ").append(bombPlantSeconds).append("/")
+                    .append(bombDetonationSeconds).append("/").append(bombDefuseSeconds).append("s")
+                    .append(bombDefuseResume ? " · 可续拆" : "")
                     .append(teamCount > 2 ? " · 各队独立出生区" : " · 每 " + switchSideEvery + " 回合换边");
             case LAST_STANDING -> text.append(" · 总时长 ")
                     .append(formatSeconds(matchDurationSeconds)).append(" · 阵亡不复活");
@@ -206,7 +221,9 @@ public record RoomRules(GameMode mode,
                 switchSideEvery, players, roundEndDelaySeconds, matchEndDelaySeconds,
                 keepInventoryOnDeath, suppressDeathMessages, autoReset, requireBothTeams,
                 teamChangePolicy, autoBalanceMode, spawnSelectionStrategy,
-                maxTeamImbalance, respawnProtectionSeconds, respawnProtectionPercent).normalized();
+                maxTeamImbalance, respawnProtectionSeconds, respawnProtectionPercent,
+                buyPhaseSeconds, bombPlantSeconds, bombDetonationSeconds, bombDefuseSeconds,
+                bombDefuseResume).normalized();
     }
 
     public void write(FriendlyByteBuf buffer) {
@@ -232,6 +249,11 @@ public record RoomRules(GameMode mode,
         buffer.writeVarInt(maxTeamImbalance);
         buffer.writeVarInt(respawnProtectionSeconds);
         buffer.writeVarInt(respawnProtectionPercent);
+        buffer.writeVarInt(buyPhaseSeconds);
+        buffer.writeVarInt(bombPlantSeconds);
+        buffer.writeVarInt(bombDetonationSeconds);
+        buffer.writeVarInt(bombDefuseSeconds);
+        buffer.writeBoolean(bombDefuseResume);
     }
 
     public static RoomRules read(FriendlyByteBuf buffer) {
@@ -258,7 +280,9 @@ public record RoomRules(GameMode mode,
                         AutoBalanceMode.ON_JOIN_AND_MATCH_START),
                 enumByOrdinal(buffer.readVarInt(), SpawnSelectionStrategy.values(),
                         SpawnSelectionStrategy.RANDOM),
-                buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt()).normalized();
+                buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(),
+                buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(),
+                buffer.readVarInt(), buffer.readBoolean()).normalized();
     }
 
     private static <E extends Enum<E>> E enumByOrdinal(int ordinal, E[] values, E fallbackValue) {

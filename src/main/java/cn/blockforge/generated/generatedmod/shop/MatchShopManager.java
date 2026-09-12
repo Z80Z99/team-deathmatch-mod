@@ -36,7 +36,7 @@ public final class MatchShopManager {
 
     public void sendView(ServerPlayer player, int requestId) {
         EconomyManager economy = match.economy();
-        int window = economy.config().buyWindowSeconds();
+        int window = match.rulesBuyPhaseSeconds();
         boolean open = match.economy().matchActive() && match.isBuyPhaseOpen(window);
         int remaining = open ? match.buyPhaseRemainingSeconds(window) : 0;
         ItemStack held = player.getMainHandItem();
@@ -88,7 +88,7 @@ public final class MatchShopManager {
     }
 
     private void purchase(ServerPlayer player, String productId) {
-        int window = match.economy().config().buyWindowSeconds();
+        int window = match.rulesBuyPhaseSeconds();
         if (!match.economy().matchActive() || !match.isBuyPhaseOpen(window)) {
             message(player, "当前不在购买阶段。", true);
             return;

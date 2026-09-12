@@ -200,7 +200,10 @@ public final class HudStats {
 
     public static String secondaryCategory(Source source) {
         if (source == null) return "全部";
+        String id = source.id();
         String name = source.name();
+        if (id.equals("my_match_money")) return "局内";
+        if (id.equals("my_global_money")) return "局外";
         if (name.contains("本轮") || name.contains("当前回合")) return "本轮";
         if (name.contains("整场") || name.contains("本局")) return "整场";
         if (name.contains("倒计时")) return "倒计时";
@@ -410,10 +413,10 @@ public final class HudStats {
                 HudStats::inMatch, 1.8);
         time("respawn_left", "我的恢复倒计时", Group.SELF,
                 () -> ClientMatchData.respawnRemainingTicks, HudStats::inMatch, 5 * 20);
-        text("my_match_money", "我的比赛资金", Group.SELF,
+        text("my_match_money", "局内资金（比赛钱包）", Group.SELF,
                 () -> "$" + ClientMatchData.matchBalance, HudStats::inMatch, "$800");
-        text("my_global_money", "我的大厅账户", Group.SELF,
-                () -> "$" + ClientMatchData.globalBalance, HudStats::inMatch, "$1000");
+        text("my_global_money", "局外资金（大厅账户）", Group.SELF,
+                () -> "$" + ClientMatchData.globalBalance, () -> true, "$1000");
         text("bomb_phase", "爆破阶段", Group.TEXT, () -> switch (ClientBombData.phase) {
             case CARRIED -> "C4 已携带";
             case DROPPED -> "C4 已掉落";
@@ -450,6 +453,10 @@ public final class HudStats {
         // ---- 时间类
         time("phase_remaining", "回合倒计时", Group.PROGRESS,
                 () -> ClientMatchData.phaseRemainingTicks, HudStats::inMatch, 225 * 20);
+        time("buy_phase_remaining", "购买阶段倒计时", Group.PROGRESS,
+                () -> ClientMatchData.phaseRemainingTicks,
+                () -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.BUYING,
+                15 * 20);
         time("boundary_remaining", "出界倒计时", Group.PROGRESS,
                 () -> ClientMatchData.boundaryTicks, HudStats::inMatch, 10 * 20);
         time("elapsed", "本局已进行时间", Group.PROGRESS, ClientMatchData::elapsedTicks, HudStats::inMatch, 165 * 20);

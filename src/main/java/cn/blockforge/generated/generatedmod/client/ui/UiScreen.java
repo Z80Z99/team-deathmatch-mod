@@ -98,7 +98,7 @@ public abstract class UiScreen extends Screen implements UiChoiceHost {
         panelTop = Math.max(4, (height - panelHeight) / 2);
         panelBottom = Math.min(height - 4, panelTop + panelHeight);
         innerLeft = panelLeft + CONTENT_PADDING;
-        innerWidth = Math.max(1, panelWidth - CONTENT_PADDING * 2);
+        innerWidth = Math.max(1, panelWidth - CONTENT_PADDING * 2 - 12);
         contentTop = panelTop + headerHeight;
         footerTop = panelBottom - CONTENT_PADDING - footerHeight;
         statusTop = footerTop - STATUS_HEIGHT - 4;

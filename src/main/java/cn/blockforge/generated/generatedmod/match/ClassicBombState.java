@@ -96,13 +96,19 @@ public final class ClassicBombState {
     }
 
     public void startDefusing(UUID playerId, long now) {
+        startDefusing(playerId, now, false);
+    }
+
+    public void startDefusing(UUID playerId, long now, boolean resume) {
         if (phase != Phase.PLANTED) {
             return;
         }
         phase = Phase.DEFUSING;
         operatorId = playerId;
-        actionStartTick = now;
-        actionProgress = 0;
+        if (!resume) {
+            actionProgress = 0;
+        }
+        actionStartTick = Math.max(0L, now - actionProgress);
     }
 
     public boolean advanceAction(long now, int duration) {
@@ -114,6 +120,10 @@ public final class ClassicBombState {
     }
 
     public void finishPlanting(long now, String siteId, String siteName) {
+        finishPlanting(now, siteId, siteName, DETONATION_DURATION_TICKS);
+    }
+
+    public void finishPlanting(long now, String siteId, String siteName, int detonationDurationTicks) {
         if (phase != Phase.PLANTING) {
             return;
         }
@@ -123,18 +133,22 @@ public final class ClassicBombState {
         bombSiteId = siteId == null ? "" : siteId;
         bombSiteName = siteName == null ? "" : siteName;
         plantedTick = now;
-        detonateTick = now + DETONATION_DURATION_TICKS;
+        detonateTick = now + Math.max(1, detonationDurationTicks);
         actionProgress = PLANT_DURATION_TICKS;
     }
 
     public void finishDefusing() {
+        finishDefusing(DEFUSE_DURATION_TICKS);
+    }
+
+    public void finishDefusing(int durationTicks) {
         if (phase != Phase.DEFUSING) {
             return;
         }
         phase = Phase.DEFUSED;
         defuserId = operatorId;
         operatorId = null;
-        actionProgress = DEFUSE_DURATION_TICKS;
+        actionProgress = Math.max(1, durationTicks);
     }
 
     public void explode(long now) {
@@ -147,6 +161,10 @@ public final class ClassicBombState {
     }
 
     public void cancelAction() {
+        cancelAction(false);
+    }
+
+    public void cancelAction(boolean resumeDefuse) {
         if (phase == Phase.PLANTING) {
             phase = Phase.CARRIED;
         } else if (phase == Phase.DEFUSING) {
@@ -156,7 +174,9 @@ public final class ClassicBombState {
         }
         operatorId = null;
         actionStartTick = 0L;
-        actionProgress = 0;
+        if (!(resumeDefuse && phase == Phase.PLANTED)) {
+            actionProgress = 0;
+        }
     }
 
     public void reset() {
@@ -234,8 +254,12 @@ public final class ClassicBombState {
     }
 
     public int actionRemainingTicks() {
-        int duration = phase == Phase.PLANTING ? PLANT_DURATION_TICKS
-                : phase == Phase.DEFUSING ? DEFUSE_DURATION_TICKS : 0;
+        return actionRemainingTicks(PLANT_DURATION_TICKS, DEFUSE_DURATION_TICKS);
+    }
+
+    public int actionRemainingTicks(int plantDurationTicks, int defuseDurationTicks) {
+        int duration = phase == Phase.PLANTING ? Math.max(1, plantDurationTicks)
+                : phase == Phase.DEFUSING ? Math.max(1, defuseDurationTicks) : 0;
         return Math.max(0, duration - actionProgress);
     }
 

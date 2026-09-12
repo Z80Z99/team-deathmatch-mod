@@ -29,6 +29,12 @@ class RoomRulesTest {
             RoomRules rules = RoomRules.templateFor(mode, RoomRules.fallback());
             assertEquals(rules.normalized(), rules);
         }
+        RoomRules bomb = RoomRules.templateFor(GameMode.SEARCH_DESTROY, RoomRules.fallback());
+        assertEquals(15, bomb.buyPhaseSeconds());
+        assertEquals(4, bomb.bombPlantSeconds());
+        assertEquals(40, bomb.bombDetonationSeconds());
+        assertEquals(5, bomb.bombDefuseSeconds());
+        assertTrue(bomb.bombDefuseResume());
         assertEquals("团队竞技", GameMode.TEAM_DEATHMATCH.displayName());
     }
 }

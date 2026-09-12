@@ -97,7 +97,7 @@ public final class ClassicBombManager {
         validateAction(now);
         if (state.isActionActive()) {
             int duration = state.phase() == ClassicBombState.Phase.PLANTING
-                    ? ClassicBombState.PLANT_DURATION_TICKS : ClassicBombState.DEFUSE_DURATION_TICKS;
+                    ? match.rulesBombPlantTicks() : match.rulesBombDefuseTicks();
             if (state.advanceAction(now, duration)) {
                 finishAction(now);
             }
@@ -154,7 +154,8 @@ public final class ClassicBombManager {
                 || distanceSquared(player, state.x(), state.y(), state.z()) > DEFUSE_DISTANCE_SQUARED) {
             return false;
         }
-        state.startDefusing(player.getUUID(), server.getTickCount());
+        state.startDefusing(player.getUUID(), server.getTickCount(),
+                match.rulesBombDefuseResume() && state.actionProgress() > 0);
         player.sendSystemMessage(Component.literal("正在拆除 C4……"));
         player.playNotifySound(SoundEvents.TNT_PRIMED, SoundSource.BLOCKS, 0.5F, 1.5F);
         return true;
@@ -164,13 +165,15 @@ public final class ClassicBombManager {
         if (player == null || !player.getUUID().equals(state.operatorId())) {
             return;
         }
-        state.cancelAction();
+        state.cancelAction(state.phase() == ClassicBombState.Phase.DEFUSING
+                && match.rulesBombDefuseResume());
         player.sendSystemMessage(Component.literal("动作已中断。"));
     }
 
     public void interruptIfOperator(ServerPlayer player) {
         if (player != null && player.getUUID().equals(state.operatorId())) {
-            state.cancelAction();
+            state.cancelAction(state.phase() == ClassicBombState.Phase.DEFUSING
+                    && match.rulesBombDefuseResume());
         }
     }
 
@@ -181,7 +184,8 @@ public final class ClassicBombManager {
         if (player.getUUID().equals(state.carrierId())) {
             state.dropAt(player.getUUID(), player.getX(), player.getY(), player.getZ(), server.getTickCount());
         } else if (player.getUUID().equals(state.operatorId())) {
-            state.cancelAction();
+            state.cancelAction(state.phase() == ClassicBombState.Phase.DEFUSING
+                    && match.rulesBombDefuseResume());
         }
     }
 
@@ -242,7 +246,7 @@ public final class ClassicBombManager {
                 state.bombSiteId(),
                 state.bombSiteName(),
                 state.actionProgress(),
-                state.actionRemainingTicks(),
+                state.actionRemainingTicks(match.rulesBombPlantTicks(), match.rulesBombDefuseTicks()),
                 state.detonationRemainingTicks(server.getTickCount()),
                 state.x(),
                 state.y(),
@@ -252,7 +256,8 @@ public final class ClassicBombManager {
     private void finishAction(long now) {
         ServerPlayer operator = player(state.operatorId());
         if (operator == null) {
-            state.cancelAction();
+            state.cancelAction(state.phase() == ClassicBombState.Phase.DEFUSING
+                    && match.rulesBombDefuseResume());
             return;
         }
         if (state.phase() == ClassicBombState.Phase.PLANTING) {
@@ -269,16 +274,16 @@ public final class ClassicBombManager {
             player.sendSystemMessage(Component.literal("C4 安装失败：位置或道具状态已变化。"));
             return;
         }
-        state.finishPlanting(now, site.id(), site.displayName());
+        state.finishPlanting(now, site.id(), site.displayName(), match.rulesBombDetonationTicks());
         plantedC4 = createDisplayC4(player.serverLevel(), player.blockPosition());
         player.playNotifySound(SoundEvents.TNT_PRIMED, SoundSource.BLOCKS, 1.0F, 1.0F);
         server.getPlayerList().broadcastSystemMessage(Component.literal("C4 已安装在 "
-                + site.displayName() + "，40 秒后引爆！"), false);
+                + site.displayName() + "，" + (match.rulesBombDetonationTicks() / 20) + " 秒后引爆！"), false);
         sync();
     }
 
     private void finishDefusing(ServerPlayer player) {
-        state.finishDefusing();
+        state.finishDefusing(match.rulesBombDefuseTicks());
         discardPlantedC4();
         player.playNotifySound(SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.BLOCKS, 1.0F, 1.2F);
         server.getPlayerList().broadcastSystemMessage(Component.literal(player.getGameProfile().getName()
@@ -327,7 +332,7 @@ public final class ClassicBombManager {
             valid = distanceSquared(operator, state.x(), state.y(), state.z()) <= DEFUSE_DISTANCE_SQUARED;
         }
         if (!valid) {
-            state.cancelAction();
+            state.cancelAction(!planting && match.rulesBombDefuseResume());
         }
     }
 

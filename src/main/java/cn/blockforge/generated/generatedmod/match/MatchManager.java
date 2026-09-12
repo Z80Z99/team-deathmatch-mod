@@ -284,6 +284,27 @@ public final class MatchManager {
         return roomRules != null ? roomRules.respawnProtectionPercent() : 80;
     }
 
+    public int rulesBuyPhaseSeconds() {
+        if (roomRules != null) return roomRules.buyPhaseSeconds();
+        return economy.config().buyWindowSeconds();
+    }
+
+    public int rulesBombPlantTicks() {
+        return (roomRules == null ? 4 : roomRules.bombPlantSeconds()) * 20;
+    }
+
+    public int rulesBombDetonationTicks() {
+        return (roomRules == null ? 40 : roomRules.bombDetonationSeconds()) * 20;
+    }
+
+    public int rulesBombDefuseTicks() {
+        return (roomRules == null ? 5 : roomRules.bombDefuseSeconds()) * 20;
+    }
+
+    public boolean rulesBombDefuseResume() {
+        return roomRules != null && roomRules.bombDefuseResume();
+    }
+
     /** 爆破与歼灭模式整回合不复活；规则快照缺失时同样关闭。 */
     public boolean rulesAutoRespawn() {
         return rulesMode().respawnRules();
@@ -573,8 +594,11 @@ public final class MatchManager {
         }
         if (state == MatchState.WARMUP && phaseEndTick > 0L && server.getTickCount() >= phaseEndTick) {
             beginTerrainRestore(true);
-        } else if (state == MatchState.PLAYING && phaseEndTick > 0L
+        } else if (state == MatchState.BUYING && phaseEndTick > 0L
                 && server.getTickCount() >= phaseEndTick) {
+            beginPlaying();
+        } else if (state == MatchState.PLAYING && phaseEndTick > 0L
+                && server.getTickCount() >= phaseEndTick && !bombKeepsRoundAlive()) {
             finishRound(null);
         } else if (state == MatchState.ROUND_END && phaseEndTick > 0L
                 && server.getTickCount() >= phaseEndTick) {
@@ -597,7 +621,8 @@ public final class MatchManager {
             resetToWaiting();
         }
 
-        spawns.tickRandomSpawns(state == MatchState.PLAYING || state == MatchState.WARMUP, rulesSpawnStrategy());
+        spawns.tickRandomSpawns(state == MatchState.PLAYING || state == MatchState.BUYING
+                || state == MatchState.WARMUP, rulesSpawnStrategy());
         processDownedPlayers();
         economy.tick(server.getPlayerList().getPlayers());
         enforceArenaRules();
@@ -1157,14 +1182,54 @@ public final class MatchManager {
                 player.setGameMode(GameType.SURVIVAL);
                 player.setInvulnerable(false);
                 healAndReady(player);
-                spawns.teleportToTeamSpawn(player, spawnGroupFor(team), rulesSpawnStrategy());
+                SpawnSelectionStrategy actionSpawn = rulesMode() == GameMode.SEARCH_DESTROY
+                        && spawns.findFixedSpawn(spawnGroupFor(team)).isPresent()
+                        ? SpawnSelectionStrategy.SEQUENTIAL : rulesSpawnStrategy();
+                spawns.teleportToTeamSpawn(player, spawnGroupFor(team), actionSpawn);
             }
         }
         if (rulesMode() == GameMode.SEARCH_DESTROY && bomb != null && !bomb.startRound()) {
             finishRound(defendingTeam(), false);
             return;
         }
-        broadcastSystemMessage(rulesMode() == GameMode.TEAM_DEATHMATCH ? "团队竞技开始！" : "比赛开始，回合 " + roundNumber + "！", false);
+        broadcastSystemMessage(switch (rulesMode()) {
+            case SEARCH_DESTROY -> "行动阶段开始，回合 " + roundNumber + "！";
+            case TEAM_DEATHMATCH -> "团队竞技开始！";
+            case LAST_STANDING -> "歼灭竞技开始！";
+        }, false);
+        playPhaseSound();
+        broadcastMatchState();
+    }
+
+    private void beginBuying() {
+        if (rulesBuyPhaseSeconds() <= 0) {
+            beginPlaying();
+            return;
+        }
+        spawns.updateActivationContext(new MapRegionActivation.Context(
+                true, rulesMode(), roundNumber, activeTeams().size(), teams.totalParticipants()));
+        if (rulesAutoBalanceMode().balancesOnMatchStart()) teams.balanceTeamsAtMatchStart();
+        scores.resetRound();
+        state = MatchState.BUYING;
+        roundStartTick = 0L;
+        phaseEndTick = server.getTickCount() + secondsToTicks(rulesBuyPhaseSeconds());
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            Team team = teams.getTeam(player);
+            teams.rememberGameMode(player);
+            if (team.isPlayable() && !teams.isPending(player)) {
+                player.setGameMode(GameType.SURVIVAL);
+                player.setInvulnerable(true);
+                healAndReady(player);
+                SpawnSelectionStrategy buySpawn = spawns.findFixedSpawn(spawnGroupFor(team)).isPresent()
+                        ? SpawnSelectionStrategy.SEQUENTIAL : rulesSpawnStrategy();
+                spawns.teleportToTeamSpawn(player, spawnGroupFor(team), buySpawn);
+            } else if (isMatchActive()) {
+                player.setGameMode(GameType.SPECTATOR);
+                player.setInvulnerable(true);
+                spawns.teleportToSpectator(player);
+            }
+        }
+        broadcastSystemMessage("购买阶段开始：只能在出生区域活动，准备装备。", false);
         playPhaseSound();
         broadcastMatchState();
     }
@@ -1172,12 +1237,14 @@ public final class MatchManager {
     /** CS-style buy phase: warmup is always open, combat has a configurable opening window. */
     public boolean isBuyPhaseOpen(int buyWindowSeconds) {
         if (state == MatchState.WARMUP) return true;
+        if (rulesMode() == GameMode.SEARCH_DESTROY) return state == MatchState.BUYING;
         if (state != MatchState.PLAYING || roundStartTick <= 0L) return false;
         return server.getTickCount() - roundStartTick <= Math.max(0, buyWindowSeconds) * 20L;
     }
 
     public int buyPhaseRemainingSeconds(int buyWindowSeconds) {
         if (state == MatchState.WARMUP) return Integer.MAX_VALUE;
+        if (state == MatchState.BUYING) return secondsRemaining(phaseEndTick);
         if (state != MatchState.PLAYING || roundStartTick <= 0L) return 0;
         long elapsed = Math.max(0L, server.getTickCount() - roundStartTick);
         long remaining = Math.max(0L, Math.max(0, buyWindowSeconds) * 20L - elapsed);
@@ -1241,6 +1308,13 @@ public final class MatchManager {
                     ? attackingTeam() : defendingTeam();
         }
         return resolveWinner(activeTeams(), rulesElimination() ? this::aliveCount : team -> 0, scores::getTeamScore);
+    }
+
+    /** Once C4 is planted, the round clock stops deciding the result. */
+    private boolean bombKeepsRoundAlive() {
+        return rulesMode() == GameMode.SEARCH_DESTROY && bomb != null
+                && (bomb.state().phase() == ClassicBombState.Phase.PLANTED
+                || bomb.state().phase() == ClassicBombState.Phase.DEFUSING);
     }
 
     private String scoreSummary() {
@@ -1340,7 +1414,8 @@ public final class MatchManager {
         terrainRestoreStarted = false;
         broadcastSystemMessage("地形恢复完成。", false);
         if (restoreAfterWarmup) {
-            beginPlaying();
+            if (rulesMode() == GameMode.SEARCH_DESTROY) beginBuying();
+            else beginPlaying();
             return;
         }
         if (pendingMatchWinner != null || rulesMode() != GameMode.SEARCH_DESTROY) {
@@ -1573,6 +1648,18 @@ public final class MatchManager {
                 player.setGameMode(GameType.SPECTATOR);
                 player.setInvulnerable(true);
                 player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+                continue;
+            }
+
+            if (state == MatchState.BUYING && team.isPlayable() && !teams.isPending(player)) {
+                player.setGameMode(GameType.SURVIVAL);
+                player.setInvulnerable(true);
+                if (!spawns.isInsideTeamSpawn(player, spawnGroupFor(team)) && canReturnNow(player, now)) {
+                    SpawnSelectionStrategy buySpawn = spawns.findFixedSpawn(spawnGroupFor(team)).isPresent()
+                            ? SpawnSelectionStrategy.SEQUENTIAL : rulesSpawnStrategy();
+                    spawns.teleportToTeamSpawn(player, spawnGroupFor(team), buySpawn);
+                    player.displayClientMessage(Component.literal("购买阶段只能在出生区域内活动。"), true);
+                }
                 continue;
             }
 

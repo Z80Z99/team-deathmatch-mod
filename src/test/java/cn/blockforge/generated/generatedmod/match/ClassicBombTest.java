@@ -60,4 +60,22 @@ class ClassicBombTest {
             buffer.release();
         }
     }
+
+    @Test void interruptedDefuseCanResumeFromSavedProgress() {
+        ClassicBombState state = new ClassicBombState();
+        UUID attacker = UUID.randomUUID();
+        UUID defender = UUID.randomUUID();
+        state.startRound(attacker, 0);
+        state.startPlanting(attacker, 0, 1.0D, 64.0D, 2.0D);
+        state.finishPlanting(80, "a", "A点", 800);
+        state.startDefusing(defender, 100);
+        state.advanceAction(140, 100);
+        assertEquals(40, state.actionProgress());
+        state.cancelAction(true);
+        assertEquals(ClassicBombState.Phase.PLANTED, state.phase());
+        state.startDefusing(defender, 200, true);
+        assertTrue(state.advanceAction(260, 100));
+        state.finishDefusing(100);
+        assertEquals(ClassicBombState.Phase.DEFUSED, state.phase());
+    }
 }

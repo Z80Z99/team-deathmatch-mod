@@ -333,7 +333,8 @@ public final class ClientMatchData {
         phaseText = switch (state) {
             case WAITING -> "等待中";
             case WARMUP -> phaseRemainingTicks == 0 ? "热身 · 等待玩家" : "即将开始";
-            case PLAYING -> "进行中";
+            case BUYING -> "购买装备";
+            case PLAYING -> mode == GameMode.SEARCH_DESTROY ? "行动阶段" : "进行中";
             case ROUND_END -> "回合结束";
             case TERRAIN_RESTORING -> "地形恢复";
             case MAP_RESETTING -> "地图恢复";

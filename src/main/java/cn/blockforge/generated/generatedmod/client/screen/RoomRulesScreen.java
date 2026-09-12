@@ -32,7 +32,7 @@ import java.util.List;
  */
 public final class RoomRulesScreen extends UiScreen {
     private static final int FIELD_HEIGHT = 38;
-    private static final int ROW_COUNT = 12;
+    private static final int ROW_COUNT = 15;
     private static final int COLUMN_GAP = 12;
 
     private final Screen parent;
@@ -60,6 +60,11 @@ public final class RoomRulesScreen extends UiScreen {
     private UiCycleButton<AutoBalanceMode> balanceCycle;
     private UiCycleButton<SpawnSelectionStrategy> spawnCycle;
     private UiEditBox imbalanceBox;
+    private UiEditBox buyPhaseBox;
+    private UiEditBox bombPlantSecondsBox;
+    private UiEditBox bombDetonationSecondsBox;
+    private UiEditBox bombDefuseSecondsBox;
+    private UiCycleButton<Boolean> bombDefuseResumeToggle;
     private UiButton unavailableButton;
     private UiButton saveButton;
     private UiButton resetButton;
@@ -191,9 +196,18 @@ public final class RoomRulesScreen extends UiScreen {
                 current.spawnSelectionStrategy(), RoomRulesScreen::spawnName, null, null, editable);
         imbalanceBox = integer(9, 1, "队伍最大人数差", current.maxTeamImbalance(), 1, editable,
                 "比赛中换队或补位时的最大队伍人数差；房间内手动选队不受此值限制。");
+        buyPhaseBox = integer(12, 0, "购买阶段/秒", current.buyPhaseSeconds(), 3, editable,
+                "爆破模式回合开始后，只允许在出生区购买和准备的时长（0～120）。");
+        bombPlantSecondsBox = integer(12, 1, "C4 安装/秒", current.bombPlantSeconds(), 2, editable,
+                "按住右键安装 C4 所需时间（1～30）。");
+        bombDetonationSecondsBox = integer(13, 0, "C4 引爆/秒", current.bombDetonationSeconds(), 3, editable,
+                "安装完成后到爆炸的倒计时（5～300）。");
+        bombDefuseSecondsBox = integer(13, 1, "C4 拆除/秒", current.bombDefuseSeconds(), 2, editable,
+                "拆弹所需时间（1～60）。");
+        bombDefuseResumeToggle = bool(14, 0, "中断后可续拆", current.bombDefuseResume(), editable);
         UiTheme.Field unavailableField = ruleField(0);
         unavailableButton = new UiButton(unavailableField.controlX(), rowYs[10] + 12,
-                innerWidth - 4, BUTTON_HEIGHT,
+                innerWidth - 16, BUTTON_HEIGHT,
                 Component.literal(unavailableOpen ? "目前不可用设置  ▲" : "目前不可用设置  ▼"),
                 ignored -> {
                     draft = collect();
@@ -250,8 +264,8 @@ public final class RoomRulesScreen extends UiScreen {
             rowSections[row] = null;
         }
         int[] order = mode == GameMode.SEARCH_DESTROY
-                ? new int[]{0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 6}
-                : new int[]{0, 1, 3, 4, 7, 8, 9, 10, 2, 5, 11, 6};
+                ? new int[]{0, 1, 2, 12, 13, 14, 4, 5, 7, 8, 9, 10, 11, 6}
+                : new int[]{0, 1, 3, 4, 7, 8, 9, 10, 2, 5, 11, 6, 12, 13, 14};
         String currentSection = "";
         for (int row : order) {
             if (!rowVisible(mode, row)) {
@@ -284,6 +298,9 @@ public final class RoomRulesScreen extends UiScreen {
         if (row == 6 || row == 11) {
             return unavailableOpen;
         }
+        if (row == 12 || row == 13 || row == 14) {
+            return mode == GameMode.SEARCH_DESTROY || unavailableOpen;
+        }
         if (row == 3 && !mode.respawnRules()) return false;
         return true;
     }
@@ -293,6 +310,10 @@ public final class RoomRulesScreen extends UiScreen {
         if (row == 2 && (draft == null || draft.mode() == GameMode.SEARCH_DESTROY)) return "比赛";
         if (row == 5 && (draft == null || draft.mode() != GameMode.TEAM_DEATHMATCH)) return "比赛";
         if (row == 3 || row == 4) return "玩家";
+        if (row == 12 || row == 13 || row == 14) {
+            return draft == null || draft.mode() == GameMode.SEARCH_DESTROY
+                    ? "爆破模式" : "目前不可用设置";
+        }
         if (row == 7 || row == 8 || row == 9) return "高级";
         if (row == 10 || row == 6 || row == 11) return "目前不可用设置";
         if (row == 2 || row == 5) return "目前不可用设置";
@@ -325,6 +346,11 @@ public final class RoomRulesScreen extends UiScreen {
         setRowY(balanceCycle, 8);
         setRowY(spawnCycle, 9);
         setRowY(imbalanceBox, 9);
+        setRowY(buyPhaseBox, 12);
+        setRowY(bombPlantSecondsBox, 12);
+        setRowY(bombDetonationSecondsBox, 13);
+        setRowY(bombDefuseSecondsBox, 13);
+        setRowY(bombDefuseResumeToggle, 14);
         setRowY(unavailableButton, 10);
     }
 
@@ -351,6 +377,11 @@ public final class RoomRulesScreen extends UiScreen {
         autoRespawnToggle.visible = mode.respawnRules();
         switchBox.visible = mode.roundSwapping();
         winBox.visible = mode == GameMode.SEARCH_DESTROY;
+        setBombSettingVisibility(buyPhaseBox, mode == GameMode.SEARCH_DESTROY);
+        setBombSettingVisibility(bombPlantSecondsBox, mode == GameMode.SEARCH_DESTROY);
+        setBombSettingVisibility(bombDetonationSecondsBox, mode == GameMode.SEARCH_DESTROY);
+        setBombSettingVisibility(bombDefuseSecondsBox, mode == GameMode.SEARCH_DESTROY);
+        setBombSettingVisibility(bombDefuseResumeToggle, mode == GameMode.SEARCH_DESTROY);
         durationBox.setMessage(Component.literal(durationLabel(mode)));
         if (modeCycle != null) modeCycle.setValue(mode);
         applyRuleScroll();
@@ -362,6 +393,17 @@ public final class RoomRulesScreen extends UiScreen {
         if (keepInventoryToggle != null) keepInventoryToggle.active = false;
         if (suppressDeathToggle != null) suppressDeathToggle.active = false;
         if (requireBothToggle != null) requireBothToggle.active = false;
+        boolean bombEditable = mode == GameMode.SEARCH_DESTROY && editable();
+        if (buyPhaseBox != null) buyPhaseBox.setEditable(bombEditable);
+        if (bombPlantSecondsBox != null) bombPlantSecondsBox.setEditable(bombEditable);
+        if (bombDetonationSecondsBox != null) bombDetonationSecondsBox.setEditable(bombEditable);
+        if (bombDefuseSecondsBox != null) bombDefuseSecondsBox.setEditable(bombEditable);
+        if (bombDefuseResumeToggle != null) bombDefuseResumeToggle.active = bombEditable;
+    }
+
+    private static void setBombSettingVisibility(
+            net.minecraft.client.gui.components.AbstractWidget widget, boolean visible) {
+        if (widget != null) widget.visible = visible;
     }
 
     private UiEditBox integer(int row, int column, String label, int value, int maxLength,
@@ -405,7 +447,7 @@ public final class RoomRulesScreen extends UiScreen {
 
     private UiTheme.Field ruleField(int column) {
         int x = columnX(column, 2, COLUMN_GAP);
-        int w = columnWidth(2, COLUMN_GAP) - 4;
+        int w = columnWidth(2, COLUMN_GAP) - 14;
         return new UiTheme.Field(x, w, x, w);
     }
 
@@ -426,7 +468,12 @@ public final class RoomRulesScreen extends UiScreen {
                 teamChangeCycle.getValue(), balanceCycle.getValue(),
                 spawnCycle.getValue(), parse(imbalanceBox, draft.maxTeamImbalance()),
                 parse(respawnProtectionSecondsBox, draft.respawnProtectionSeconds()),
-                parse(respawnProtectionPercentBox, draft.respawnProtectionPercent()));
+                parse(respawnProtectionPercentBox, draft.respawnProtectionPercent()),
+                parse(buyPhaseBox, draft.buyPhaseSeconds()),
+                parse(bombPlantSecondsBox, draft.bombPlantSeconds()),
+                parse(bombDetonationSecondsBox, draft.bombDetonationSeconds()),
+                parse(bombDefuseSecondsBox, draft.bombDefuseSeconds()),
+                bombDefuseResumeToggle.getValue());
     }
 
     private static int parse(UiEditBox box, int fallback) {
@@ -685,6 +732,15 @@ public final class RoomRulesScreen extends UiScreen {
         }
         if (row == 11) {
             return column == 0 ? "热身时长/秒" : null;
+        }
+        if (row == 12) {
+            return column == 0 ? "购买阶段/秒" : "C4 安装/秒";
+        }
+        if (row == 13) {
+            return column == 0 ? "C4 引爆/秒" : "C4 拆除/秒";
+        }
+        if (row == 14) {
+            return column == 0 ? "中断后可续拆" : null;
         }
         if (row == 8) {
             return column == 0 ? "换队政策" : "自动平衡";

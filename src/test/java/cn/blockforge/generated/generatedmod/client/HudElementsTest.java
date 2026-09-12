@@ -41,6 +41,9 @@ class HudElementsTest {
         HudStats.Source kills = HudStats.byId("match_kills_a");
         assertEquals("击杀数", HudStats.primaryCategory(kills));
         assertEquals("整场", HudStats.secondaryCategory(kills));
+        assertEquals("局内", HudStats.secondaryCategory(HudStats.byId("my_match_money")));
+        assertEquals("局外", HudStats.secondaryCategory(HudStats.byId("my_global_money")));
+        assertTrue(HudStats.byId("my_global_money").isLive());
     }
 
     @Test void sceneSourcesAndRespawnProgressAreConsistent() {

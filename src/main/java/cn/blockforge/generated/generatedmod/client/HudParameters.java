@@ -66,6 +66,7 @@ public final class HudParameters {
                     && !ClientMatchData.pending;
             case "playing" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.PLAYING;
             case "warmup" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.WARMUP;
+            case "buying" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.BUYING;
             case "outside" -> ClientMatchData.boundaryOutside;
             case "spectator" -> !ClientMatchData.myTeam.isPlayable();
             case "feed" -> editor || ClientMatchData.killFeedActive();

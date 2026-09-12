@@ -267,6 +267,29 @@ public final class SpawnManager {
         return maps.isInsideMap(player);
     }
 
+    /** Buy-phase barrier: active team spawn region first, legacy point radius as fallback. */
+    public boolean isInsideTeamSpawn(ServerPlayer player, Team team) {
+        MapDefinition map = maps.currentMap().orElse(null);
+        if (map == null || player == null || !team.isPlayable()) return true;
+        String type = switch (team) {
+            case TEAM_A -> "spawn_a";
+            case TEAM_B -> "spawn_b";
+            case TEAM_C -> "spawn_c";
+            case TEAM_D -> "spawn_d";
+            default -> "";
+        };
+        var parts = MapRegionActivation.activeRegions(map.customRegions(), activationContext).stream()
+                .filter(region -> region.type().id().equals(type))
+                .flatMap(region -> region.region().boxes().stream()).toList();
+        if (!parts.isEmpty()) {
+            return MapDefinition.Region.composite(parts).contains(player.getX(), player.getY(), player.getZ());
+        }
+        List<SpawnPoint> points = getSpawns(team);
+        if (points.isEmpty()) return true;
+        return points.stream().anyMatch(point ->
+                player.distanceToSqr(point.x() + 0.5D, point.y(), point.z() + 0.5D) <= 64.0D);
+    }
+
     public String boundsDescription() {
         return maps.currentMap().map(map -> map.bounds().toString()).orElse("未选择地图");
     }

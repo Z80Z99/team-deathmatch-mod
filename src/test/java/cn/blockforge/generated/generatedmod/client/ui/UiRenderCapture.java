@@ -74,6 +74,11 @@ final class UiRenderCapture implements AutoCloseable {
         }
         return value.substring(begin, end);
     }
+
+    int pixel(int x, int y) {
+        return image.getRGB(Math.max(0, Math.min(image.getWidth() - 1, x * 3)),
+                Math.max(0, Math.min(image.getHeight() - 1, y * 3)));
+    }
     private static String text(Object value) {
         if (value instanceof String text) return text;
         if (value instanceof Component text) return text.getString();

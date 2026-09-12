@@ -16,6 +16,51 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class UiLayoutTest {
+    @Test void globalHudTabPreviewsCustomElements() throws Exception {
+        Minecraft minecraft = mock(Minecraft.class);
+        Font font = mock(Font.class);
+        set(Minecraft.class, minecraft, "font", font);
+        set(Minecraft.class, minecraft, "gameDirectory", new java.io.File("build/ui-fixture"));
+        when(font.width(anyString())).thenAnswer(call -> UiRenderCapture.measure(call.getArgument(0)));
+        when(font.plainSubstrByWidth(anyString(), anyInt())).thenAnswer(call ->
+                UiRenderCapture.shorten(call.getArgument(0), call.getArgument(1), false));
+        try (MockedStatic<Minecraft> access = mockStatic(Minecraft.class)) {
+            access.when(Minecraft::getInstance).thenReturn(minecraft);
+            var before = cn.blockforge.generated.generatedmod.client.ClientHudLayout.snapshot();
+            HudLayoutScreen screen = new HudLayoutScreen(null);
+            screen.width = 640;
+            screen.height = 360;
+            set(Screen.class, screen, "minecraft", minecraft);
+            set(Screen.class, screen, "font", font);
+            Field draftField = HudLayoutScreen.class.getDeclaredField("draft");
+            draftField.setAccessible(true);
+            var draft = (cn.blockforge.generated.generatedmod.client.ClientHudLayout.Draft) draftField.get(screen);
+            draft.addCustomElement(cn.blockforge.generated.generatedmod.client.HudContext.GLOBAL,
+                    new cn.blockforge.generated.generatedmod.client.ClientHudLayout.CustomElement(
+                            "global_preview", "block", "", 50, 50, 120, 24, 100,
+                            0xFFFF00FF, true, "", 100, true, false, false,
+                            cn.blockforge.generated.generatedmod.client.ClientHudLayout.Placement.NONE));
+            set(HudLayoutScreen.class, screen, "globalTab", true);
+            set(HudLayoutScreen.class, screen, "activeContext",
+                    cn.blockforge.generated.generatedmod.client.HudContext.GLOBAL);
+            Method init = HudLayoutScreen.class.getDeclaredMethod("init");
+            init.setAccessible(true);
+            init.invoke(screen);
+            try (UiRenderCapture capture = new UiRenderCapture(640, 360)) {
+                screen.render(capture.graphics, -1000, -1000, 0);
+                assertEquals(0xFF25262A, capture.pixel(300, 170),
+                        () -> "pixel=" + Integer.toHexString(capture.pixel(300, 170)));
+            }
+            Method save = HudLayoutScreen.class.getDeclaredMethod("saveDraft");
+            save.setAccessible(true);
+            assertEquals(true, save.invoke(screen));
+            assertTrue(cn.blockforge.generated.generatedmod.client.ClientHudLayout
+                    .customElements(cn.blockforge.generated.generatedmod.client.HudContext.GLOBAL)
+                    .stream().anyMatch(element -> element.id().equals("global_preview")));
+            cn.blockforge.generated.generatedmod.client.ClientHudLayout.apply(before);
+        }
+    }
+
     @Test void rebuildingScrollingContentKeepsCurrentScrollPosition() {
         ScrollTestScreen screen = new ScrollTestScreen();
         screen.width = 320;

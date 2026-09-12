@@ -1081,7 +1081,8 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
     }
 
     private int dockInnerWidth() {
-        return Math.max(40, dockWidth - 16);
+        // Reserve a dedicated gutter for the scrollbar so controls never overlap it.
+        return Math.max(40, dockWidth - 30);
     }
 
     private int viewportTop() {
@@ -1964,9 +1965,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
         if (global.guidesVisible() && !dockHidden) {
             renderGuides(graphics);
         }
-        if (!globalTab) {
-            renderPreview(graphics);
-        }
+        renderPreview(graphics);
         layoutRows();
         layoutFooterButtons();
         // Keep preview glyph depth behind the opaque editor and its controls.
