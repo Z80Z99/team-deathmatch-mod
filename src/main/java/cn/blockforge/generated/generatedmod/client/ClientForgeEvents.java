@@ -193,12 +193,12 @@ public final class ClientForgeEvents {
         if (minecraft.player == null || minecraft.getConnection() == null) {
             return;
         }
-        boolean compact = pauseScreen.width < 420;
+        boolean compact = pauseScreen.width < 480;
         int buttonWidth = compact
                 ? Math.max(24, (pauseScreen.width - 34) / 4)
                 : 100;
         int left = compact ? 8 : Math.max(4, pauseScreen.width - buttonWidth - 8);
-        int top = compact ? Math.max(8, pauseScreen.height - 28) : 8;
+        int top = 8;
         int gap = compact ? 6 : 24;
         String[] labels = compact
                 ? new String[]{"大厅", "地图", "HUD", "仓库"}
