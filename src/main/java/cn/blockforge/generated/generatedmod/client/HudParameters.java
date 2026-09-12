@@ -78,6 +78,7 @@ public final class HudParameters {
             case "warmup_countdown" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.WARMUP
                     && ClientMatchData.phaseRemainingTicks > 0;
             case "buying" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.BUYING;
+            case "frozen" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.FROZEN;
             case "round_end" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.ROUND_END;
             case "terrain_restoring" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.TERRAIN_RESTORING;
             case "map_resetting" -> ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.MAP_RESETTING;

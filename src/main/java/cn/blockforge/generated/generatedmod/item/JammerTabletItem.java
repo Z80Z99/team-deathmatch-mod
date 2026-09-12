@@ -9,7 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.Level;
 
-/** 爆破模式使用的拆弹器。 */
+/** 爆破模式使用的可购买拆弹加速器。 */
 public class JammerTabletItem extends Item {
     public JammerTabletItem(Properties properties) {
         super(properties);

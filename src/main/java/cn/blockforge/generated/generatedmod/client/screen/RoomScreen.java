@@ -64,10 +64,16 @@ public final class RoomScreen extends UiScreen {
                 () -> RoomRulesScreen.open(this), null), y);
         y = flowRow(BUTTON_HEIGHT);
         int selectorWidth = Math.min(110, innerWidth / 3);
+        var teamCounts = room() != null
+                && room().rules().mode() == cn.blockforge.generated.generatedmod.match.GameMode.SEARCH_DESTROY
+                ? List.of(2) : List.of(2, 3, 4);
         teamCount = flowWidget(new UiCycleButton<>(innerLeft, y, selectorWidth, BUTTON_HEIGHT,
-                List.of(2, 3, 4), room() == null ? 2 : room().teamCount(), value -> value + " 支队伍",
+                teamCounts, room() == null ? 2 : room().teamCount(), value -> value + " 支队伍",
                 value -> { if (room() != null) LobbyScreen.request(RoomAction.SET_TEAM_COUNT, room().id(), "", value, ""); },
-                "仅房主可修改；减少队伍会将被移除队伍的成员分配到人数较少的队伍。", UiButton.Kind.SECONDARY), y);
+                room() != null && room().rules().mode() == cn.blockforge.generated.generatedmod.match.GameMode.SEARCH_DESTROY
+                        ? "爆破模式当前固定为两支队伍；多队爆破将在后续开发。"
+                        : "仅房主可修改；减少队伍会将被移除队伍的成员分配到人数较少的队伍。",
+                UiButton.Kind.SECONDARY), y);
         search = flowWidget(new UiEditBox(font, innerLeft + selectorWidth + 6, y,
                 innerWidth - selectorWidth - 58, BUTTON_HEIGHT, Component.literal("搜索成员")), y);
         search.setValue(query);

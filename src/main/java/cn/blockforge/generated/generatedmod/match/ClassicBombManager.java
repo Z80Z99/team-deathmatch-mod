@@ -4,8 +4,9 @@ import cn.blockforge.generated.generatedmod.item.ModItems;
 import cn.blockforge.generated.generatedmod.map.MapDefinition;
 import cn.blockforge.generated.generatedmod.map.MapRegion;
 import cn.blockforge.generated.generatedmod.network.packet.BombSyncPacket;
+import cn.blockforge.generated.generatedmod.network.packet.BombPreviewPacket;
 import cn.blockforge.generated.generatedmod.network.FpsTdmNetwork;
-import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -17,6 +18,9 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -38,6 +42,7 @@ public final class ClassicBombManager {
     private List<MapRegion> activeSites = List.of();
     private ItemEntity droppedC4;
     private ItemEntity plantedC4;
+    private UUID previewRecipient;
 
     ClassicBombManager(MatchManager match) {
         this.match = match;
@@ -54,6 +59,31 @@ public final class ClassicBombManager {
 
     public boolean hasBombSites() {
         return !activeBombSites().isEmpty();
+    }
+
+    public void setInteractionHeld(ServerPlayer player, boolean held) {
+        if (player == null || match.rulesMode() != GameMode.SEARCH_DESTROY
+                || match.state() != MatchState.PLAYING) return;
+        if (!held) {
+            cancelAction(player);
+            return;
+        }
+        if (state.isActionActive()) return;
+        if (holdsRoundItem(player, "c4")) {
+            requestPlant(player);
+        } else if (match.teamManager().getTeam(player) == match.defendingTeam()) {
+            requestDefuse(player);
+        }
+    }
+
+    public boolean shouldCaptureInteraction(ServerPlayer player) {
+        if (player == null || match.rulesMode() != GameMode.SEARCH_DESTROY
+                || match.state() != MatchState.PLAYING) return false;
+        if (holdsRoundItem(player, "c4")) return true;
+        return (state.phase() == ClassicBombState.Phase.PLANTED
+                || state.phase() == ClassicBombState.Phase.DEFUSING)
+                && match.teamManager().getTeam(player) == match.defendingTeam()
+                && distanceSquared(player, state.x(), state.y(), state.z()) <= DEFUSE_DISTANCE_SQUARED;
     }
 
     public boolean startRound() {
@@ -73,17 +103,10 @@ public final class ClassicBombManager {
         }
         ServerPlayer carrier = attackers.get(random.nextInt(attackers.size()));
         giveItem(carrier, createRoundItem("c4"));
-        for (ServerPlayer defender : teamPlayers(defending)) {
-            giveItem(defender, createRoundItem("defuse_kit"));
-        }
         state.startRound(carrier.getUUID(), server.getTickCount());
         sync();
         match.recordEvent(carrier.getGameProfile().getName()
                 + " 携带 C4：进入爆破区后按住右键安装。");
-        for (ServerPlayer defender : teamPlayers(defending)) {
-            match.recordEvent(defender.getGameProfile().getName()
-                    + " 获得拆弹器：C4 安装后靠近它按住右键拆除。");
-        }
         match.recordEvent("本回合 " + attacking.displayName() + " 进攻，"
                 + defending.displayName() + " 防守。");
         return true;
@@ -96,6 +119,9 @@ public final class ClassicBombManager {
         long now = server.getTickCount();
         validateCarrier(now);
         validateAction(now);
+        if (state.phase() == ClassicBombState.Phase.PLANTED) {
+            state.recoverDefuseProgress();
+        }
         if (state.isActionActive()) {
             int duration = state.phase() == ClassicBombState.Phase.PLANTING
                     ? match.rulesBombPlantTicks() : match.rulesBombDefuseTicks();
@@ -107,7 +133,10 @@ public final class ClassicBombManager {
                 && state.detonationRemainingTicks(now) <= 0) {
             explode(now);
         }
+        applyActionMovement();
         trackDroppedC4(now);
+        updateDiscoveryGlow();
+        if (now % 5L == 0L) sendCarrierPreview();
         if (now % 10L == 0L) sync();
     }
 
@@ -128,7 +157,17 @@ public final class ClassicBombManager {
                 || match.teamManager().getTeam(player) != match.attackingTeam()) {
             return false;
         }
-        MapRegion site = activeSiteAt(player);
+        HitResult hit = player.pick(3.0D, 0.0F, false);
+        if (!(hit instanceof BlockHitResult blockHit) || hit.getType() != HitResult.Type.BLOCK) {
+            match.recordEvent(player.getGameProfile().getName()
+                    + " 尝试安装 C4，但没有对准可安装的方块表面。");
+            match.publishHudEvent(player, MatchHudEventType.BOMB_SITE_REQUIRED,
+                    "准星需要对准方块表面", 70);
+            return false;
+        }
+        Direction face = blockHit.getDirection();
+        Vec3 point = blockHit.getLocation().add(Vec3.atLowerCornerOf(face.getNormal()).scale(0.06D));
+        MapRegion site = activeSiteAt(point.x, point.y, point.z);
         if (site == null) {
             match.recordEvent(player.getGameProfile().getName()
                     + " 尝试安装 C4，但不在激活的爆破区内。");
@@ -137,7 +176,7 @@ public final class ClassicBombManager {
             return false;
         }
         state.startPlanting(player.getUUID(), server.getTickCount(),
-                player.getX(), player.getY(), player.getZ());
+                point.x, point.y, point.z, face, player.getYRot(), player.getXRot());
         match.recordEvent(player.getGameProfile().getName() + " 正在安装 C4。");
         match.publishHudEvent(player, MatchHudEventType.BOMB_PLANTING,
                 "保持安装动作直到进度完成", match.rulesBombPlantTicks());
@@ -156,15 +195,17 @@ public final class ClassicBombManager {
         }
         if (state.phase() != ClassicBombState.Phase.PLANTED
                 || match.teamManager().getTeam(player) != match.defendingTeam()
-                || !holdsRoundItem(player, "defuse_kit")
                 || distanceSquared(player, state.x(), state.y(), state.z()) > DEFUSE_DISTANCE_SQUARED) {
             return false;
         }
-        state.startDefusing(player.getUUID(), server.getTickCount(),
-                match.rulesBombDefuseResume() && state.actionProgress() > 0);
-        match.recordEvent(player.getGameProfile().getName() + " 正在拆除 C4。");
+        boolean jammer = holdsJammer(player);
+        int duration = jammer ? Math.max(1, match.rulesBombDefuseTicks() / 2)
+                : match.rulesBombDefuseTicks();
+        state.startDefusing(player.getUUID(), server.getTickCount(), duration);
+        match.recordEvent(player.getGameProfile().getName() + " 正在拆除 C4"
+                + (jammer ? "（干扰器加速 50%）。" : "。"));
         match.publishHudEvent(player, MatchHudEventType.BOMB_DEFUSING,
-                "保持拆除动作直到进度完成", match.rulesBombDefuseTicks());
+                jammer ? "干扰器已连接 · 拆除速度 +50%" : "保持拆除动作直到进度完成", duration);
         player.playNotifySound(SoundEvents.TNT_PRIMED, SoundSource.BLOCKS, 0.5F, 1.5F);
         return true;
     }
@@ -173,8 +214,7 @@ public final class ClassicBombManager {
         if (player == null || !player.getUUID().equals(state.operatorId())) {
             return;
         }
-        state.cancelAction(state.phase() == ClassicBombState.Phase.DEFUSING
-                && match.rulesBombDefuseResume());
+        state.cancelAction(true);
         match.recordEvent(player.getGameProfile().getName() + " 的 C4 动作已中断。");
         match.publishHudEvent(player, MatchHudEventType.BOMB_ACTION_INTERRUPTED,
                 "安装或拆除没有完成", 60);
@@ -182,8 +222,7 @@ public final class ClassicBombManager {
 
     public void interruptIfOperator(ServerPlayer player) {
         if (player != null && player.getUUID().equals(state.operatorId())) {
-            state.cancelAction(state.phase() == ClassicBombState.Phase.DEFUSING
-                    && match.rulesBombDefuseResume());
+            state.cancelAction(true);
             match.recordEvent(player.getGameProfile().getName() + " 的 C4 动作因状态变化中断。");
             match.publishHudEvent(player, MatchHudEventType.BOMB_ACTION_INTERRUPTED,
                     "移动或状态变化导致动作中断", 60);
@@ -197,8 +236,7 @@ public final class ClassicBombManager {
         if (player.getUUID().equals(state.carrierId())) {
             state.dropAt(player.getUUID(), player.getX(), player.getY(), player.getZ(), server.getTickCount());
         } else if (player.getUUID().equals(state.operatorId())) {
-            state.cancelAction(state.phase() == ClassicBombState.Phase.DEFUSING
-                    && match.rulesBombDefuseResume());
+            state.cancelAction(true);
         }
     }
 
@@ -238,6 +276,28 @@ public final class ClassicBombManager {
         sync();
     }
 
+    public void cleanupMatchItems() {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+                ItemStack stack = player.getInventory().getItem(slot);
+                if (isRoundItem(stack) || stack.is(ModItems.JAMMER_TABLET.get())) {
+                    player.getInventory().setItem(slot, ItemStack.EMPTY);
+                }
+            }
+        }
+        for (ServerLevel level : server.getAllLevels()) {
+            for (Entity entity : level.getAllEntities()) {
+                if (entity instanceof ItemEntity item && (isRoundItem(item.getItem())
+                        || item.getItem().is(ModItems.JAMMER_TABLET.get()))) {
+                    item.discard();
+                }
+            }
+        }
+        droppedC4 = null;
+        discardPlantedC4();
+        previewRecipient = null;
+    }
+
     private void sync() {
         BombSyncPacket packet = syncPacket();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -269,8 +329,7 @@ public final class ClassicBombManager {
     private void finishAction(long now) {
         ServerPlayer operator = player(state.operatorId());
         if (operator == null) {
-            state.cancelAction(state.phase() == ClassicBombState.Phase.DEFUSING
-                    && match.rulesBombDefuseResume());
+            state.cancelAction(true);
             return;
         }
         if (state.phase() == ClassicBombState.Phase.PLANTING) {
@@ -281,7 +340,7 @@ public final class ClassicBombManager {
     }
 
     private void finishPlanting(ServerPlayer player, long now) {
-        MapRegion site = activeSiteAt(player);
+        MapRegion site = activeSiteAt(state.x(), state.y(), state.z());
         if (site == null || !removeRoundItem(player, "c4")) {
             state.cancelAction();
             match.recordEvent(player.getGameProfile().getName()
@@ -289,7 +348,8 @@ public final class ClassicBombManager {
             return;
         }
         state.finishPlanting(now, site.id(), site.displayName(), match.rulesBombDetonationTicks());
-        plantedC4 = createDisplayC4(player.serverLevel(), player.blockPosition());
+        plantedC4 = createDisplayC4(player.serverLevel());
+        if (state.plantedGlowing()) plantedC4.setGlowingTag(true);
         player.playNotifySound(SoundEvents.TNT_PRIMED, SoundSource.BLOCKS, 1.0F, 1.0F);
         match.recordEvent("C4 已安装在 " + site.displayName() + "，"
                 + (match.rulesBombDetonationTicks() / 20) + " 秒后引爆！");
@@ -297,7 +357,7 @@ public final class ClassicBombManager {
     }
 
     private void finishDefusing(ServerPlayer player) {
-        state.finishDefusing(match.rulesBombDefuseTicks());
+        state.finishDefusing(state.defuseDuration());
         discardPlantedC4();
         player.playNotifySound(SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.BLOCKS, 1.0F, 1.2F);
         match.recordEvent(player.getGameProfile().getName() + " 成功拆除了 C4！");
@@ -336,16 +396,19 @@ public final class ClassicBombManager {
         boolean planting = state.phase() == ClassicBombState.Phase.PLANTING;
         boolean valid = operator != null && operator.isAlive()
                 && !match.teamManager().isPending(operator)
-                && holdsRoundItem(operator, planting ? "c4" : "defuse_kit")
+                && (!planting || holdsRoundItem(operator, "c4"))
                 && match.teamManager().getTeam(operator) == (planting ? match.attackingTeam() : match.defendingTeam());
         if (valid && planting) {
-            valid = activeSiteAt(operator) != null;
+            valid = activeSiteAt(state.x(), state.y(), state.z()) != null;
         }
         if (valid && !planting) {
             valid = distanceSquared(operator, state.x(), state.y(), state.z()) <= DEFUSE_DISTANCE_SQUARED;
+            if (valid && state.defuseDuration() < match.rulesBombDefuseTicks()) {
+                valid = holdsJammer(operator);
+            }
         }
         if (!valid) {
-            state.cancelAction(!planting && match.rulesBombDefuseResume());
+            state.cancelAction(true);
         }
     }
 
@@ -361,11 +424,13 @@ public final class ClassicBombManager {
             if (droppedC4 == null && now - state.droppedTick() <= 20L) {
                 droppedC4 = findDroppedC4(level);
                 if (droppedC4 != null) {
+                    if (state.droppedGlowing()) droppedC4.setGlowingTag(true);
                     return;
                 }
             }
             if (now - state.droppedTick() > 20L) {
                 droppedC4 = createDroppedC4(level);
+                if (state.droppedGlowing()) droppedC4.setGlowingTag(true);
             }
         }
     }
@@ -387,13 +452,19 @@ public final class ClassicBombManager {
         return entity;
     }
 
-    private ItemEntity createDisplayC4(ServerLevel level, BlockPos position) {
-        ItemEntity entity = new ItemEntity(level, position.getX() + 0.5D,
-                position.getY() + 0.25D, position.getZ() + 0.5D, createRoundItem("c4"));
+    private ItemEntity createDisplayC4(ServerLevel level) {
+        Direction face = state.plantFace();
+        Vec3 normal = Vec3.atLowerCornerOf(face.getNormal());
+        ItemEntity entity = new ItemEntity(level,
+                state.x() + normal.x * 0.14D,
+                state.y() + normal.y * 0.14D,
+                state.z() + normal.z * 0.14D, createRoundItem("c4"));
         entity.setNoGravity(true);
         entity.setInvulnerable(true);
         entity.setPickUpDelay(Integer.MAX_VALUE);
         entity.setUnlimitedLifetime();
+        entity.setYRot(faceYaw(face, state.plantYaw()));
+        entity.setXRot(facePitch(face, state.plantPitch()));
         level.addFreshEntity(entity);
         return entity;
     }
@@ -502,9 +573,97 @@ public final class ClassicBombManager {
                 .toList();
     }
 
-    private MapRegion activeSiteAt(ServerPlayer player) {
+    private void applyActionMovement() {
+        ServerPlayer operator = player(state.operatorId());
+        if (operator == null) return;
+        if (state.phase() == ClassicBombState.Phase.DEFUSING) {
+            operator.setDeltaMovement(0.0D, 0.0D, 0.0D);
+            return;
+        }
+        if (state.phase() == ClassicBombState.Phase.PLANTING) {
+            int duration = Math.max(1, match.rulesBombPlantTicks());
+            double factor = Math.max(0.0D, 1.0D - state.actionProgress() / (double) duration);
+            Vec3 movement = operator.getDeltaMovement();
+            operator.setDeltaMovement(movement.x * factor, movement.y * factor, movement.z * factor);
+        }
+    }
+
+    private void updateDiscoveryGlow() {
+        if (state.phase() == ClassicBombState.Phase.DROPPED && droppedC4 != null
+                && droppedC4.isAlive() && !state.droppedGlowing() && discoveredByDefender(droppedC4)) {
+            droppedC4.setGlowingTag(true);
+            state.markDroppedGlowing();
+            match.recordEvent("掉落的 C4 首次被防守方发现。");
+        }
+        if ((state.phase() == ClassicBombState.Phase.PLANTED || state.phase() == ClassicBombState.Phase.DEFUSING)
+                && plantedC4 != null && plantedC4.isAlive()
+                && !state.plantedGlowing() && discoveredByDefender(plantedC4)) {
+            plantedC4.setGlowingTag(true);
+            state.markPlantedGlowing();
+            match.recordEvent("已安装的 C4 首次被防守方发现。");
+        }
+    }
+
+    private boolean discoveredByDefender(Entity entity) {
+        return teamPlayers(match.defendingTeam()).stream()
+                .anyMatch(player -> player.distanceToSqr(entity) <= 48.0D * 48.0D
+                        && player.hasLineOfSight(entity));
+    }
+
+    private boolean holdsJammer(ServerPlayer player) {
+        return player.getMainHandItem().is(ModItems.JAMMER_TABLET.get())
+                || player.getOffhandItem().is(ModItems.JAMMER_TABLET.get());
+    }
+
+    private static float faceYaw(Direction face, float fallback) {
+        return switch (face) {
+            case NORTH -> 180.0F;
+            case SOUTH -> 0.0F;
+            case WEST -> 90.0F;
+            case EAST -> -90.0F;
+            case UP, DOWN -> fallback;
+        };
+    }
+
+    private static float facePitch(Direction face, float fallback) {
+        return switch (face) {
+            case UP -> -90.0F;
+            case DOWN -> 90.0F;
+            case NORTH, SOUTH, WEST, EAST -> 0.0F;
+        };
+    }
+
+    private void sendCarrierPreview() {
+        ServerPlayer carrier = state.phase() == ClassicBombState.Phase.CARRIED
+                ? player(state.carrierId()) : null;
+        if (carrier == null) {
+            if (previewRecipient != null) {
+                ServerPlayer previous = server.getPlayerList().getPlayer(previewRecipient);
+                if (previous != null) {
+                    FpsTdmNetwork.sendToPlayer(new BombPreviewPacket(false,
+                            0.0D, 0.0D, 0.0D, Direction.UP, false), previous);
+                }
+                previewRecipient = null;
+            }
+            return;
+        }
+        previewRecipient = carrier.getUUID();
+        HitResult hit = carrier.pick(3.0D, 0.0F, false);
+        if (!(hit instanceof BlockHitResult blockHit) || hit.getType() != HitResult.Type.BLOCK) {
+            FpsTdmNetwork.sendToPlayer(new BombPreviewPacket(false, 0.0D, 0.0D, 0.0D,
+                    Direction.UP, false), carrier);
+            return;
+        }
+        Direction face = blockHit.getDirection();
+        Vec3 point = blockHit.getLocation().add(Vec3.atLowerCornerOf(face.getNormal()).scale(0.06D));
+        boolean valid = activeSiteAt(point.x, point.y, point.z) != null;
+        FpsTdmNetwork.sendToPlayer(new BombPreviewPacket(true,
+                point.x, point.y, point.z, face, valid), carrier);
+    }
+
+    private MapRegion activeSiteAt(double x, double y, double z) {
         return activeSites.stream()
-                .filter(region -> region.region().contains(player.getX(), player.getY(), player.getZ()))
+                .filter(region -> region.region().contains(x, y, z))
                 .findFirst()
                 .orElse(null);
     }

@@ -6,7 +6,7 @@ import net.minecraft.network.FriendlyByteBuf;
  * 房间大厅的服务器权威配置快照。
  *
  * <p>匹配参数不再可配置：固定为“最少 6 人成局、无人数上限、等待时长无限、
- * 达成后 10 秒准备时间”，房间也不再提供“要求准备”选项。
+ * 达成后 30 秒准备时间”，房间也不再提供“要求准备”选项。
  */
 public record LobbyConfigValues(
         int maxRooms,
@@ -16,7 +16,7 @@ public record LobbyConfigValues(
         int roomStartCountdownSeconds) {
 
     public static LobbyConfigValues defaults() {
-        return new LobbyConfigValues(16, 16, 2, true, 5);
+        return new LobbyConfigValues(16, 16, 2, true, 30);
     }
 
     public String validationError() {

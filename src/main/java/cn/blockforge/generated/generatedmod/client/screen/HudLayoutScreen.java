@@ -650,7 +650,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                 "team_c", "team_d", "forming", "queued",
                 "death", "respawning", "respawn_waiting", "respawn_ready", "returned",
                 "alive", "playing", "warmup", "warmup_waiting", "warmup_countdown",
-                "buying", "round_end", "terrain_restoring", "map_resetting", "match_end",
+                "buying", "frozen", "round_end", "terrain_restoring", "map_resetting", "match_end",
                 "outside", "spectator",
                 "round_odd", "round_even", "team_leading", "team_trailing", "score_tied",
                 "health_below:50", "armor_below:10", "money_below:1000",
@@ -678,6 +678,7 @@ public final class HudLayoutScreen extends Screen implements cn.blockforge.gener
                     case "respawn_ready" -> "复活已就绪"; case "returned" -> "刚刚回归";
                     case "alive" -> "可作战"; case "playing" -> "比赛进行中"; case "warmup" -> "热身中";
                     case "buying" -> "购买阶段";
+                    case "frozen" -> "冻结阶段";
                     case "warmup_waiting" -> "热身等待玩家"; case "warmup_countdown" -> "热身开赛倒计时";
                     case "round_end" -> "回合结束"; case "terrain_restoring" -> "地形恢复阶段";
                     case "map_resetting" -> "地图恢复阶段"; case "match_end" -> "比赛结束";

@@ -26,6 +26,16 @@ public final class BombEvents {
         interact(event);
     }
 
+    @SubscribeEvent
+    public static void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
+        capture(event);
+    }
+
+    @SubscribeEvent
+    public static void onLeftClickEmpty(PlayerInteractEvent.LeftClickEmpty event) {
+        capture(event);
+    }
+
     private static void interact(PlayerInteractEvent event) {
         if (event.getLevel().isClientSide() || event.getHand() != InteractionHand.MAIN_HAND
                 || !(event.getEntity() instanceof ServerPlayer player)) return;
@@ -36,6 +46,15 @@ public final class BombEvents {
             event.setCanceled(true);
         } else if (event.getItemStack().is(ModItems.JAMMER_TABLET.get())) {
             manager.bomb().requestDefuse(player);
+            event.setCanceled(true);
+        }
+    }
+
+    private static void capture(PlayerInteractEvent event) {
+        if (event.getLevel().isClientSide() || event.getHand() != InteractionHand.MAIN_HAND
+                || !(event.getEntity() instanceof ServerPlayer player)) return;
+        MatchManager manager = MatchManager.get();
+        if (manager != null && manager.bomb().shouldCaptureInteraction(player)) {
             event.setCanceled(true);
         }
     }

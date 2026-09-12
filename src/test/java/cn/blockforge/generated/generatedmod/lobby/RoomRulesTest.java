@@ -15,7 +15,7 @@ class RoomRulesTest {
             assertEquals(mode != GameMode.SEARCH_DESTROY, rules.keepInventoryOnDeath());
             assertTrue(rules.suppressDeathMessages());
             assertFalse(rules.requireBothTeams());
-            assertEquals(10, rules.warmupDurationSeconds());
+            assertEquals(30, rules.warmupDurationSeconds());
             assertEquals(2, rules.minPlayersToStart());
             assertEquals(SpawnSelectionStrategy.RANDOM, rules.spawnSelectionStrategy());
             assertEquals(mode == GameMode.SEARCH_DESTROY ? 8 : 1, rules.roundWinTarget());
@@ -34,7 +34,13 @@ class RoomRulesTest {
         assertEquals(4, bomb.bombPlantSeconds());
         assertEquals(40, bomb.bombDetonationSeconds());
         assertEquals(5, bomb.bombDefuseSeconds());
-        assertTrue(bomb.bombDefuseResume());
+        assertFalse(bomb.bombDefuseResume());
+        assertTrue(bomb.restoreTerrainAfterRound());
+        RoomRules noRoundRestore = new RoomRules(GameMode.SEARCH_DESTROY, 0, 110, 3, 30,
+                0, false, false, 1, 2, 5, 15, false, true, true, false,
+                TeamChangePolicy.ONLY_BEFORE_MATCH, AutoBalanceMode.OFF,
+                SpawnSelectionStrategy.RANDOM, 1, 0, 0, 15, 4, 40, 5, false, false).normalized();
+        assertFalse(noRoundRestore.restoreTerrainAfterRound());
         assertEquals("团队竞技", GameMode.TEAM_DEATHMATCH.displayName());
     }
 }

@@ -95,7 +95,11 @@ public final class MatchManager {
 
     public java.util.List<Team> activeTeams() { return Team.playing(teamCount); }
     public boolean hasRoomTeamSelection() { return roomTeamSelection; }
-    public void configureRoomTeams(int count) { teamCount = Math.max(2, Math.min(4, count)); roomTeamSelection = true; }
+    public void configureRoomTeams(int count) {
+        teamCount = Math.max(2, Math.min(4, count));
+        if (roomRules != null && roomRules.mode() == GameMode.SEARCH_DESTROY) teamCount = 2;
+        roomTeamSelection = true;
+    }
     private boolean rulesCaptured;
     private boolean originalKeepInventory;
     private boolean originalDeathMessages;
@@ -255,6 +259,7 @@ public final class MatchManager {
     public void applyRoomRules(cn.blockforge.generated.generatedmod.lobby.RoomRules rules) {
         roomRules = rules == null
                 ? cn.blockforge.generated.generatedmod.lobby.RoomRules.serverDefaults() : rules.normalized();
+        if (roomRules.mode() == GameMode.SEARCH_DESTROY) teamCount = 2;
         teams.refreshConfigRules();
     }
 
@@ -295,7 +300,7 @@ public final class MatchManager {
     }
 
     public int rulesWarmupSeconds() {
-        return 10;
+        return 30;
     }
 
     public int rulesRespawnDelaySeconds() {
@@ -330,6 +335,11 @@ public final class MatchManager {
 
     public boolean rulesBombDefuseResume() {
         return roomRules != null && roomRules.bombDefuseResume();
+    }
+
+    public boolean isBombDefender(ServerPlayer player) {
+        return player != null && rulesMode() == GameMode.SEARCH_DESTROY
+                && teams.getTeam(player) == defendingTeam();
     }
 
     /** 爆破与歼灭模式整回合不复活；规则快照缺失时同样关闭。 */
@@ -382,6 +392,10 @@ public final class MatchManager {
 
     public boolean rulesAutoReset() {
         return roomRules != null ? roomRules.autoReset() : FpsTdmConfig.COMMON.autoReset.get();
+    }
+
+    public boolean rulesRestoreTerrainAfterRound() {
+        return activeTeams().size() <= 2 || roomRules == null || roomRules.restoreTerrainAfterRound();
     }
 
     public boolean rulesRequireBothTeams() {
@@ -571,7 +585,7 @@ public final class MatchManager {
     private void resetToWaiting(boolean teleportToLobby) {
         finishRecord("比赛被重置");
         economy.abortMatch();
-        if (bomb != null) bomb.cleanupRound();
+        if (bomb != null) bomb.cleanupMatchItems();
         spawns.updateActivationContext(MapRegionActivation.INACTIVE);
         teamCount = 2;
         roomTeamSelection = false;
@@ -625,18 +639,21 @@ public final class MatchManager {
                 if (phaseEndTick == 0L) {
                     recordEvent("人数不足，继续热身等待。");
                 } else {
-                    recordEvent("人数已满足，比赛将在 10 秒后开始。");
+                    recordEvent("人数已满足，比赛将在 30 秒后开始。");
                     publishHudEvent(MatchHudEventType.START_COUNTDOWN,
-                            "人数已满足，比赛将在 10 秒后开始", 200);
+                            "人数已满足，比赛将在 30 秒后开始", 600);
                 }
                 broadcastMatchState();
             }
         }
         if (state == MatchState.WARMUP && phaseEndTick > 0L && server.getTickCount() >= phaseEndTick) {
             beginTerrainRestore(true);
+        } else if (state == MatchState.FROZEN && phaseEndTick > 0L
+                && server.getTickCount() >= phaseEndTick) {
+            beginPlaying(false);
         } else if (state == MatchState.BUYING && phaseEndTick > 0L
                 && server.getTickCount() >= phaseEndTick) {
-            beginPlaying();
+            beginPlaying(false);
         } else if (state == MatchState.PLAYING && phaseEndTick > 0L
                 && server.getTickCount() >= phaseEndTick && !bombKeepsRoundAlive()) {
             finishRound(null);
@@ -674,7 +691,7 @@ public final class MatchManager {
 
     static long warmupDeadline(long deadline, int players, int minimum, long now) {
         if (players < Math.max(2, minimum)) return 0L;
-        return deadline == 0L ? now + 200L : deadline;
+        return deadline == 0L ? now + 600L : deadline;
     }
 
     static int stateBroadcastInterval(boolean matchActive) {
@@ -688,9 +705,7 @@ public final class MatchManager {
     }
 
     private void updateFrozenPlayers() {
-        boolean freeze = state == MatchState.TERRAIN_RESTORING
-                || (state == MatchState.WARMUP && phaseEndTick > 0L
-                && server.getTickCount() >= phaseEndTick - 200L);
+        boolean freeze = state == MatchState.TERRAIN_RESTORING || state == MatchState.FROZEN;
         if (!freeze) {
             frozenPositions.clear();
             return;
@@ -983,7 +998,6 @@ public final class MatchManager {
             spawns.teleportToSpectator(player);
             return;
         }
-        player.setInvulnerable(state == MatchState.WARMUP);
         healAndReady(player);
         spawns.teleportToTeamSpawn(player, spawnGroupFor(team), rulesSpawnStrategy());
         if (records != null) records.addParticipant(player);
@@ -1048,6 +1062,12 @@ public final class MatchManager {
         if (isMatchActive() && (!victimTeam.isPlayable() || teams.isPending(victim))) {
             return true;
         }
+        if (state == MatchState.WARMUP) {
+            ServerPlayer attacker = resolveKiller(source);
+            if (attacker == null) return false;
+            Team attackerTeam = teams.getTeam(attacker);
+            return attackerTeam.isPlayable() && attackerTeam == victimTeam && !rulesFriendlyFire();
+        }
         if (state != MatchState.PLAYING) {
             return isMatchActive() && victimTeam.isPlayable();
         }
@@ -1087,9 +1107,7 @@ public final class MatchManager {
     }
 
     private boolean arePlayersFrozen() {
-        return state == MatchState.TERRAIN_RESTORING
-                || (state == MatchState.WARMUP && phaseEndTick > 0L
-                && server.getTickCount() >= phaseEndTick - 200L);
+        return state == MatchState.TERRAIN_RESTORING || state == MatchState.FROZEN;
     }
 
     /** 重置阶段过滤当前地图区域内的爆炸方块，保留其他区域的服务器行为。 */
@@ -1196,7 +1214,7 @@ public final class MatchManager {
             teams.rememberGameMode(player);
             if (team.isPlayable() && !teams.isPending(player)) {
                 player.setGameMode(GameType.SURVIVAL);
-                player.setInvulnerable(true);
+                player.setInvulnerable(false);
                 healAndReady(player);
                 spawns.teleportToTeamSpawn(player, spawnGroupFor(team), strategy);
             } else if (isMatchActive()) {
@@ -1210,7 +1228,32 @@ public final class MatchManager {
         broadcastMatchState();
     }
 
+    private void beginFrozen() {
+        spawns.updateActivationContext(new MapRegionActivation.Context(
+                true, rulesMode(), roundNumber, activeTeams().size(), teams.totalParticipants()));
+        scores.resetRound();
+        state = MatchState.FROZEN;
+        phaseEndTick = server.getTickCount() + 100L;
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            Team team = teams.getTeam(player);
+            if (team.isPlayable() && !teams.isPending(player)) {
+                player.setGameMode(GameType.SURVIVAL);
+                player.setInvulnerable(true);
+                player.setDeltaMovement(0.0D, 0.0D, 0.0D);
+                healAndReady(player);
+                spawns.teleportToTeamSpawn(player, spawnGroupFor(team), rulesSpawnStrategy());
+            }
+        }
+        recordEvent("冻结阶段开始，5 秒后进入行动阶段。");
+        publishHudEvent(MatchHudEventType.FREEZE_START, "5 秒后进入行动阶段", 100);
+        broadcastMatchState();
+    }
+
     private void beginPlaying() {
+        beginPlaying(true);
+    }
+
+    private void beginPlaying(boolean teleportToSpawn) {
         spawns.updateActivationContext(new MapRegionActivation.Context(
                 true, rulesMode(), roundNumber, activeTeams().size(), teams.totalParticipants()));
         if (rulesAutoBalanceMode().balancesOnMatchStart()) teams.balanceTeamsAtMatchStart();
@@ -1229,7 +1272,9 @@ public final class MatchManager {
                 SpawnSelectionStrategy actionSpawn = rulesMode() == GameMode.SEARCH_DESTROY
                         && spawns.findFixedSpawn(spawnGroupFor(team)).isPresent()
                         ? SpawnSelectionStrategy.SEQUENTIAL : rulesSpawnStrategy();
-                spawns.teleportToTeamSpawn(player, spawnGroupFor(team), actionSpawn);
+                if (teleportToSpawn) {
+                    spawns.teleportToTeamSpawn(player, spawnGroupFor(team), actionSpawn);
+                }
             }
         }
         if (rulesMode() == GameMode.SEARCH_DESTROY && bomb != null && !bomb.startRound()) {
@@ -1250,7 +1295,7 @@ public final class MatchManager {
 
     private void beginBuying() {
         if (rulesBuyPhaseSeconds() <= 0) {
-            beginPlaying();
+            beginPlaying(true);
             return;
         }
         spawns.updateActivationContext(new MapRegionActivation.Context(
@@ -1400,6 +1445,10 @@ public final class MatchManager {
             beginForcedStopReset();
             return;
         }
+        if (!rulesRestoreTerrainAfterRound()) {
+            afterRoundRestore();
+            return;
+        }
         beginTerrainRestore(false);
     }
 
@@ -1478,9 +1527,14 @@ public final class MatchManager {
         broadcastSystemMessage("地形恢复完成。", false);
         if (restoreAfterWarmup) {
             if (rulesMode() == GameMode.SEARCH_DESTROY) beginBuying();
-            else beginPlaying();
+            else if (rulesMode() == GameMode.TEAM_DEATHMATCH) beginFrozen();
+            else beginPlaying(true);
             return;
         }
+        afterRoundRestore();
+    }
+
+    private void afterRoundRestore() {
         if (pendingMatchWinner != null || rulesMode() != GameMode.SEARCH_DESTROY) {
             enterMatchEnd(pendingMatchWinner);
             return;
@@ -1760,7 +1814,7 @@ public final class MatchManager {
                 continue;
             }
 
-            if (state == MatchState.WARMUP || state == MatchState.ROUND_END || state == MatchState.MATCH_END) {
+            if (state == MatchState.ROUND_END || state == MatchState.MATCH_END) {
                 player.setInvulnerable(true);
             }
             if (state == MatchState.PLAYING && isDowned(player)) {
@@ -1781,7 +1835,7 @@ public final class MatchManager {
                     // 避免每 Tick 拽视角导致“视角无法移动”，也防止出生点越界时无限循环。
                     if (state == MatchState.WARMUP) {
                         player.setGameMode(GameType.SURVIVAL);
-                        player.setInvulnerable(true);
+                        player.setInvulnerable(false);
                     }
                     spawns.teleportToTeamSpawn(player, spawnGroupFor(team), rulesSpawnStrategy());
                 } else {

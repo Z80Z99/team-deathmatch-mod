@@ -101,10 +101,10 @@ class HudElementsTest {
         try {
             ClientMatchData.state = cn.blockforge.generated.generatedmod.match.MatchState.WARMUP;
             ClientMatchData.mode = cn.blockforge.generated.generatedmod.match.GameMode.TEAM_DEATHMATCH;
-            ClientMatchData.phaseRemainingTicks = 200;
+            ClientMatchData.phaseRemainingTicks = 600;
             assertEquals("热身阶段", MatchHudNotice.title());
-            assertTrue(MatchHudNotice.detail().contains("10 秒后开始"));
-            assertEquals("10 秒", MatchHudNotice.timer());
+            assertTrue(MatchHudNotice.detail().contains("30 秒后开始"));
+            assertEquals("30 秒", MatchHudNotice.timer());
             assertTrue(HudStats.sourcesFor(HudContext.TEAM_DEATHMATCH).stream()
                     .anyMatch(source -> source.id().equals("notice_title")));
 

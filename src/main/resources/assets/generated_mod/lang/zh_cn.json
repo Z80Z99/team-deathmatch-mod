@@ -10,6 +10,6 @@
   "item.generated_mod.map_brush.tooltip": "左键标定或移除，右键确认或绘制；蹲下右键打开参数设置。",
   "item.generated_mod.c4": "C4 爆炸物",
   "item.generated_mod.c4.tooltip": "爆破模式专用爆炸物。",
-  "item.generated_mod.jammer_tablet": "拆弹平板",
-  "item.generated_mod.jammer_tablet.tooltip": "爆破模式专用拆弹器。"
+  "item.generated_mod.jammer_tablet": "炸弹干扰器",
+  "item.generated_mod.jammer_tablet.tooltip": "拆弹速度提高 50%，并将干扰器与炸弹用钓鱼线连接。"
 }

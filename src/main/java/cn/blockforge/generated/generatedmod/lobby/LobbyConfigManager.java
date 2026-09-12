@@ -63,7 +63,7 @@ public final class LobbyConfigManager {
                     integer(object, "defaultRoomMaxPlayers", 16),
                     integer(object, "minPlayersToStartRoom", 2),
                     booleanValue(object, "allowOwnerMapSelection", true),
-                    integer(object, "roomStartCountdownSeconds", 5));
+                    integer(object, "roomStartCountdownSeconds", 30));
             if (loaded.validationError() != null) {
                 LOGGER.warn("大厅配置无效，将使用默认值：{}", loaded.validationError());
                 return LobbyConfigValues.defaults();

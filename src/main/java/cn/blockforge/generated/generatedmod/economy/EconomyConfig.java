@@ -44,6 +44,7 @@ public record EconomyConfig(
         prices.put("other", "300");
         prices.put("service_repair_gun", "max(200, durability_lost * 3)");
         prices.put("service_repair_attachments", "max(100, durability_lost * 2)");
+        prices.put("service_jammer", "400");
         return new EconomyConfig(true, 1000, 800, 1000000, 15,
                 "initial_match_balance", "300", "100", "0", "0",
                 "3250", "1400 + min(loss_streak, 4) * 500", "1500",

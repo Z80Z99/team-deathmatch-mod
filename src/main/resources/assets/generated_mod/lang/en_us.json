@@ -10,6 +10,6 @@
   "item.generated_mod.map_brush.tooltip": "Left-click to mark or remove, right-click to confirm or draw; sneak right-click opens settings.",
   "item.generated_mod.c4": "C4 Explosive",
   "item.generated_mod.c4.tooltip": "Explosive for Search & Destroy matches.",
-  "item.generated_mod.jammer_tablet": "Jammer Tablet",
-  "item.generated_mod.jammer_tablet.tooltip": "Defusal tool for Search & Destroy matches."
+  "item.generated_mod.jammer_tablet": "Bomb Jammer",
+  "item.generated_mod.jammer_tablet.tooltip": "Defuse 50% faster and connect a fishing line to the bomb."
 }

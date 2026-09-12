@@ -4,7 +4,8 @@ import java.util.Arrays;
 
 /** Structured in-match events that can trigger individual configurable HUD elements. */
 public enum MatchHudEventType {
-    START_COUNTDOWN("start_countdown", "10 秒后开始", "比赛将在 10 秒后开始", 200, 90),
+    START_COUNTDOWN("start_countdown", "30 秒后开始", "比赛将在 30 秒后开始", 600, 90),
+    FREEZE_START("freeze_start", "冻结阶段", "冻结期间不能移动、攻击或使用物品", 100, 92),
     BUY_PHASE_START("buy_phase_start", "购买阶段开始", "购买装备并准备下一阶段", 100, 70),
     BUY_AREA_ONLY("buy_area_only", "只能在出生区活动", "离开出生区域会被送回", 80, 72),
     ACTION_PHASE("action_phase", "行动阶段", "正式对局已经开始", 70, 75),

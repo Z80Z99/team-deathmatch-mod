@@ -41,7 +41,8 @@ public record RoomRules(GameMode mode,
                         int bombPlantSeconds,
                         int bombDetonationSeconds,
                         int bombDefuseSeconds,
-                        boolean bombDefuseResume) {
+                        boolean bombDefuseResume,
+                        boolean restoreTerrainAfterRound) {
 
     public RoomRules {
         mode = mode == null ? GameMode.TEAM_DEATHMATCH : mode;
@@ -64,7 +65,25 @@ public record RoomRules(GameMode mode,
                 autoRespawn, friendlyFire, switchSideEvery, minPlayersToStart, roundEndDelaySeconds, matchEndDelaySeconds,
                 keepInventoryOnDeath, suppressDeathMessages, autoReset, requireBothTeams, teamChangePolicy, autoBalanceMode,
                 spawnSelectionStrategy, maxTeamImbalance, 3, 80,
-                15, 4, 40, 5, true);
+                15, 4, 40, 5, true, true);
+    }
+
+    /** Compatibility constructor for rules created before round terrain recovery became optional. */
+    public RoomRules(GameMode mode, int targetKills, int matchDurationSeconds, int roundWinTarget,
+                     int warmupDurationSeconds, int respawnDelaySeconds, boolean autoRespawn, boolean friendlyFire,
+                     int switchSideEvery, int minPlayersToStart, int roundEndDelaySeconds, int matchEndDelaySeconds,
+                     boolean keepInventoryOnDeath, boolean suppressDeathMessages, boolean autoReset, boolean requireBothTeams,
+                     TeamChangePolicy teamChangePolicy, AutoBalanceMode autoBalanceMode,
+                     SpawnSelectionStrategy spawnSelectionStrategy, int maxTeamImbalance,
+                     int respawnProtectionSeconds, int respawnProtectionPercent, int buyPhaseSeconds,
+                     int bombPlantSeconds, int bombDetonationSeconds, int bombDefuseSeconds,
+                     boolean bombDefuseResume) {
+        this(mode, targetKills, matchDurationSeconds, roundWinTarget, warmupDurationSeconds,
+                respawnDelaySeconds, autoRespawn, friendlyFire, switchSideEvery, minPlayersToStart,
+                roundEndDelaySeconds, matchEndDelaySeconds, keepInventoryOnDeath, suppressDeathMessages,
+                autoReset, requireBothTeams, teamChangePolicy, autoBalanceMode, spawnSelectionStrategy,
+                maxTeamImbalance, respawnProtectionSeconds, respawnProtectionPercent, buyPhaseSeconds,
+                bombPlantSeconds, bombDetonationSeconds, bombDefuseSeconds, bombDefuseResume, true);
     }
 
     /** 以服务器当前配置作为默认规则快照。必须在服务端线程调用。 */
@@ -137,7 +156,7 @@ public record RoomRules(GameMode mode,
                 mode.respawnRules() ? clamp(targetKills, 0, 1000) : 0,
                 clamp(matchDurationSeconds, 0, 7200),
                 mode == GameMode.SEARCH_DESTROY ? clamp(roundWinTarget, 1, 10) : 1,
-                10,
+                30,
                 mode.respawnRules() ? clamp(respawnDelaySeconds, 0, 60) : 0,
                 mode.respawnRules(),
                 friendlyFire,
@@ -155,7 +174,8 @@ public record RoomRules(GameMode mode,
                 mode == GameMode.SEARCH_DESTROY ? clamp(bombPlantSeconds, 1, 30) : 4,
                 mode == GameMode.SEARCH_DESTROY ? clamp(bombDetonationSeconds, 5, 300) : 40,
                 mode == GameMode.SEARCH_DESTROY ? clamp(bombDefuseSeconds, 1, 60) : 5,
-                mode == GameMode.SEARCH_DESTROY && bombDefuseResume);
+                false,
+                restoreTerrainAfterRound);
     }
 
     /** 返回错误文本；null 表示合法。 */
@@ -199,11 +219,12 @@ public record RoomRules(GameMode mode,
                     .append(" · C4 ").append(bombPlantSeconds).append("/")
                     .append(bombDetonationSeconds).append("/").append(bombDefuseSeconds).append("s")
                     .append(bombDefuseResume ? " · 可续拆" : "")
-                    .append(teamCount > 2 ? " · 各队独立出生区" : " · 每 " + switchSideEvery + " 回合换边");
+                    .append(teamCount > 2 ? " · 各队独立出生区 · 回合后地形恢复"
+                            + (restoreTerrainAfterRound ? "开" : "关") : " · 每 " + switchSideEvery + " 回合换边");
             case LAST_STANDING -> text.append(" · 总时长 ")
                     .append(formatSeconds(matchDurationSeconds)).append(" · 阵亡不复活");
         }
-        return text.append(" · 等待人数后倒计时 10s")
+        return text.append(" · 等待人数后倒计时 30s")
                 .append(" · 最少 ").append(minPlayersToStart).append(" 人")
                 .append(" · 友伤 ").append(friendlyFire ? "开" : "关").toString();
     }
@@ -223,7 +244,7 @@ public record RoomRules(GameMode mode,
                 teamChangePolicy, autoBalanceMode, spawnSelectionStrategy,
                 maxTeamImbalance, respawnProtectionSeconds, respawnProtectionPercent,
                 buyPhaseSeconds, bombPlantSeconds, bombDetonationSeconds, bombDefuseSeconds,
-                bombDefuseResume).normalized();
+                bombDefuseResume, restoreTerrainAfterRound).normalized();
     }
 
     public void write(FriendlyByteBuf buffer) {
@@ -254,6 +275,7 @@ public record RoomRules(GameMode mode,
         buffer.writeVarInt(bombDetonationSeconds);
         buffer.writeVarInt(bombDefuseSeconds);
         buffer.writeBoolean(bombDefuseResume);
+        buffer.writeBoolean(restoreTerrainAfterRound);
     }
 
     public static RoomRules read(FriendlyByteBuf buffer) {
@@ -282,7 +304,7 @@ public record RoomRules(GameMode mode,
                         SpawnSelectionStrategy.RANDOM),
                 buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(),
                 buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(),
-                buffer.readVarInt(), buffer.readBoolean()).normalized();
+                buffer.readVarInt(), buffer.readBoolean(), buffer.readBoolean()).normalized();
     }
 
     private static <E extends Enum<E>> E enumByOrdinal(int ordinal, E[] values, E fallbackValue) {

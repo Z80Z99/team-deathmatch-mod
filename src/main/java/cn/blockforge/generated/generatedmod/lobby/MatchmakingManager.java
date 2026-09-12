@@ -16,7 +16,7 @@ import java.util.LinkedHashMap;
  * <ul>
  *   <li>最少 6 人即可成局，没有人数上限（整个队列一起进房）；</li>
  *   <li>等待时长无限，不会因超时降格开赛；</li>
- *   <li>条件达成后进入 10 秒准备时间，然后开赛；</li>
+ *   <li>条件达成后进入 30 秒准备时间，然后开赛；</li>
  *   <li>成局即开一间匹配房，中途可通过大厅加入，比赛结束后房间自动解散。</li>
  * </ul>
  */
@@ -24,7 +24,7 @@ public final class MatchmakingManager {
     /** 成局所需最少人数。 */
     public static final int MIN_PLAYERS_TO_FORM = 6;
     /** 匹配条件达成后的准备时间（秒）。 */
-    public static final int READY_SECONDS = 10;
+    public static final int READY_SECONDS = 30;
 
     private final MinecraftServer server;
     private final MatchManager matchManager;
@@ -65,7 +65,7 @@ public final class MatchmakingManager {
         }
     }
 
-    /** 房间管理器在创建匹配房（进入 10 秒准备）时登记。 */
+    /** 房间管理器在创建匹配房（进入 30 秒准备）时登记。 */
     public void beginForming(String roomId) {
         formingRoomId = roomId;
     }

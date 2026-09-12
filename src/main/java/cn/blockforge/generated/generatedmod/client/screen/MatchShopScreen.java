@@ -94,7 +94,11 @@ public final class MatchShopScreen extends UiListScreen<MatchShopScreen.Row> {
     }
 
     private static String detail(MatchShopProduct product) {
-        if (product.service() != null) return product.service().name();
+        if (product.service() != null) return switch (product.service()) {
+            case REPAIR_GUN -> "维修当前枪械";
+            case REPAIR_ATTACHMENTS -> "维修当前配件";
+            case JAMMER -> "拆弹速度提高 50%";
+        };
         ItemStack stack = product.snapshot().stack();
         return stack.isEmpty() ? product.id() : stack.getHoverName().getString() + " · " + product.id();
     }

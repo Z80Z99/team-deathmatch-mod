@@ -2,6 +2,7 @@ package cn.blockforge.generated.generatedmod.shop;
 
 import cn.blockforge.generated.generatedmod.economy.EconomyManager;
 import cn.blockforge.generated.generatedmod.match.MatchManager;
+import cn.blockforge.generated.generatedmod.item.ModItems;
 import cn.blockforge.generated.generatedmod.network.FpsTdmNetwork;
 import cn.blockforge.generated.generatedmod.network.packet.MatchShopSyncPacket;
 import cn.blockforge.generated.generatedmod.weapon.WeaponRepositoryItem;
@@ -19,6 +20,7 @@ import java.util.Map;
 public final class MatchShopManager {
     private static final String REPAIR_GUN_ID = "service:repair_gun";
     private static final String REPAIR_ATTACHMENTS_ID = "service:repair_attachments";
+    private static final String JAMMER_ID = "service:jammer";
     private final MinecraftServer server;
     private final MatchManager match;
 
@@ -63,6 +65,11 @@ public final class MatchShopManager {
             products.add(MatchShopProduct.item("repo:" + item.id(), item.categoryId(),
                     item.title(), price, item.snapshot()));
         }
+        if (match.isBombDefender(player) && !hasJammer(player)) {
+            int price = economy.price(JAMMER_ID, "service_jammer", 1);
+            products.add(new MatchShopProduct(JAMMER_ID, "service_jammer",
+                    "购买炸弹干扰器", price, null, MatchShopService.JAMMER));
+        }
         if (GunDurabilityAdapter.loaded()) {
             if (gunDamage > 0 && gunMax > 0) {
                 int price = repairPrice(economy, "service_repair_gun", gunDamage, gunMax);
@@ -98,6 +105,8 @@ public final class MatchShopManager {
             purchaseRepair(player, held, MatchShopService.REPAIR_GUN);
         } else if (REPAIR_ATTACHMENTS_ID.equals(productId)) {
             purchaseRepair(player, held, MatchShopService.REPAIR_ATTACHMENTS);
+        } else if (JAMMER_ID.equals(productId)) {
+            purchaseJammer(player);
         } else if (productId != null && productId.startsWith("repo:")) {
             purchaseItem(player, productId.substring("repo:".length()));
         } else {
@@ -162,6 +171,33 @@ public final class MatchShopManager {
         }
         if (!player.getInventory().add(stack.copy())) player.drop(stack, false);
         message(player, result.message() + " " + item.title(), false);
+    }
+
+    private void purchaseJammer(ServerPlayer player) {
+        if (!match.isBombDefender(player)) {
+            message(player, "只有防守方可以购买干扰器。", true);
+            return;
+        }
+        if (hasJammer(player)) {
+            message(player, "你已经拥有炸弹干扰器。", true);
+            return;
+        }
+        EconomyManager.PurchaseResult result = match.economy()
+                .purchase(player, JAMMER_ID, "service_jammer", 1, true);
+        if (!result.success()) {
+            message(player, result.message(), true);
+            return;
+        }
+        ItemStack jammer = new ItemStack(ModItems.JAMMER_TABLET.get());
+        if (!player.getInventory().add(jammer)) player.drop(jammer, false);
+        message(player, result.message() + " 炸弹干扰器可在空手拆弹基础上提速 50%。", false);
+    }
+
+    private static boolean hasJammer(ServerPlayer player) {
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+            if (player.getInventory().getItem(slot).is(ModItems.JAMMER_TABLET.get())) return true;
+        }
+        return false;
     }
 
     private static boolean shopCategory(String category) {

@@ -64,7 +64,7 @@ public final class RoomRulesScreen extends UiScreen {
     private UiEditBox bombPlantSecondsBox;
     private UiEditBox bombDetonationSecondsBox;
     private UiEditBox bombDefuseSecondsBox;
-    private UiCycleButton<Boolean> bombDefuseResumeToggle;
+    private UiCycleButton<Boolean> terrainRestoreToggle;
     private UiButton unavailableButton;
     private UiButton saveButton;
     private UiButton resetButton;
@@ -155,7 +155,7 @@ public final class RoomRulesScreen extends UiScreen {
                     setStatus("已切换为「" + value.displayName() + "」，设置项已按模式重置。", UiTheme.INFO);
                 }, "切换后本模式的设置项会重置为推荐模板，共享项保持不变。", editable);
         minPlayersBox = integer(0, 1, "最少开赛人数", current.minPlayersToStart(), 2, editable,
-                "可单人进入热身；达到该人数后开始 10 秒倒计时（2～32）。");
+                "可单人进入热身；达到该人数后开始 30 秒倒计时（2～32）。");
 
         targetBox = integer(1, 0, "击杀目标（0=不限）", current.targetKills(), 4, editable,
                 "团队竞技：单回合率先累计到的击杀数。");
@@ -199,12 +199,13 @@ public final class RoomRulesScreen extends UiScreen {
         buyPhaseBox = integer(12, 0, "购买阶段/秒", current.buyPhaseSeconds(), 3, editable,
                 "爆破模式回合开始后，只允许在出生区购买和准备的时长（0～120）。");
         bombPlantSecondsBox = integer(12, 1, "C4 安装/秒", current.bombPlantSeconds(), 2, editable,
-                "按住右键安装 C4 所需时间（1～30）。");
+                "长按左键或右键安装 C4 所需时间（1～30）。");
         bombDetonationSecondsBox = integer(13, 0, "C4 引爆/秒", current.bombDetonationSeconds(), 3, editable,
                 "安装完成后到爆炸的倒计时（5～300）。");
         bombDefuseSecondsBox = integer(13, 1, "C4 拆除/秒", current.bombDefuseSeconds(), 2, editable,
                 "拆弹所需时间（1～60）。");
-        bombDefuseResumeToggle = bool(14, 0, "中断后可续拆", current.bombDefuseResume(), editable);
+        terrainRestoreToggle = bool(14, 0, "回合后恢复地形", current.restoreTerrainAfterRound(),
+                editable && multiTeamRoom());
         UiTheme.Field unavailableField = ruleField(0);
         unavailableButton = new UiButton(unavailableField.controlX(), rowYs[10] + 12,
                 innerWidth - 16, BUTTON_HEIGHT,
@@ -350,7 +351,7 @@ public final class RoomRulesScreen extends UiScreen {
         setRowY(bombPlantSecondsBox, 12);
         setRowY(bombDetonationSecondsBox, 13);
         setRowY(bombDefuseSecondsBox, 13);
-        setRowY(bombDefuseResumeToggle, 14);
+        setRowY(terrainRestoreToggle, 14);
         setRowY(unavailableButton, 10);
     }
 
@@ -381,7 +382,8 @@ public final class RoomRulesScreen extends UiScreen {
         setBombSettingVisibility(bombPlantSecondsBox, mode == GameMode.SEARCH_DESTROY);
         setBombSettingVisibility(bombDetonationSecondsBox, mode == GameMode.SEARCH_DESTROY);
         setBombSettingVisibility(bombDefuseSecondsBox, mode == GameMode.SEARCH_DESTROY);
-        setBombSettingVisibility(bombDefuseResumeToggle, mode == GameMode.SEARCH_DESTROY);
+        setBombSettingVisibility(terrainRestoreToggle,
+                mode == GameMode.SEARCH_DESTROY && multiTeamRoom());
         durationBox.setMessage(Component.literal(durationLabel(mode)));
         if (modeCycle != null) modeCycle.setValue(mode);
         applyRuleScroll();
@@ -398,7 +400,9 @@ public final class RoomRulesScreen extends UiScreen {
         if (bombPlantSecondsBox != null) bombPlantSecondsBox.setEditable(bombEditable);
         if (bombDetonationSecondsBox != null) bombDetonationSecondsBox.setEditable(bombEditable);
         if (bombDefuseSecondsBox != null) bombDefuseSecondsBox.setEditable(bombEditable);
-        if (bombDefuseResumeToggle != null) bombDefuseResumeToggle.active = bombEditable;
+        if (terrainRestoreToggle != null) {
+            terrainRestoreToggle.active = bombEditable && multiTeamRoom();
+        }
     }
 
     private static void setBombSettingVisibility(
@@ -473,7 +477,8 @@ public final class RoomRulesScreen extends UiScreen {
                 parse(bombPlantSecondsBox, draft.bombPlantSeconds()),
                 parse(bombDetonationSecondsBox, draft.bombDetonationSeconds()),
                 parse(bombDefuseSecondsBox, draft.bombDefuseSeconds()),
-                bombDefuseResumeToggle.getValue());
+                false,
+                terrainRestoreToggle.getValue());
     }
 
     private static int parse(UiEditBox box, int fallback) {
@@ -741,7 +746,7 @@ public final class RoomRulesScreen extends UiScreen {
             return column == 0 ? "C4 引爆/秒" : "C4 拆除/秒";
         }
         if (row == 14) {
-            return column == 0 ? "中断后可续拆" : null;
+            return column == 0 && multiTeamRoom() ? "回合后恢复地形" : null;
         }
         if (row == 8) {
             return column == 0 ? "换队政策" : "自动平衡";
@@ -764,6 +769,11 @@ public final class RoomRulesScreen extends UiScreen {
             case ON_MATCH_START -> "开赛时";
             case ON_JOIN_AND_MATCH_START -> "加入与开赛";
         };
+    }
+
+    private boolean multiTeamRoom() {
+        RoomView room = ownRoom();
+        return room != null && room.teamCount() > 2;
     }
 
     private static String spawnName(SpawnSelectionStrategy value) {

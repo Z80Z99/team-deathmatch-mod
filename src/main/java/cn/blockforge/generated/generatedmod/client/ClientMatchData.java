@@ -185,6 +185,7 @@ public final class ClientMatchData {
 
     public static void clear() {
         ClientHudEventData.clear();
+        ClientBombPreviewData.clear();
         awaitingRespawn = false;
         deathLabel = "";
         downedPlayerIds = java.util.Set.of();
@@ -250,7 +251,7 @@ public final class ClientMatchData {
     /** Server-owned phases ask the local client to suppress movement input as well as interactions. */
     public static boolean movementFrozen() {
         return state == MatchState.TERRAIN_RESTORING
-                || (state == MatchState.WARMUP && phaseRemainingTicks > 0 && phaseRemainingTicks <= 200);
+                || state == MatchState.FROZEN;
     }
 
     /** 整场已打时长（tick）：服务器快照 + 本地时钟推进，两包之间也不会停。 */
@@ -334,6 +335,7 @@ public final class ClientMatchData {
         phaseText = switch (state) {
             case WAITING -> "等待中";
             case WARMUP -> phaseRemainingTicks == 0 ? "热身 · 等待玩家" : "即将开始";
+            case FROZEN -> "阶段冻结";
             case BUYING -> "购买装备";
             case PLAYING -> mode == GameMode.SEARCH_DESTROY ? "行动阶段" : "进行中";
             case ROUND_END -> "回合结束";

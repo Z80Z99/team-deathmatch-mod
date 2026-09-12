@@ -225,7 +225,7 @@ public final class RoomManager {
         sendAll("玩家离开后房间列表已更新。", false);
     }
 
-    /** 由匹配队列调用：把整个队列开成一间匹配比赛房，进入 10 秒准备倒计时后开赛。 */
+    /** 由匹配队列调用：把整个队列开成一间匹配比赛房，进入 30 秒准备倒计时后开赛。 */
     public void createMatchmakingRoom(List<UUID> playerIds) {
         if (playerIds == null || playerIds.isEmpty()) {
             return;
@@ -460,6 +460,7 @@ public final class RoomManager {
     }
 
     private void beginCountdown(Room room, int seconds) {
+        seconds = MatchmakingManager.READY_SECONDS;
         if (!canStart(room)) {
             cancelStart(room, "人数不足，开赛准备已取消。", false);
             return;

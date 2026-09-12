@@ -13,6 +13,7 @@ public final class MatchHudNotice {
         return ClientBombData.active
                 || ClientMatchData.boundaryOutside
                 || ClientMatchData.awaitingRespawn
+                || ClientMatchData.state == MatchState.FROZEN
                 || ClientMatchData.state == MatchState.BUYING
                 || (ClientMatchData.state == MatchState.WARMUP
                 && ClientMatchData.phaseRemainingTicks > 0
@@ -25,6 +26,7 @@ public final class MatchHudNotice {
         return switch (ClientMatchData.state) {
             case WAITING -> "等待比赛";
             case WARMUP -> "热身阶段";
+            case FROZEN -> "冻结阶段";
             case BUYING -> "购买阶段";
             case PLAYING -> ClientMatchData.mode == GameMode.SEARCH_DESTROY ? "行动阶段" : "比赛进行中";
             case ROUND_END -> "回合结束";
@@ -44,6 +46,7 @@ public final class MatchHudNotice {
                     ? "等待足够玩家加入 · " + ClientMatchData.teamSizesText()
                     : "比赛将在 " + seconds(ClientMatchData.phaseRemainingTicks) + " 秒后开始 · "
                     + ClientMatchData.teamSizesText();
+            case FROZEN -> "冻结期间不能移动、攻击或使用物品";
             case BUYING -> "只能在出生区域活动 · 购买并准备装备";
             case PLAYING -> ClientMatchData.mode == GameMode.SEARCH_DESTROY
                     ? "回合 " + ClientMatchData.roundNumber + " · 目标 "
@@ -72,6 +75,7 @@ public final class MatchHudNotice {
         return switch (ClientMatchData.state) {
             case WARMUP -> ClientMatchData.phaseRemainingTicks <= 0
                     ? "等待玩家" : seconds(ClientMatchData.phaseRemainingTicks) + " 秒";
+            case FROZEN -> seconds(ClientMatchData.phaseRemainingTicks) + " 秒";
             case BUYING, PLAYING -> ClientMatchData.phaseRemainingTicks <= 0
                     ? "" : ClientMatchData.phaseTimerText();
             default -> "";

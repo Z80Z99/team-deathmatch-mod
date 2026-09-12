@@ -50,7 +50,7 @@ class VanillaRespawnTest {
         doReturn(AutoBalanceMode.OFF).when(f.match).rulesAutoBalanceMode();
         doReturn(0).when(f.match).rulesMatchDurationSeconds();
         invoke(f.match, "completeTerrainRestore");
-        assertEquals(MatchState.PLAYING, f.match.state());
+        assertEquals(MatchState.FROZEN, f.match.state());
     }
 
     @Test void forcedStopUsesSeparateStateFromNormalTerrainRestore() throws Exception {

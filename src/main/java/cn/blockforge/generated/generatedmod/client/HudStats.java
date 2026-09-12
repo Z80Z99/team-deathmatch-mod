@@ -432,7 +432,7 @@ public final class HudStats {
         text("notice_title", "阶段公告标题", Group.NOTICE, MatchHudNotice::title,
                 HudStats::inMatch, "热身阶段");
         text("notice_detail", "阶段公告详情", Group.NOTICE, MatchHudNotice::detail,
-                HudStats::inMatch, "比赛将在 10 秒后开始 · A队 4人 · B队 4人");
+                HudStats::inMatch, "比赛将在 30 秒后开始 · A队 4人 · B队 4人");
         text("notice_timer", "阶段公告倒计时", Group.NOTICE, MatchHudNotice::timer,
                 HudStats::inMatch, "00:10");
         text("event_id", "HUD 事件 ID", Group.NOTICE,
@@ -640,7 +640,8 @@ public final class HudStats {
                 () -> ClientLobbyData.matchmaking().queueSize(), () -> MatchmakingManager.MIN_PLAYERS_TO_FORM,
                 HudStats::inQueue, 3, 6);
         progress("ready_progress", "开赛准备进度", Group.MATCHING, ClientLobbyData::dynamicReadySeconds,
-                () -> 5, HudStats::forming, 3, 5);
+                () -> MatchmakingManager.READY_SECONDS, HudStats::forming, 15,
+                MatchmakingManager.READY_SECONDS);
         text("matching_line1", "兼容整句：匹配横幅第一行", Group.MATCHING, () -> {
             RoomView room = roomOrNull();
             return SceneHudOverlay.matchingLineOne(ClientLobbyData.matchmaking(), forming(), room);

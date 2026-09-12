@@ -1,5 +1,7 @@
 package cn.blockforge.generated.generatedmod.match;
 
+import net.minecraft.core.Direction;
+
 import java.util.UUID;
 
 /** Classic bomb objective state machine; world interaction lives in ClassicBombManager. */
@@ -34,6 +36,12 @@ public final class ClassicBombState {
     private long plantedTick;
     private long detonateTick;
     private int actionProgress;
+    private int defuseDuration = DEFUSE_DURATION_TICKS;
+    private Direction plantFace = Direction.UP;
+    private float plantYaw;
+    private float plantPitch;
+    private boolean droppedGlowing;
+    private boolean plantedGlowing;
 
     public void startRound(UUID playerId, long now) {
         if (phase != Phase.INACTIVE) {
@@ -54,6 +62,12 @@ public final class ClassicBombState {
         plantedTick = 0L;
         detonateTick = 0L;
         actionProgress = 0;
+        defuseDuration = DEFUSE_DURATION_TICKS;
+        plantFace = Direction.UP;
+        plantYaw = 0.0F;
+        plantPitch = 0.0F;
+        droppedGlowing = false;
+        plantedGlowing = false;
     }
 
     public void dropAt(UUID playerId, double posX, double posY, double posZ, long now) {
@@ -83,6 +97,11 @@ public final class ClassicBombState {
     }
 
     public void startPlanting(UUID playerId, long now, double posX, double posY, double posZ) {
+        startPlanting(playerId, now, posX, posY, posZ, Direction.UP, 0.0F, 0.0F);
+    }
+
+    public void startPlanting(UUID playerId, long now, double posX, double posY, double posZ,
+                              Direction face, float yaw, float pitch) {
         if (phase != Phase.CARRIED || !playerId.equals(carrierId)) {
             return;
         }
@@ -91,23 +110,24 @@ public final class ClassicBombState {
         x = posX;
         y = posY;
         z = posZ;
+        plantFace = face == null ? Direction.UP : face;
+        plantYaw = yaw;
+        plantPitch = pitch;
         actionStartTick = now;
         actionProgress = 0;
     }
 
     public void startDefusing(UUID playerId, long now) {
-        startDefusing(playerId, now, false);
+        startDefusing(playerId, now, DEFUSE_DURATION_TICKS);
     }
 
-    public void startDefusing(UUID playerId, long now, boolean resume) {
+    public void startDefusing(UUID playerId, long now, int durationTicks) {
         if (phase != Phase.PLANTED) {
             return;
         }
         phase = Phase.DEFUSING;
         operatorId = playerId;
-        if (!resume) {
-            actionProgress = 0;
-        }
+        defuseDuration = Math.max(1, durationTicks);
         actionStartTick = Math.max(0L, now - actionProgress);
     }
 
@@ -115,8 +135,9 @@ public final class ClassicBombState {
         if (phase != Phase.PLANTING && phase != Phase.DEFUSING) {
             return false;
         }
-        actionProgress = (int) Math.max(0L, Math.min(duration, now - actionStartTick));
-        return actionProgress >= duration;
+        int effective = phase == Phase.DEFUSING ? defuseDuration : Math.max(1, duration);
+        actionProgress = (int) Math.max(0L, Math.min(effective, now - actionStartTick));
+        return actionProgress >= effective;
     }
 
     public void finishPlanting(long now, String siteId, String siteName) {
@@ -134,7 +155,7 @@ public final class ClassicBombState {
         bombSiteName = siteName == null ? "" : siteName;
         plantedTick = now;
         detonateTick = now + Math.max(1, detonationDurationTicks);
-        actionProgress = PLANT_DURATION_TICKS;
+        actionProgress = 0;
     }
 
     public void finishDefusing() {
@@ -148,7 +169,8 @@ public final class ClassicBombState {
         phase = Phase.DEFUSED;
         defuserId = operatorId;
         operatorId = null;
-        actionProgress = Math.max(1, durationTicks);
+        defuseDuration = Math.max(1, durationTicks);
+        actionProgress = Math.max(1, defuseDuration);
     }
 
     public void explode(long now) {
@@ -161,10 +183,11 @@ public final class ClassicBombState {
     }
 
     public void cancelAction() {
-        cancelAction(false);
+        cancelAction(true);
     }
 
     public void cancelAction(boolean resumeDefuse) {
+        Phase previous = phase;
         if (phase == Phase.PLANTING) {
             phase = Phase.CARRIED;
         } else if (phase == Phase.DEFUSING) {
@@ -174,8 +197,16 @@ public final class ClassicBombState {
         }
         operatorId = null;
         actionStartTick = 0L;
-        if (!(resumeDefuse && phase == Phase.PLANTED)) {
+        if (previous == Phase.PLANTING || !resumeDefuse) {
             actionProgress = 0;
+        } else if (previous == Phase.DEFUSING) {
+            actionProgress = Math.min(actionProgress, defuseDuration);
+        }
+    }
+
+    public void recoverDefuseProgress() {
+        if (phase == Phase.PLANTED && actionProgress > 0) {
+            actionProgress = Math.max(0, actionProgress - 1);
         }
     }
 
@@ -195,6 +226,12 @@ public final class ClassicBombState {
         plantedTick = 0L;
         detonateTick = 0L;
         actionProgress = 0;
+        defuseDuration = DEFUSE_DURATION_TICKS;
+        plantFace = Direction.UP;
+        plantYaw = 0.0F;
+        plantPitch = 0.0F;
+        droppedGlowing = false;
+        plantedGlowing = false;
     }
 
     public Phase phase() {
@@ -259,8 +296,40 @@ public final class ClassicBombState {
 
     public int actionRemainingTicks(int plantDurationTicks, int defuseDurationTicks) {
         int duration = phase == Phase.PLANTING ? Math.max(1, plantDurationTicks)
-                : phase == Phase.DEFUSING ? Math.max(1, defuseDurationTicks) : 0;
+                : phase == Phase.DEFUSING || phase == Phase.PLANTED ? Math.max(1, defuseDuration) : 0;
         return Math.max(0, duration - actionProgress);
+    }
+
+    public int defuseDuration() {
+        return defuseDuration;
+    }
+
+    public Direction plantFace() {
+        return plantFace;
+    }
+
+    public float plantYaw() {
+        return plantYaw;
+    }
+
+    public float plantPitch() {
+        return plantPitch;
+    }
+
+    public boolean droppedGlowing() {
+        return droppedGlowing;
+    }
+
+    public void markDroppedGlowing() {
+        droppedGlowing = true;
+    }
+
+    public boolean plantedGlowing() {
+        return plantedGlowing;
+    }
+
+    public void markPlantedGlowing() {
+        plantedGlowing = true;
     }
 
     public int detonationRemainingTicks(long now) {

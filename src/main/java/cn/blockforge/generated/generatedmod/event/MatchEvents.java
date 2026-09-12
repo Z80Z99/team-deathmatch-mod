@@ -122,7 +122,8 @@ public final class MatchEvents {
             return;
         }
         MatchManager manager = MatchManager.get();
-        if (manager != null && manager.shouldCancelInteraction(player)) {
+        if (manager != null && (manager.shouldCancelInteraction(player)
+                || manager.bomb().shouldCaptureInteraction(player))) {
             event.setCanceled(true);
         }
     }
@@ -133,7 +134,8 @@ public final class MatchEvents {
             return;
         }
         MatchManager manager = MatchManager.get();
-        if (manager != null && manager.shouldCancelInteraction(player)) {
+        if (manager != null && (manager.shouldCancelInteraction(player)
+                || manager.bomb().shouldCaptureInteraction(player))) {
             event.setCanceled(true);
         }
     }

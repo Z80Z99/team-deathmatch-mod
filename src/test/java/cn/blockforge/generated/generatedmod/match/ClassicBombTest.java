@@ -61,7 +61,7 @@ class ClassicBombTest {
         }
     }
 
-    @Test void interruptedDefuseCanResumeFromSavedProgress() {
+    @Test void interruptedDefuseRecoversGraduallyAndCanResume() {
         ClassicBombState state = new ClassicBombState();
         UUID attacker = UUID.randomUUID();
         UUID defender = UUID.randomUUID();
@@ -71,10 +71,13 @@ class ClassicBombTest {
         state.startDefusing(defender, 100);
         state.advanceAction(140, 100);
         assertEquals(40, state.actionProgress());
+        assertEquals(100, state.defuseDuration());
         state.cancelAction(true);
         assertEquals(ClassicBombState.Phase.PLANTED, state.phase());
-        state.startDefusing(defender, 200, true);
-        assertTrue(state.advanceAction(260, 100));
+        for (int i = 0; i < 10; i++) state.recoverDefuseProgress();
+        assertEquals(30, state.actionProgress());
+        state.startDefusing(defender, 200, 100);
+        assertTrue(state.advanceAction(270, 100));
         state.finishDefusing(100);
         assertEquals(ClassicBombState.Phase.DEFUSED, state.phase());
     }

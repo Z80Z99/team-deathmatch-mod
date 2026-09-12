@@ -28,6 +28,7 @@ import net.minecraftforge.client.event.ViewportEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import org.lwjgl.glfw.GLFW;
 
 /** Forge 客户端事件：按键入口、暂停菜单入口和连接生命周期。 */
 @Mod.EventBusSubscriber(modid = GeneratedMod.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -37,6 +38,8 @@ public final class ClientForgeEvents {
 
     private static boolean previousInMatch;
     private static boolean previousSyncApplied;
+    private static boolean previousBombInteract;
+    private static int bombInteractRefresh;
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
@@ -59,6 +62,7 @@ public final class ClientForgeEvents {
         ClientHudEventData.tick();
         RespawnOverlay.tick();
         ClientLobbyData.tick();
+        updateBombInteraction(minecraft);
         MapPreview.tick(minecraft);
         closeLobbyScreensWhenMatchStarts(minecraft);
         if (ClientMatchData.consumeKillFeedSound() && minecraft.player != null) {
@@ -86,6 +90,25 @@ public final class ClientForgeEvents {
                 MatchShopScreen.open(null);
             }
         }
+    }
+
+    private static void updateBombInteraction(Minecraft minecraft) {
+        boolean active = minecraft.screen == null && minecraft.player != null
+                && ClientMatchData.state == cn.blockforge.generated.generatedmod.match.MatchState.PLAYING
+                && !ClientMatchData.awaitingRespawn && ClientMatchData.myTeam.isPlayable();
+        boolean held = false;
+        if (active) {
+            long window = minecraft.getWindow().getWindow();
+            held = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS
+                    || GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS;
+        }
+        if (held) bombInteractRefresh++;
+        boolean refresh = held && bombInteractRefresh % 5 == 0;
+        if (held != previousBombInteract || refresh) {
+            cn.blockforge.generated.generatedmod.network.FpsTdmNetwork.sendToServer(
+                    new cn.blockforge.generated.generatedmod.network.packet.BombInteractPacket(held));
+        }
+        previousBombInteract = held;
     }
 
     /** 匹配成功后比赛状态一旦激活，自动关闭房间/匹配等大厅界面，交还视角控制。 */
