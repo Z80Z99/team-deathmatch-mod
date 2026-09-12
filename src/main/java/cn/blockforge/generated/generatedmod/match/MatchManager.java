@@ -1660,9 +1660,10 @@ public final class MatchManager {
 
     private void scheduleDowned(ServerPlayer player, Team team, String deathLabel) {
         long releaseTick = downedReleaseTick();
+        long cameraUnlockTick = server.getTickCount() + cameraUnlockDelay(rulesElimination());
         downedPlayers.put(player.getUUID(), new DownedEntry(player.getUUID(), team,
                 player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot(), releaseTick,
-                server.getTickCount() + 200L, deathLabel));
+                cameraUnlockTick, deathLabel));
         readyRespawnRequests.remove(player.getUUID());
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new MatchRespawnEvent(player,
                 MatchRespawnEvent.Phase.WAITING, releaseTick));
@@ -1682,6 +1683,10 @@ public final class MatchManager {
             return Long.MAX_VALUE;
         }
         return server.getTickCount() + secondsToTicks(rulesRespawnDelaySeconds());
+    }
+
+    static long cameraUnlockDelay(boolean elimination) {
+        return elimination ? 20L : 200L;
     }
 
     private void processDownedPlayers() {

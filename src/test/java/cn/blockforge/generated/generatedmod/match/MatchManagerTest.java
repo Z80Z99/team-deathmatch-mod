@@ -23,6 +23,8 @@ class MatchManagerTest {
 
     @Test void activeMatchesBroadcastMoreFrequently() {
         assertEquals(10, MatchManager.stateBroadcastInterval(true));
+        assertEquals(20L, MatchManager.cameraUnlockDelay(true));
+        assertEquals(200L, MatchManager.cameraUnlockDelay(false));
     }
 
     @Test void idleMatchesUseTheLowFrequencySync() {
