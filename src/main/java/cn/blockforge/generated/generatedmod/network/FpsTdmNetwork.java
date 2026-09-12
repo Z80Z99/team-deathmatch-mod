@@ -24,6 +24,7 @@ import cn.blockforge.generated.generatedmod.network.packet.MatchShopSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.BombSyncPacket;
 import cn.blockforge.generated.generatedmod.network.packet.BombInteractPacket;
 import cn.blockforge.generated.generatedmod.network.packet.BombPreviewPacket;
+import cn.blockforge.generated.generatedmod.network.packet.SpectateSwitchPacket;
 import cn.blockforge.generated.generatedmod.network.packet.HudEventPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -33,7 +34,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class FpsTdmNetwork {
-    private static final String PROTOCOL_VERSION = "25";
+    private static final String PROTOCOL_VERSION = "27";
     private static SimpleChannel channel;
     private static int nextId;
 
@@ -168,6 +169,11 @@ public final class FpsTdmNetwork {
                 .encoder(BombPreviewPacket::encode)
                 .decoder(BombPreviewPacket::new)
                 .consumerMainThread(BombPreviewPacket::handle)
+                .add();
+        channel.messageBuilder(SpectateSwitchPacket.class, nextId(), NetworkDirection.PLAY_TO_SERVER)
+                .encoder(SpectateSwitchPacket::encode)
+                .decoder(SpectateSwitchPacket::new)
+                .consumerMainThread(SpectateSwitchPacket::handle)
                 .add();
     }
 

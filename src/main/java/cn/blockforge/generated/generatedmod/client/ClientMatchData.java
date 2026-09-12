@@ -47,6 +47,9 @@ public final class ClientMatchData {
     public static Team winner;
     /** 当前比赛模式（服务器规则快照）与整场胜利回合数。 */
     public static GameMode mode = GameMode.TEAM_DEATHMATCH;
+    public static cn.blockforge.generated.generatedmod.match.PlayerPerspective perspective =
+            cn.blockforge.generated.generatedmod.match.PlayerPerspective.FIRST_PERSON;
+    public static boolean allowViewSwitch = true;
     public static int roundsToWin = 1;
     /** 整场统计镜像：个人击杀 / 阵亡 / 造伤 / 承伤、队伍伤害与整场击杀。 */
     public static int myMatchKills;
@@ -134,6 +137,10 @@ public final class ClientMatchData {
         pending = packet.pending();
         winner = packet.winner();
         mode = GameMode.byOrdinal(packet.gameModeOrdinal());
+        perspective = packet.perspective() == null
+                ? cn.blockforge.generated.generatedmod.match.PlayerPerspective.FIRST_PERSON
+                : packet.perspective();
+        allowViewSwitch = packet.allowViewSwitch();
         roundsToWin = Math.max(1, packet.roundsToWin());
         myMatchKills = packet.myMatchKills();
         myMatchDeaths = packet.myMatchDeaths();
@@ -202,6 +209,8 @@ public final class ClientMatchData {
         roundNumber = 0;
         targetKills = 0;
         mode = GameMode.TEAM_DEATHMATCH;
+        perspective = cn.blockforge.generated.generatedmod.match.PlayerPerspective.FIRST_PERSON;
+        allowViewSwitch = true;
         roundsToWin = 1;
         myMatchKills = 0;
         myMatchDeaths = 0;

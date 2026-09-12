@@ -42,7 +42,9 @@ public record RoomRules(GameMode mode,
                         int bombDetonationSeconds,
                         int bombDefuseSeconds,
                         boolean bombDefuseResume,
-                        boolean restoreTerrainAfterRound) {
+                        boolean restoreTerrainAfterRound,
+                        cn.blockforge.generated.generatedmod.match.PlayerPerspective perspective,
+                        boolean allowViewSwitch) {
 
     public RoomRules {
         mode = mode == null ? GameMode.TEAM_DEATHMATCH : mode;
@@ -52,6 +54,8 @@ public record RoomRules(GameMode mode,
                 ? AutoBalanceMode.ON_JOIN_AND_MATCH_START : autoBalanceMode;
         spawnSelectionStrategy = spawnSelectionStrategy == null
                 ? SpawnSelectionStrategy.RANDOM : spawnSelectionStrategy;
+        perspective = perspective == null
+                ? cn.blockforge.generated.generatedmod.match.PlayerPerspective.FIRST_PERSON : perspective;
     }
 
     /** Compatibility constructor for existing callers and saved rules. */
@@ -65,7 +69,8 @@ public record RoomRules(GameMode mode,
                 autoRespawn, friendlyFire, switchSideEvery, minPlayersToStart, roundEndDelaySeconds, matchEndDelaySeconds,
                 keepInventoryOnDeath, suppressDeathMessages, autoReset, requireBothTeams, teamChangePolicy, autoBalanceMode,
                 spawnSelectionStrategy, maxTeamImbalance, 3, 80,
-                15, 4, 40, 5, true, true);
+                15, 4, 40, 5, true, true,
+                cn.blockforge.generated.generatedmod.match.PlayerPerspective.FIRST_PERSON, true);
     }
 
     /** Compatibility constructor for rules created before round terrain recovery became optional. */
@@ -84,6 +89,26 @@ public record RoomRules(GameMode mode,
                 autoReset, requireBothTeams, teamChangePolicy, autoBalanceMode, spawnSelectionStrategy,
                 maxTeamImbalance, respawnProtectionSeconds, respawnProtectionPercent, buyPhaseSeconds,
                 bombPlantSeconds, bombDetonationSeconds, bombDefuseSeconds, bombDefuseResume, true);
+    }
+
+    /** Compatibility constructor for rules created before configurable player perspective. */
+    public RoomRules(GameMode mode, int targetKills, int matchDurationSeconds, int roundWinTarget,
+                     int warmupDurationSeconds, int respawnDelaySeconds, boolean autoRespawn, boolean friendlyFire,
+                     int switchSideEvery, int minPlayersToStart, int roundEndDelaySeconds, int matchEndDelaySeconds,
+                     boolean keepInventoryOnDeath, boolean suppressDeathMessages, boolean autoReset, boolean requireBothTeams,
+                     TeamChangePolicy teamChangePolicy, AutoBalanceMode autoBalanceMode,
+                     SpawnSelectionStrategy spawnSelectionStrategy, int maxTeamImbalance,
+                     int respawnProtectionSeconds, int respawnProtectionPercent, int buyPhaseSeconds,
+                     int bombPlantSeconds, int bombDetonationSeconds, int bombDefuseSeconds,
+                     boolean bombDefuseResume, boolean restoreTerrainAfterRound) {
+        this(mode, targetKills, matchDurationSeconds, roundWinTarget, warmupDurationSeconds,
+                respawnDelaySeconds, autoRespawn, friendlyFire, switchSideEvery, minPlayersToStart,
+                roundEndDelaySeconds, matchEndDelaySeconds, keepInventoryOnDeath, suppressDeathMessages,
+                autoReset, requireBothTeams, teamChangePolicy, autoBalanceMode, spawnSelectionStrategy,
+                maxTeamImbalance, respawnProtectionSeconds, respawnProtectionPercent, buyPhaseSeconds,
+                bombPlantSeconds, bombDetonationSeconds, bombDefuseSeconds, bombDefuseResume,
+                restoreTerrainAfterRound,
+                cn.blockforge.generated.generatedmod.match.PlayerPerspective.FIRST_PERSON, true);
     }
 
     /** 以服务器当前配置作为默认规则快照。必须在服务端线程调用。 */
@@ -147,7 +172,8 @@ public record RoomRules(GameMode mode,
                 safe.roundEndDelaySeconds, safe.matchEndDelaySeconds,
                 safe.keepInventoryOnDeath, safe.suppressDeathMessages, safe.autoReset,
                 false, safe.teamChangePolicy, safe.autoBalanceMode,
-                safe.spawnSelectionStrategy, safe.maxTeamImbalance).normalized();
+                safe.spawnSelectionStrategy, safe.maxTeamImbalance).normalized()
+                .withViewSettings(safe.perspective(), safe.allowViewSwitch());
     }
 
     /** 按模式把越界或不适用值收敛，保证任何来源的规则都能安全应用。 */
@@ -175,7 +201,9 @@ public record RoomRules(GameMode mode,
                 mode == GameMode.SEARCH_DESTROY ? clamp(bombDetonationSeconds, 5, 300) : 40,
                 mode == GameMode.SEARCH_DESTROY ? clamp(bombDefuseSeconds, 1, 60) : 5,
                 false,
-                restoreTerrainAfterRound);
+                restoreTerrainAfterRound,
+                perspective,
+                allowViewSwitch);
     }
 
     /** 返回错误文本；null 表示合法。 */
@@ -226,7 +254,10 @@ public record RoomRules(GameMode mode,
         }
         return text.append(" · 等待人数后倒计时 30s")
                 .append(" · 最少 ").append(minPlayersToStart).append(" 人")
-                .append(" · 友伤 ").append(friendlyFire ? "开" : "关").toString();
+                .append(" · 友伤 ").append(friendlyFire ? "开" : "关")
+                .append(" · 视角 ").append(perspective.displayName())
+                .append(allowViewSwitch ? "（可切换）" : "（锁定）")
+                .toString();
     }
 
     private static String formatSeconds(int seconds) {
@@ -244,7 +275,20 @@ public record RoomRules(GameMode mode,
                 teamChangePolicy, autoBalanceMode, spawnSelectionStrategy,
                 maxTeamImbalance, respawnProtectionSeconds, respawnProtectionPercent,
                 buyPhaseSeconds, bombPlantSeconds, bombDetonationSeconds, bombDefuseSeconds,
-                bombDefuseResume, restoreTerrainAfterRound).normalized();
+                bombDefuseResume, restoreTerrainAfterRound, perspective, allowViewSwitch).normalized();
+    }
+
+    public RoomRules withViewSettings(
+            cn.blockforge.generated.generatedmod.match.PlayerPerspective newPerspective,
+            boolean newAllowViewSwitch) {
+        return new RoomRules(mode, targetKills, matchDurationSeconds, roundWinTarget,
+                warmupDurationSeconds, respawnDelaySeconds, autoRespawn, friendlyFire,
+                switchSideEvery, minPlayersToStart, roundEndDelaySeconds, matchEndDelaySeconds,
+                keepInventoryOnDeath, suppressDeathMessages, autoReset, requireBothTeams,
+                teamChangePolicy, autoBalanceMode, spawnSelectionStrategy, maxTeamImbalance,
+                respawnProtectionSeconds, respawnProtectionPercent, buyPhaseSeconds,
+                bombPlantSeconds, bombDetonationSeconds, bombDefuseSeconds, bombDefuseResume,
+                restoreTerrainAfterRound, newPerspective, newAllowViewSwitch).normalized();
     }
 
     public void write(FriendlyByteBuf buffer) {
@@ -276,6 +320,8 @@ public record RoomRules(GameMode mode,
         buffer.writeVarInt(bombDefuseSeconds);
         buffer.writeBoolean(bombDefuseResume);
         buffer.writeBoolean(restoreTerrainAfterRound);
+        buffer.writeVarInt(perspective.ordinal());
+        buffer.writeBoolean(allowViewSwitch);
     }
 
     public static RoomRules read(FriendlyByteBuf buffer) {
@@ -304,7 +350,11 @@ public record RoomRules(GameMode mode,
                         SpawnSelectionStrategy.RANDOM),
                 buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(),
                 buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(),
-                buffer.readVarInt(), buffer.readBoolean(), buffer.readBoolean()).normalized();
+                buffer.readVarInt(), buffer.readBoolean(), buffer.readBoolean(),
+                enumByOrdinal(buffer.readVarInt(),
+                        cn.blockforge.generated.generatedmod.match.PlayerPerspective.values(),
+                        cn.blockforge.generated.generatedmod.match.PlayerPerspective.FIRST_PERSON),
+                buffer.readBoolean()).normalized();
     }
 
     private static <E extends Enum<E>> E enumByOrdinal(int ordinal, E[] values, E fallbackValue) {

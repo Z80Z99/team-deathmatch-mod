@@ -41,6 +41,11 @@ class RoomRulesTest {
                 TeamChangePolicy.ONLY_BEFORE_MATCH, AutoBalanceMode.OFF,
                 SpawnSelectionStrategy.RANDOM, 1, 0, 0, 15, 4, 40, 5, false, false).normalized();
         assertFalse(noRoundRestore.restoreTerrainAfterRound());
+        RoomRules perspective = noRoundRestore.withViewSettings(
+                cn.blockforge.generated.generatedmod.match.PlayerPerspective.THIRD_PERSON_BACK, false);
+        assertEquals(cn.blockforge.generated.generatedmod.match.PlayerPerspective.THIRD_PERSON_BACK,
+                perspective.perspective());
+        assertFalse(perspective.allowViewSwitch());
         assertEquals("团队竞技", GameMode.TEAM_DEATHMATCH.displayName());
     }
 }

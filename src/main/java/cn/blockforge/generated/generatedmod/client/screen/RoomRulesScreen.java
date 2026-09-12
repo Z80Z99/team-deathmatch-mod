@@ -12,6 +12,7 @@ import cn.blockforge.generated.generatedmod.lobby.RoomState;
 import cn.blockforge.generated.generatedmod.lobby.RoomView;
 import cn.blockforge.generated.generatedmod.match.AutoBalanceMode;
 import cn.blockforge.generated.generatedmod.match.GameMode;
+import cn.blockforge.generated.generatedmod.match.PlayerPerspective;
 import cn.blockforge.generated.generatedmod.match.SpawnSelectionStrategy;
 import cn.blockforge.generated.generatedmod.match.TeamChangePolicy;
 import cn.blockforge.generated.generatedmod.network.FpsTdmNetwork;
@@ -32,7 +33,7 @@ import java.util.List;
  */
 public final class RoomRulesScreen extends UiScreen {
     private static final int FIELD_HEIGHT = 38;
-    private static final int ROW_COUNT = 15;
+    private static final int ROW_COUNT = 16;
     private static final int COLUMN_GAP = 12;
 
     private final Screen parent;
@@ -65,6 +66,8 @@ public final class RoomRulesScreen extends UiScreen {
     private UiEditBox bombDetonationSecondsBox;
     private UiEditBox bombDefuseSecondsBox;
     private UiCycleButton<Boolean> terrainRestoreToggle;
+    private UiCycleButton<PlayerPerspective> perspectiveCycle;
+    private UiCycleButton<Boolean> allowViewSwitchToggle;
     private UiButton unavailableButton;
     private UiButton saveButton;
     private UiButton resetButton;
@@ -206,6 +209,10 @@ public final class RoomRulesScreen extends UiScreen {
                 "拆弹所需时间（1～60）。");
         terrainRestoreToggle = bool(14, 0, "回合后恢复地形", current.restoreTerrainAfterRound(),
                 editable && multiTeamRoom());
+        perspectiveCycle = cycle(15, 0, "视角设置", List.of(PlayerPerspective.values()),
+                current.perspective(), PlayerPerspective::displayName, null,
+                "只允许第一人称和背后第三人称。", editable);
+        allowViewSwitchToggle = bool(15, 1, "可切换视角", current.allowViewSwitch(), editable);
         UiTheme.Field unavailableField = ruleField(0);
         unavailableButton = new UiButton(unavailableField.controlX(), rowYs[10] + 12,
                 innerWidth - 16, BUTTON_HEIGHT,
@@ -352,6 +359,8 @@ public final class RoomRulesScreen extends UiScreen {
         setRowY(bombDetonationSecondsBox, 13);
         setRowY(bombDefuseSecondsBox, 13);
         setRowY(terrainRestoreToggle, 14);
+        setRowY(perspectiveCycle, 15);
+        setRowY(allowViewSwitchToggle, 15);
         setRowY(unavailableButton, 10);
     }
 
@@ -403,6 +412,8 @@ public final class RoomRulesScreen extends UiScreen {
         if (terrainRestoreToggle != null) {
             terrainRestoreToggle.active = bombEditable && multiTeamRoom();
         }
+        if (perspectiveCycle != null) perspectiveCycle.active = editable();
+        if (allowViewSwitchToggle != null) allowViewSwitchToggle.active = editable();
     }
 
     private static void setBombSettingVisibility(
@@ -478,7 +489,9 @@ public final class RoomRulesScreen extends UiScreen {
                 parse(bombDetonationSecondsBox, draft.bombDetonationSeconds()),
                 parse(bombDefuseSecondsBox, draft.bombDefuseSeconds()),
                 false,
-                terrainRestoreToggle.getValue());
+                terrainRestoreToggle.getValue(),
+                perspectiveCycle.getValue(),
+                allowViewSwitchToggle.getValue());
     }
 
     private static int parse(UiEditBox box, int fallback) {
@@ -747,6 +760,9 @@ public final class RoomRulesScreen extends UiScreen {
         }
         if (row == 14) {
             return column == 0 && multiTeamRoom() ? "回合后恢复地形" : null;
+        }
+        if (row == 15) {
+            return column == 0 ? "视角设置" : "可切换视角";
         }
         if (row == 8) {
             return column == 0 ? "换队政策" : "自动平衡";

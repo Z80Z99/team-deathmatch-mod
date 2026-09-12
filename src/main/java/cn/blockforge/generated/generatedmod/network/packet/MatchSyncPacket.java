@@ -3,6 +3,7 @@ package cn.blockforge.generated.generatedmod.network.packet;
 import cn.blockforge.generated.generatedmod.client.network.ClientPacketHandler;
 import cn.blockforge.generated.generatedmod.match.MatchState;
 import cn.blockforge.generated.generatedmod.match.Team;
+import cn.blockforge.generated.generatedmod.match.PlayerPerspective;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.network.NetworkEvent;
@@ -22,6 +23,8 @@ public final class MatchSyncPacket {
     private boolean economyEnabled;
     private int globalBalance;
     private int matchBalance;
+    private PlayerPerspective perspective = PlayerPerspective.FIRST_PERSON;
+    private boolean allowViewSwitch = true;
     public boolean awaitingRespawn() { return awaitingRespawn; }
     public String deathLabel() { return deathLabel; }
     public java.util.Set<java.util.UUID> downedPlayerIds() { return downedPlayerIds; }
@@ -43,6 +46,13 @@ public final class MatchSyncPacket {
     public boolean economyEnabled() { return economyEnabled; }
     public int globalBalance() { return globalBalance; }
     public int matchBalance() { return matchBalance; }
+    public PlayerPerspective perspective() { return perspective; }
+    public boolean allowViewSwitch() { return allowViewSwitch; }
+    public MatchSyncPacket withViewSettings(PlayerPerspective value, boolean canSwitch) {
+        perspective = value == null ? PlayerPerspective.FIRST_PERSON : value;
+        allowViewSwitch = canSwitch;
+        return this;
+    }
     private int boundaryTicks;
     private int respawnTotalTicks;
     private boolean boundaryOutside;
@@ -207,6 +217,10 @@ public final class MatchSyncPacket {
         economyEnabled = buffer.readBoolean();
         globalBalance = buffer.readVarInt();
         matchBalance = buffer.readVarInt();
+        int perspectiveOrdinal = buffer.readVarInt();
+        perspective = perspectiveOrdinal < 0 || perspectiveOrdinal >= PlayerPerspective.values().length
+                ? PlayerPerspective.FIRST_PERSON : PlayerPerspective.values()[perspectiveOrdinal];
+        allowViewSwitch = buffer.readBoolean();
     }
 
     public void encode(FriendlyByteBuf buffer) {
@@ -259,6 +273,8 @@ public final class MatchSyncPacket {
         buffer.writeBoolean(economyEnabled);
         buffer.writeVarInt(globalBalance);
         buffer.writeVarInt(matchBalance);
+        buffer.writeVarInt(perspective.ordinal());
+        buffer.writeBoolean(allowViewSwitch);
     }
 
     public void handle(Supplier<NetworkEvent.Context> contextSupplier) {

@@ -13,6 +13,7 @@ import cn.blockforge.generated.generatedmod.client.screen.RoomScreen;
 import cn.blockforge.generated.generatedmod.client.screen.WeaponRepositoryScreen;
 import cn.blockforge.generated.generatedmod.client.screen.MatchShopScreen;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.CameraType;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.PauseScreen;
@@ -40,6 +41,8 @@ public final class ClientForgeEvents {
     private static boolean previousSyncApplied;
     private static boolean previousBombInteract;
     private static int bombInteractRefresh;
+    private static boolean previousSpectateLeft;
+    private static boolean previousSpectateRight;
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
@@ -62,6 +65,8 @@ public final class ClientForgeEvents {
         ClientHudEventData.tick();
         RespawnOverlay.tick();
         ClientLobbyData.tick();
+        updatePerspective(minecraft);
+        updateSpectateSwitch(minecraft);
         updateBombInteraction(minecraft);
         MapPreview.tick(minecraft);
         closeLobbyScreensWhenMatchStarts(minecraft);
@@ -90,6 +95,48 @@ public final class ClientForgeEvents {
                 MatchShopScreen.open(null);
             }
         }
+    }
+
+    private static void updatePerspective(Minecraft minecraft) {
+        if (!ClientMatchData.inMatch() || minecraft.options == null
+                || RespawnOverlay.active() || ClientMatchData.awaitingRespawn) return;
+        CameraType base = ClientMatchData.perspective
+                == cn.blockforge.generated.generatedmod.match.PlayerPerspective.THIRD_PERSON_BACK
+                ? CameraType.THIRD_PERSON_BACK : CameraType.FIRST_PERSON;
+        if (!ClientMatchData.allowViewSwitch) {
+            if (minecraft.options.getCameraType() != base) minecraft.options.setCameraType(base);
+            return;
+        }
+        while (minecraft.options.keyTogglePerspective.consumeClick()) {
+            CameraType current = minecraft.options.getCameraType();
+            minecraft.options.setCameraType(current == CameraType.FIRST_PERSON
+                    ? CameraType.THIRD_PERSON_BACK : CameraType.FIRST_PERSON);
+        }
+        if (minecraft.options.getCameraType() == CameraType.THIRD_PERSON_FRONT) {
+            minecraft.options.setCameraType(base);
+        }
+    }
+
+    private static void updateSpectateSwitch(Minecraft minecraft) {
+        boolean available = minecraft.screen == null && ClientMatchData.inMatch()
+                && ClientMatchData.awaitingRespawn && ClientMatchData.mode.elimination();
+        boolean left = false;
+        boolean right = false;
+        if (available) {
+            long window = minecraft.getWindow().getWindow();
+            left = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+            right = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS;
+        }
+        if (available && left && !previousSpectateLeft) {
+            cn.blockforge.generated.generatedmod.network.FpsTdmNetwork.sendToServer(
+                    new cn.blockforge.generated.generatedmod.network.packet.SpectateSwitchPacket(false));
+        }
+        if (available && right && !previousSpectateRight) {
+            cn.blockforge.generated.generatedmod.network.FpsTdmNetwork.sendToServer(
+                    new cn.blockforge.generated.generatedmod.network.packet.SpectateSwitchPacket(true));
+        }
+        previousSpectateLeft = left;
+        previousSpectateRight = right;
     }
 
     private static void updateBombInteraction(Minecraft minecraft) {

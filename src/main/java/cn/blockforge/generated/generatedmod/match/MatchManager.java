@@ -34,6 +34,7 @@ import net.minecraftforge.event.level.ExplosionEvent;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -66,6 +67,7 @@ public final class MatchManager {
     private final Map<UUID, SpawnPoint> buySpawnAnchors = new HashMap<>();
     private final java.util.Set<UUID> buyAreaNoticeSent = new java.util.HashSet<>();
     private final java.util.Set<UUID> spectatorAreaPlayers = new java.util.HashSet<>();
+    private final Map<UUID, UUID> spectateTargets = new HashMap<>();
 
     /** 整场开始时刻（tick），供 HUD「本局已进行时间」统计源使用。 */
     private long matchStartTick;
@@ -399,6 +401,14 @@ public final class MatchManager {
         return activeTeams().size() <= 2 || roomRules == null || roomRules.restoreTerrainAfterRound();
     }
 
+    public PlayerPerspective rulesPerspective() {
+        return roomRules == null ? PlayerPerspective.FIRST_PERSON : roomRules.perspective();
+    }
+
+    public boolean rulesAllowViewSwitch() {
+        return roomRules == null || roomRules.allowViewSwitch();
+    }
+
     public boolean rulesRequireBothTeams() {
         return false;
     }
@@ -550,6 +560,7 @@ public final class MatchManager {
     private void beginForcedStopReset() {
         state = MatchState.MAP_RESETTING;
         if (spectatorAreaPlayers != null) spectatorAreaPlayers.clear();
+        if (spectateTargets != null) spectateTargets.clear();
         spawns.updateActivationContext(MapRegionActivation.INACTIVE);
         phaseEndTick = 0L;
         frozenPositions.clear();
@@ -1171,7 +1182,8 @@ public final class MatchManager {
                         isDowned(player) ? downedPlayers.get(player.getUUID()).deathLabel() : "")
                 .withDownedPlayers(downedPlayers.keySet())
                 .withEconomy(economy.enabled(), economy.globalBalance(player.getUUID()),
-                        economy.matchBalance(player.getUUID()));
+                        economy.matchBalance(player.getUUID()))
+                .withViewSettings(rulesPerspective(), rulesAllowViewSwitch());
         maps.currentMap().ifPresent(map -> packet.withBoundaryBox(map.bounds()));
         FpsTdmNetwork.sendToPlayer(packet, player);
     }
@@ -1390,6 +1402,7 @@ public final class MatchManager {
         phaseEndTick = server.getTickCount() + secondsToTicks(rulesRoundEndDelaySeconds());
         resetFailureNotified = false;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            clearSpectatorCamera(player);
             player.setInvulnerable(true);
             if (teams.getTeam(player).isPlayable()) {
                 player.setGameMode(GameType.SPECTATOR);
@@ -1688,16 +1701,22 @@ public final class MatchManager {
             player.setGameMode(GameType.SPECTATOR);
             player.setInvulnerable(true);
             player.setDeltaMovement(0.0D, 0.0D, 0.0D);
-            if (rulesMode() == GameMode.SEARCH_DESTROY && entry.team() == attackingTeam()
-                    && bomb != null && (bomb.state().phase() == ClassicBombState.Phase.PLANTED
-                    || bomb.state().phase() == ClassicBombState.Phase.DEFUSING)) {
-                sendToSpectatorArea(player);
+            boolean observationFinished = now >= entry.cameraUnlockTick();
+            boolean requested = readyRespawnRequests.remove(entry.playerId());
+            if (rulesElimination()) {
+                if (rulesMode() == GameMode.SEARCH_DESTROY && entry.team() == attackingTeam()
+                        && bomb != null && (bomb.state().phase() == ClassicBombState.Phase.PLANTED
+                        || bomb.state().phase() == ClassicBombState.Phase.DEFUSING)) {
+                    sendToSpectatorArea(player);
+                } else {
+                    leaveSpectatorArea(player);
+                    player.teleportTo(entry.x(), entry.y(), entry.z());
+                }
+                if (observationFinished) ensureSpectatorTarget(player);
                 continue;
             }
             leaveSpectatorArea(player);
             player.teleportTo(entry.x(), entry.y(), entry.z());
-            boolean requested = readyRespawnRequests.remove(entry.playerId());
-            boolean observationFinished = now >= entry.cameraUnlockTick();
             if (now < entry.releaseTick() || (!requested && !observationFinished)) {
                 continue;
             }
@@ -1740,10 +1759,12 @@ public final class MatchManager {
         readyRespawnRequests.clear();
         respawnProtectionEnds.clear();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            clearSpectatorCamera(player);
             if (teams.getTeam(player).isPlayable()) {
                 player.setInvulnerable(false);
             }
         }
+        if (spectateTargets != null) spectateTargets.clear();
     }
 
     private void enforceArenaRules() {
@@ -1893,6 +1914,71 @@ public final class MatchManager {
 
     private void leaveSpectatorArea(ServerPlayer player) {
         if (player != null && spectatorAreaPlayers != null) spectatorAreaPlayers.remove(player.getUUID());
+    }
+
+    public void switchSpectatorTarget(ServerPlayer player, boolean next) {
+        if (player == null || state != MatchState.PLAYING || !isDowned(player)
+                || !rulesElimination() || spectateTargets == null) return;
+        DownedEntry entry = downedPlayers.get(player.getUUID());
+        if (entry == null || server.getTickCount() < entry.cameraUnlockTick()) return;
+        List<ServerPlayer> candidates = teammateSpectateCandidates(player, entry.team());
+        if (candidates.isEmpty()) {
+            player.setCamera(player);
+            spectateTargets.remove(player.getUUID());
+            return;
+        }
+        UUID currentId = spectateTargets.get(player.getUUID());
+        int current = -1;
+        for (int index = 0; index < candidates.size(); index++) {
+            if (candidates.get(index).getUUID().equals(currentId)) {
+                current = index;
+                break;
+            }
+        }
+        int selected = current < 0 ? 0
+                : Math.floorMod(current + (next ? 1 : -1), candidates.size());
+        ServerPlayer target = candidates.get(selected);
+        spectateTargets.put(player.getUUID(), target.getUUID());
+        player.setCamera(target);
+    }
+
+    private void ensureSpectatorTarget(ServerPlayer player) {
+        if (spectateTargets == null) return;
+        DownedEntry entry = downedPlayers.get(player.getUUID());
+        if (entry == null) return;
+        UUID currentId = spectateTargets.get(player.getUUID());
+        if (currentId != null) {
+            ServerPlayer current = server.getPlayerList().getPlayer(currentId);
+            if (current != null && current.isAlive() && !isDowned(current)
+                    && teams.getTeam(current) == entry.team()) return;
+        }
+        List<ServerPlayer> candidates = teammateSpectateCandidates(player, entry.team());
+        if (candidates.isEmpty()) {
+            player.setCamera(player);
+            spectateTargets.remove(player.getUUID());
+            return;
+        }
+        ServerPlayer target = candidates.get(0);
+        spectateTargets.put(player.getUUID(), target.getUUID());
+        player.setCamera(target);
+    }
+
+    private List<ServerPlayer> teammateSpectateCandidates(ServerPlayer player, Team team) {
+        return server.getPlayerList().getPlayers().stream()
+                .filter(candidate -> candidate != player)
+                .filter(ServerPlayer::isAlive)
+                .filter(candidate -> teams.getTeam(candidate) == team)
+                .filter(candidate -> !teams.isPending(candidate))
+                .filter(candidate -> !isDowned(candidate))
+                .sorted(java.util.Comparator.comparing(candidate -> candidate.getGameProfile().getName()))
+                .toList();
+    }
+
+    private void clearSpectatorCamera(ServerPlayer player) {
+        if (player == null) return;
+        if (spectateTargets != null && spectateTargets.remove(player.getUUID()) != null) {
+            player.setCamera(player);
+        }
     }
 
     private ServerPlayer resolveKiller(DamageSource source) {

@@ -154,9 +154,10 @@ class MultiTeamMatchTest {
                 Team.TEAM_D, 3, 3, 0, false, Team.TEAM_D, 1, "killer", "victim", 0, 3,
                 1, 2, 3, 4, 100, 100, 12, 12, 200).withTeamStats(stats).withTimers(160, 100)
                 .withBoundaryStatus(true).withBoundaryBox(new cn.blockforge.generated.generatedmod.map.MapDefinition.Region(
-                        new net.minecraft.core.BlockPos(10, 50, 20), new net.minecraft.core.BlockPos(90, 100, 120)))
+                new net.minecraft.core.BlockPos(10, 50, 20), new net.minecraft.core.BlockPos(90, 100, 120)))
                 .withRespawn(true, "击杀者  PlayerOne")
-                .withDownedPlayers(java.util.Set.of(java.util.UUID.fromString("00000000-0000-0000-0000-000000000123")));
+                .withDownedPlayers(java.util.Set.of(java.util.UUID.fromString("00000000-0000-0000-0000-000000000123")))
+                .withViewSettings(PlayerPerspective.THIRD_PERSON_BACK, false);
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
             packet.encode(buffer);
@@ -170,6 +171,8 @@ class MultiTeamMatchTest {
             assertTrue(decoded.boundaryOutside()); assertTrue(decoded.boundaryBoxPresent());
             assertEquals(10, decoded.boundaryMinX()); assertEquals(120, decoded.boundaryMaxZ());
             assertEquals(stats, decoded.teamStats()); assertEquals(Team.TEAM_D, decoded.winner());
+            assertEquals(PlayerPerspective.THIRD_PERSON_BACK, decoded.perspective());
+            assertFalse(decoded.allowViewSwitch());
             cn.blockforge.generated.generatedmod.client.ClientMatchData.apply(decoded);
             assertEquals(Team.TEAM_D, cn.blockforge.generated.generatedmod.client.ClientMatchData.myTeam);
             assertEquals(9, cn.blockforge.generated.generatedmod.client.ClientMatchData.stats(Team.TEAM_C).score());
