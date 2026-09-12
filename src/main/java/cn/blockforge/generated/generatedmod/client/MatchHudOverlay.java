@@ -73,15 +73,14 @@ public final class MatchHudOverlay {
     }
 
     private static void renderBoundaryFilters(GuiGraphics graphics, int width, int height) {
-        if (!ClientMatchData.boundaryOutside || ClientMatchData.boundaryTicks <= 0) return;
+        if (ClientMatchData.boundaryTicks <= 0) return;
         HudContext context = HudContext.match(ClientMatchData.mode);
         List<ClientHudLayout.CustomElement> elements = ClientHudLayout.customElements(context);
         ClientHudLayout.CustomElement warning = elements.stream()
-                .filter(element -> element.type().equals("boundary") && element.visible()
-                        && HudConditions.visible(element, elements, false, context))
+                .filter(element -> element.type().equals("boundary"))
                 .findFirst().orElse(null);
-        if (warning == null) return;
-        float opacity = Math.max(0, Math.min(100, warning.opacityPercent())) / 100.0F;
+        float opacity = warning == null ? 1.0F
+                : Math.max(0, Math.min(100, warning.opacityPercent())) / 100.0F;
         int redAlpha = Math.round(255 * BoundaryEffects.redOpacity(ClientMatchData.boundaryTicks) * opacity);
         int blackAlpha = Math.round(255 * BoundaryEffects.blackOpacity(ClientMatchData.boundaryTicks) * opacity);
         int neutralAlpha = Math.round(255 * 0.10F * BoundaryEffects.finalPhase(ClientMatchData.boundaryTicks) * opacity);
